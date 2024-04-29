@@ -22,13 +22,6 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .api.v1 import app as api_v1_app
 
-import importlib
-
-if not hasattr(importlib, "resources"):
-    import importlib_resources
-
-    setattr(importlib, "resources", importlib_resources)
-
 import logging
 from logging import getLogger
 

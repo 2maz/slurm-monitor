@@ -2,6 +2,7 @@
 from fastapi import APIRouter
 from logging import getLogger, Logger
 import subprocess
+import json
 
 logger: Logger = getLogger(__name__)
 
@@ -16,11 +17,13 @@ def _get_slurmrestd(prefix: str):
     if not prefix.startswith("/"):
         prefix = f"/{prefix}"
 
-    msg = "echo -e \"GET {SLURM_API_PREFIX}{prefix} HTTP/1.1\r\n\" | slurmrestd -a rest_auth/local"
+    msg = f"echo -e \"GET {SLURM_API_PREFIX}{prefix} HTTP/1.1\r\n\" | slurmrestd -a rest_auth/local"
     logger.info(f"Query: {msg}")
     response = subprocess.run(msg, shell=True, stdout=subprocess.PIPE).stdout.decode('utf-8')
-    logger.info(f"Response: {response}")
-    return response
+    header, content = response.split("\r\n\r\n",1)
+    json_data = json.loads(content)
+    logger.info(f"Response: {json_data}")
+    return json_data
 
 
 @api_router.get("/jobs", response_model=None)
