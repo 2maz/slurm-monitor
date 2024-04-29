@@ -1,0 +1,89 @@
+[build-system]
+requires = ["setuptools >= 61.0.0",
+    "wheel",
+    "build",
+    "sphinx"]
+
+# https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
+[project]
+name = "slurm-monitor"
+version = "0.1"
+description = "Slurm monitor as thin wrapper to slurmrestd"
+license = { file="LICENSE" }
+readme = "README.md"
+keywords = ["slurm", "monitor"]
+authors = [
+    { name = "Thomas Roehr", email = "roehr@simula.no" }
+]
+requires-python = ">=3.10"
+
+maintainers = [
+    { name = "Thomas Roehr", email = "roehr@simula.no" }
+]
+
+classifiers = [
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Development Status :: 3 - Alpha",
+    "Operating System :: OS Independent",
+    "Programming Lanugage :: Python :: 3.10",
+    "License :: OSI Approved :: BSD License",
+]
+
+dependencies = [
+    "pydantic",
+    "pydantic-settings",
+    "fastapi",
+]
+
+[project.urls]
+homepage = "https://github.com/simula/slurm-monitor"
+documentation = "https://gitlab.com/simula/slurm-monitor"
+repository = "https://gitlab.com/simula/slurm-monitor"
+
+#[project.entry-points]
+
+[project.optional-dependencies]
+dev = [
+    "isort",
+    "jupyter-book",
+    "pre-commit",
+    "sphinx-autoapi",
+    "tox"
+]
+test = [
+    "coverage",
+    "pytest",
+    "pytest-cov",
+    "pydot"
+]
+
+[project.scripts]
+slurm-monitor = "slurm_monitor.cli.main:run"
+
+[tool.mypy]
+ignore_missing_imports = true
+
+[tools.setuptools]
+package-dir = "src"
+
+# Disable to be able to debug in IDE
+#[tool.pytest.ini_options]
+#addopts = "--cov --cov-report html:doc/ --cov-report term-missing"
+
+[tool.coverage.run]
+source = ["src"]
+
+[tool.pylint]
+max-line-length = 120
+disable = [
+    "C0103", # (invalid-name)
+    #    "C0114", # (missing-module-docstring)
+    #    "C0115", # (missing-class-docstring)
+    #    "C0116", # (missing-function-docstring)
+    #    "R0903", # (too-few-public-methods)
+    #    "R0913", # (too-many-arguments)
+    #    "W0105", # (pointless-string-statement)
+]
+
+[tool.isort]
+multi_line_output = 8
