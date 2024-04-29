@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from pathlib import Path
 import yaml
 import subprocess
@@ -14,6 +16,9 @@ from fastapi import FastAPI, HTTPException, Request, exception_handlers
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
 
 from .api.v1 import app as api_v1_app
 
@@ -45,7 +50,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
         title="slurm-monitor",
-        description="slurm monitor"
+        description="slurm monitor",
         version="0.1",
         lifespan=lifespan
 )

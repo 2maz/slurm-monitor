@@ -33,6 +33,7 @@ dependencies = [
     "pydantic",
     "pydantic-settings",
     "fastapi",
+    "uvicorn",
 ]
 
 [project.urls]
