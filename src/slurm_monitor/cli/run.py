@@ -2,9 +2,6 @@ from slurm_monitor.cli.base import BaseParser
 
 from argparse import ArgumentParser
 from logging import getLogger
-from pathlib import Path
-import signal
-import os
 import socket
 
 logger = getLogger(__name__)
@@ -34,9 +31,8 @@ class RunParser(BaseParser):
     def execute(self, args):
         super().execute(args)
 
-        host_name = args.host_name
         if args.host_name is None:
-            host_name = self.get_ip()
+            self.get_ip()
 
 #        orchestrator = SlurmMonitor(
 #            config_dir=config_dir,

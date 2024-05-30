@@ -4,23 +4,17 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from pathlib import Path
-import yaml
-import subprocess
-import os
-import sys
-import time
 
-from fastapi import FastAPI
-from fastapi import FastAPI, HTTPException, Request, exception_handlers
+from fastapi import FastAPI, Request, exception_handlers
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.inmemory import InMemoryBackend
 
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from prometheus_fastapi_instrumentator import Instrumentator
 
-
-from .api.v1 import app as api_v1_app
+from .api.v1.router import app as api_v1_app
 
 import logging
 from logging import getLogger
@@ -36,7 +30,10 @@ async def lifespan(app: FastAPI):
     """
     logging.basicConfig(level=logging.INFO)
     logger.setLevel(logging.DEBUG)  # output of exception handlers above
+    logger.info("Setting up cache ...")
+    FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
     logger.info("Connecting ...")
+
     yield
     # Do nothing at shutdown
     logger.info("Shutting down ...")
@@ -57,6 +54,9 @@ app.add_middleware(
     allow_headers=["*"],
 )  # This is called before any FastAPI Request (Cross-Origin Resource Sharing), i.e.
 # when the JavaScript code in front-end communicates with the backend
+
+Instrumentator().instrument(app).expose(app)
+
 
 
 # see https://fastapi.tiangolo.com/tutorial/handling-errors/#fastapis-httpexception-vs-starlettes-httpexception
