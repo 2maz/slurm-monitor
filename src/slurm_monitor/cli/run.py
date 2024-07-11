@@ -6,16 +6,12 @@ import socket
 
 logger = getLogger(__name__)
 
+
 class RunParser(BaseParser):
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
 
-        parser.add_argument(
-            "--port",
-            default=10000,
-            type=int,
-            help="Port to use"
-        )
+        parser.add_argument("--port", default=10000, type=int, help="Port to use")
 
     def get_ip(self):
         for t in [("8.8.8.8", 1253)]:
@@ -33,6 +29,7 @@ class RunParser(BaseParser):
 
         if args.host_name is None:
             self.get_ip()
+
 
 #        orchestrator = SlurmMonitor(
 #            config_dir=config_dir,

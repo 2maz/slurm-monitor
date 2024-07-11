@@ -36,6 +36,7 @@ dependencies = [
     "pydantic",
     "pydantic-settings",
     "pyyaml",
+    "sqlalchemy",
     "uvicorn",
 ]
 
@@ -51,6 +52,7 @@ dev = [
     "isort",
     "jupyter-book",
     "pre-commit",
+    "ruff",
     "sphinx-autoapi",
     "tox"
 ]

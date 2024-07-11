@@ -1,36 +1,17 @@
 import logging
 import sqlalchemy
 from contextlib import contextmanager
-from typing import ClassVar, Any
 import datetime as dt
 
-from pydantic import ConfigDict, BaseModel
-from sqlalchemy import (
-    Boolean,
-    DateTime,
-    Float,
-    ForeignKey,
-    Integer,
-    MetaData,
-    String,
-    Text,
-    event,
-    create_engine,
-    insert,
-    inspect,
-    types
-)
-from sqlalchemy.orm import DeclarativeMeta, as_declarative, sessionmaker
+from pydantic import BaseModel
+from sqlalchemy import MetaData, event, create_engine
+from sqlalchemy.orm import DeclarativeMeta, sessionmaker
 from sqlalchemy.engine.url import URL, make_url
 
-from slurm_monitor.db.db_tables import (
-       TableBase,
-       Nodes,
-       Jobs,
-       GPUStatus
-)
+from slurm_monitor.db.db_tables import TableBase, Nodes, GPUStatus
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class DatabaseSettings(BaseModel):
@@ -44,7 +25,8 @@ class DatabaseSettings(BaseModel):
 def _listify(obj_or_list):
     return obj_or_list if isinstance(obj_or_list, (tuple, list)) else [obj_or_list]
 
-def create_url(url_str: str, username: str | None , password: str | None) -> URL:
+
+def create_url(url_str: str, username: str | None, password: str | None) -> URL:
     url = make_url(url_str)
 
     if url.get_dialect().name != "sqlite":
@@ -52,14 +34,16 @@ def create_url(url_str: str, username: str | None , password: str | None) -> URL
         assert url.password or password
 
         url = url.set(
-                username=url.username or username,
-                password=url.password or password
+            username=url.username or username, password=url.password or password
         )
     return url
 
+
 class Database:
     def __init__(self, db_settings: DatabaseSettings):
-        db_url = self.db_url = create_url(db_settings.uri, db_settings.user, db_settings.password)
+        db_url = self.db_url = create_url(
+            db_settings.uri, db_settings.user, db_settings.password
+        )
 
         engine_kwargs = {}
         if db_settings.uri == "sqlite://":
@@ -69,9 +53,12 @@ class Database:
             engine_kwargs["poolclass"] = StaticPool
 
         self.engine = create_engine(db_url, **engine_kwargs)
-        logger.info(f"Database with dialect: '{db_url.get_dialect().name}' detectred - uri: {db_settings.uri}.")
+        logger.info(
+            f"Database with dialect: '{db_url.get_dialect().name}' detected - uri: {db_settings.uri}."
+        )
 
         if db_url.get_dialect().name == "sqlite":
+
             @event.listens_for(self.engine.pool, "connect")
             def _set_sqlite_params(dbapi_connection, *args):
                 cursor = dbapi_connection.cursor()
@@ -86,11 +73,12 @@ class Database:
         for attr in dir(type(self)):
             v = getattr(self, attr)
             if isinstance(v, type) and issubclass(v, TableBase):
-                self._metadata.tables[v.__tablename__] = TableBase.metadata.tables[v.__tablename__]
+                self._metadata.tables[v.__tablename__] = TableBase.metadata.tables[
+                    v.__tablename__
+                ]
 
         if db_settings.create_missing:
             self._metadata.create_all(self.engine)
-
 
     @contextmanager
     def make_session(self):
@@ -98,7 +86,9 @@ class Database:
         try:
             yield session
             if session.deleted or session.dirty or session.new:
-                raise Exception("Found potentially modified state in a non-writable session")
+                raise Exception(
+                    "Found potentially modified state in a non-writable session"
+                )
         except:
             session.rollback()
             raise
@@ -140,43 +130,134 @@ class Database:
             for obj in _listify(db_obj):
                 session.merge(obj)
 
+
 class SlurmMonitorDB(Database):
     Nodes = Nodes
     GPUStatus = GPUStatus
 
+    def apply_resolution(
+        self, data: list[GPUStatus], resolution_in_s: int
+    ) -> list[GPUStatus]:
+        smoothed_data = []
+        new_sample = None
+        for sample in data:
+            if new_sample is None:
+                new_sample = sample
+                start_time = dt.datetime.fromisoformat(sample.timestamp)
+            elif (
+                dt.datetime.fromisoformat(sample.timestamp) - start_time
+            ).total_seconds() < resolution_in_s:
+                # merge while within window
+                new_sample = new_sample.merge(sample)
+            else:
+                smoothed_data.append(new_sample)
+                new_sample = sample
+                start_time = dt.datetime.fromisoformat(sample.timestamp)
 
+        if new_sample is not None:
+            smoothed_data.append(new_sample)
+
+        return smoothed_data
+
+    def get_gpu_uuids(self, node: str) -> list[str]:
+        with self.make_session() as session:
+            query = (
+                session.query(GPUStatus.uuid).where(GPUStatus.node == node).distinct()
+            )
+            return [x[0] for x in query.all()]
+
+    def get_gpu_status(
+        self,
+        node: str | None = None,
+        uuid: str | None = None,
+        start_time_in_s: float | None = None,
+        end_time_in_s: float | None = None,
+        resolution_in_s: int | None = None,
+    ) -> list[GPUStatus]:
+        where = sqlalchemy.sql.true()
+        if node is not None:
+            where &= GPUStatus.node == node
+            logger.info(f"SlurmMonitorDB.get_gpu_status: {node=}")
+
+        if start_time_in_s is not None:
+            start_time = dt.datetime.utcfromtimestamp(start_time_in_s)
+            logger.info(f"SlurmMonitorDB.get_gpu_status: {start_time=}")
+            where &= GPUStatus.timestamp >= start_time
+
+        if end_time_in_s is not None:
+            end_time = dt.datetime.utcfromtimestamp(end_time_in_s)
+            logger.info(f"SlurmMonitorDB.get_gpu_status: {end_time=}")
+            where &= GPUStatus.timestamp < end_time
+
+        if uuid is not None:
+            where &= GPUStatus.uuid == uuid
+
+        data = self.fetch_all(GPUStatus, where=where)
+        if resolution_in_s is not None:
+            return self.apply_resolution(data=data, resolution_in_s=resolution_in_s)
+        else:
+            return data
+
+    def get_gpu_status_timeseries_list(
+        self,
+        nodes: list[str] | None = None,
+        start_time_in_s: float | None = None,
+        end_time_in_s: float | None = None,
+        resolution_in_s: int | None = None,
+    ) -> list[dict[str, any]]:
+        gpu_status_series_list = []
+
+        if nodes is None or nodes == []:
+            nodes = self.fetch_all(Nodes.name)
+
+        for node in nodes:
+            uuids = self.get_gpu_uuids(node)
+            for uuid in uuids:
+                node_data = self.get_gpu_status(
+                    node=node,
+                    uuid=uuid,
+                    start_time_in_s=start_time_in_s,
+                    end_time_in_s=end_time_in_s,
+                    resolution_in_s=resolution_in_s,
+                )
+
+                gpu_status_series = {"label": f"{node}-{uuid}", "data": node_data}
+                gpu_status_series_list.append(gpu_status_series)
+        return gpu_status_series_list
 
 
 if __name__ == "__main__":
-    import pdb
-
     db_settings = DatabaseSettings(
-            user="",
-            password="",
-            uri="sqlite:////tmp/test.sqlite"
+        user="", password="", uri="sqlite:////tmp/test.sqlite"
     )
     db = SlurmMonitorDB(db_settings=db_settings)
 
-    value = {'name': 'Tesla V100-SXM3-32GB', 'uuid': 'GPU-ad466f2f-575d-d949-35e0-9a7d912d974e', 'power.draw': '313.07', 'temperature.gpu': '52', 'utilization.gpu': '82', 'utilization.memory': '28', 'memory.used': '4205', 'memory.free': '28295'}
+    value = {
+        "name": "Tesla V100-SXM3-32GB",
+        "uuid": "GPU-ad466f2f-575d-d949-35e0-9a7d912d974e",
+        "power.draw": "313.07",
+        "temperature.gpu": "52",
+        "utilization.gpu": "82",
+        "utilization.memory": "28",
+        "memory.used": "4205",
+        "memory.free": "28295",
+    }
 
     db.insert_or_update(Nodes(name="g001"))
 
-    db.insert(GPUStatus(
-        name=value["name"],
-        uuid=value["uuid"],
-        node="g001",
-        power_draw=value["power.draw"],
-        temperature_gpu=value["temperature.gpu"],
-        utilization_memory=value["utilization.memory"],
-        utilization_gpu=value["utilization.gpu"],
-        memory_used=value["memory.used"],
-        memory_free=value["memory.free"],
-        timestamp=dt.datetime.now()))
+    db.insert(
+        GPUStatus(
+            name=value["name"],
+            uuid=value["uuid"],
+            node="g001",
+            power_draw=value["power.draw"],
+            temperature_gpu=value["temperature.gpu"],
+            utilization_memory=value["utilization.memory"],
+            utilization_gpu=value["utilization.gpu"],
+            memory_used=value["memory.used"],
+            memory_free=value["memory.free"],
+            timestamp=dt.datetime.now(),
+        )
+    )
 
     print(db.fetch_all(GPUStatus))
-
-
-
-
-
-

@@ -14,13 +14,15 @@ from fastapi_cache.backends.inmemory import InMemoryBackend
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from .api.v1.router import app as api_v1_app
+from slurm_monitor.api.v1.router import app as api_v1_app
+from slurm_monitor.app_settings import AppSettings
 
 import logging
 from logging import getLogger
 
 logger = getLogger(__name__)
 logger.setLevel(logging.INFO)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -38,11 +40,11 @@ async def lifespan(app: FastAPI):
     # Do nothing at shutdown
     logger.info("Shutting down ...")
 
+
+AppSettings.initialize()
+
 app = FastAPI(
-        title="slurm-monitor",
-        description="slurm monitor",
-        version="0.1",
-        lifespan=lifespan
+    title="slurm-monitor", description="slurm monitor", version="0.1", lifespan=lifespan
 )
 
 
@@ -56,7 +58,6 @@ app.add_middleware(
 # when the JavaScript code in front-end communicates with the backend
 
 Instrumentator().instrument(app).expose(app)
-
 
 
 # see https://fastapi.tiangolo.com/tutorial/handling-errors/#fastapis-httpexception-vs-starlettes-httpexception

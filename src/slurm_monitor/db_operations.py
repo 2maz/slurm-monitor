@@ -1,5 +1,4 @@
 import functools
-import io
 from logging import getLogger, Logger
 import sqlalchemy
 
@@ -7,7 +6,8 @@ from fastapi import HTTPException
 from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.db.db import SlurmMonitorDB
 
-logger : Logger = getLogger(__name__)
+logger: Logger = getLogger(__name__)
+
 
 @functools.cache
 def get_database(app_settings: AppSettings | None = None):
@@ -18,5 +18,7 @@ def get_database(app_settings: AppSettings | None = None):
     try:
         return SlurmMonitorDB(app_settings.database)
     except sqlalchemy.exc.OperationalError:
-        raise HTTPException(status_code=500, detail=f"Cannot access monitor database - {app_settings.database.uri}")
-
+        raise HTTPException(
+            status_code=500,
+            detail=f"Cannot access monitor database - {app_settings.database.uri}",
+        )
