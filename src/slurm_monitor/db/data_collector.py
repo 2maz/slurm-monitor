@@ -385,6 +385,9 @@ class CollectorPool(GPUObserver):
         self.monitor_thread.join()
         self.save_thread.join()
 
+def run():
+    db_settings = DatabaseSettings()
+    pool = CollectorPool(db=SlurmMonitorDB(db_settings=db_settings))
 
 if __name__ == "__main__":
     pool = CollectorPool()
@@ -410,3 +413,6 @@ if __name__ == "__main__":
         time.sleep(5)
 
     pool.join()
+
+if __name__ == "__main__":
+    run()

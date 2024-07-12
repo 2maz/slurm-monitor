@@ -19,4 +19,3 @@ class AppSettings(BaseSettings):
     @classmethod
     def initialize(cls) -> None:
         cls._instance = AppSettings()
-        cls._instance.database.uri = "sqlite:////tmp/test.sqlite"

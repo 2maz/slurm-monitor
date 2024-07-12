@@ -1,4 +1,5 @@
 import logging
+import os
 import sqlalchemy
 from contextlib import contextmanager
 import datetime as dt
@@ -17,7 +18,7 @@ logger.setLevel(logging.INFO)
 class DatabaseSettings(BaseModel):
     user: str | None = None
     password: str | None = None
-    uri: str = "sqlite://"
+    uri: str = f"sqlite:///{os.environ['HOME']}/.slurm-monitor/gpu-status-db.sqlite"
 
     create_missing: bool = True
 
