@@ -44,8 +44,10 @@ class DataCollector:
     _stop: bool = False
 
     sampling_interval_in_s: int
+    name: str
 
-    def __init__(self, sampling_interval_in_s: int):
+    def __init__(self, name: str, sampling_interval_in_s: int):
+        self.name = name
         self.sampling_interval_in_s = sampling_interval_in_s
         self.thread = Thread(target=self._run, args=())
 
@@ -71,9 +73,17 @@ class DataCollector:
             ):
                 time.sleep(1)
             else:
-                data = self.run()
-                self.notify(data=data)
-                start_time = dt.datetime.utcnow()
+                try:
+                    data = self.run()
+                    self.notify(data=data)
+                except Exception as e:
+                    # Dynamically increase the sampling interval for failing nodes, but cap at
+                    # 15 min
+                    self.sampling_interval_in_s = min(self.sampling_interval_in_s*2, 15*60)
+                    logger.warn(f"{self.name}: failed to collect data."
+                            f" Increasing sampling interval to {self.sampling_interval_in_s} s."
+                            f" -- details: {e}")
+
                 start_time = dt.datetime.now()
 
     def stop(self):
@@ -89,7 +99,7 @@ class GPUInfoCollector(DataCollector, GPUObservable):
     gpu_type: str
 
     def __init__(self, nodename: str, gpu_type: str, user: str = None):
-        super().__init__(sampling_interval_in_s=10)
+        super().__init__(name=f"gpu-collector-{nodename}", sampling_interval_in_s=10)
         self.observers = []
         self.local_id_mapping = {}
 
