@@ -8,6 +8,7 @@ from queue import Queue
 import logging
 import re
 
+from slurm_monitor.utils import utcnow
 from slurm_monitor.db.db import SlurmMonitorDB, DatabaseSettings
 from slurm_monitor.db.db_tables import GPUStatus, Nodes
 
@@ -65,7 +66,7 @@ class DataCollector:
         while not self._stop:
             if (
                 start_time
-                and (dt.datetime.utcnow() - start_time).total_seconds()
+                and (dt.datetime.now() - start_time).total_seconds()
                 < self.sampling_interval_in_s
             ):
                 time.sleep(1)
@@ -73,6 +74,7 @@ class DataCollector:
                 data = self.run()
                 self.notify(data=data)
                 start_time = dt.datetime.utcnow()
+                start_time = dt.datetime.now()
 
     def stop(self):
         self._stop = True
@@ -122,7 +124,7 @@ class GPUInfoCollector(DataCollector, GPUObservable):
 
     def notify(self, data):
         samples = []
-        timestamp = dt.datetime.utcnow()
+        timestamp = utcnow()
 
         for idx, value in enumerate(data[self.nodename]["gpus"]):
             sample = GPUStatus(
@@ -215,7 +217,7 @@ class HabanaInfoCollector(GPUInfoCollector):
 
     def notify(self, data):
         samples = []
-        timestamp = dt.datetime.utcnow()
+        timestamp = utcnow()
         for idx, value in enumerate(data[self.nodename]["gpus"]):
             sample = GPUStatus(
                 name=value["name"],
@@ -294,7 +296,7 @@ class ROCMInfoCollector(GPUInfoCollector):
 
     def notify(self, data):
         samples = []
-        timestamp = dt.datetime.utcnow()
+        timestamp = utcnow()
 
         for idx, value in enumerate(data[self.nodename]["gpus"]):
             sample = GPUStatus(
@@ -409,7 +411,7 @@ if __name__ == "__main__":
 
     pool.start()
     while True:
-        print(f"queue size: {pool._samples.qsize()} {dt.datetime.now()}\r", end="")
+        print(f"queue size: {pool._samples.qsize()} {utcnow()} (UTC)\r", end="")
         time.sleep(5)
 
     pool.join()

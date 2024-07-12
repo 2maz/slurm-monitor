@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from logging import getLogger, Logger
 import subprocess
 import json
+from slurm_monitor.utils import utcnow
 import slurm_monitor.db_operations as db_ops
 from fastapi_cache.decorator import cache
-import datetime as dt
 
 logger: Logger = getLogger(__name__)
 
@@ -124,7 +124,7 @@ async def gpustatus(
     dbi=Depends(db_ops.get_database),
 ):
     if end_time_in_s is None:
-        now = dt.datetime.utcnow()
+        now = utcnow()
         end_time_in_s = now.timestamp()
 
     # Default 1h interval
