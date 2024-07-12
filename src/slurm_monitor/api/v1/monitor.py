@@ -44,7 +44,7 @@ def _get_gpuinfo(nodelist: list[str] | None = None):
 
     gpuinfo = {}
     for nodename in nodelist:
-        gpuinfo[nodename] = _get_gpuinfo_for_node(nodename)
+        gpuinfo[nodename] = _get_gpuinfo_for_node(nodename=nodename, user=get_user())
 
     return gpuinfo
 
