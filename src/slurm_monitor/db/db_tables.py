@@ -73,6 +73,7 @@ class GPUStatus(TableBase):
         return GPUStatus(
             name=self.name,
             uuid=self.uuid,
+            local_id=self.local_id,
             node=self.node,
             temperature_gpu=merge_op(self.temperature_gpu, other.temperature_gpu),
             power_draw=merge_op(self.power_draw, other.power_draw),

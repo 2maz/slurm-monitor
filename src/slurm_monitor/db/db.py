@@ -213,7 +213,7 @@ class SlurmMonitorDB(Database):
 
         for node in nodes:
             uuids = self.get_gpu_uuids(node)
-            for uuid in uuids:
+            for idx, uuid in enumerate(uuids):
                 node_data = self.get_gpu_status(
                     node=node,
                     uuid=uuid,
@@ -222,7 +222,11 @@ class SlurmMonitorDB(Database):
                     resolution_in_s=resolution_in_s,
                 )
 
-                gpu_status_series = {"label": f"{node}-{uuid}", "data": node_data}
+                if node_data:
+                    local_id = node_data[0].local_id
+                else:
+                    local_id = idx
+                gpu_status_series = {"label": f"{node}-gpu-{local_id}", "data": node_data}
                 gpu_status_series_list.append(gpu_status_series)
         return gpu_status_series_list
 
