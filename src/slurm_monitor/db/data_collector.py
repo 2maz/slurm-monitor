@@ -359,9 +359,7 @@ class CollectorPool(GPUObserver):
         self.save_thread = Thread(target=self._save, args=())
 
         if db is None:
-            db_settings = DatabaseSettings(
-                user="", password="", uri="sqlite:////tmp/slurm-monitor-db.sqlite"
-            )
+            db_settings = DatabaseSettings()
             self.db = SlurmMonitorDB(db_settings=db_settings)
         else:
             self.db = db
@@ -401,8 +399,6 @@ def run():
     db_settings = DatabaseSettings()
     pool = CollectorPool(db=SlurmMonitorDB(db_settings=db_settings))
 
-if __name__ == "__main__":
-    pool = CollectorPool()
     collectors = [
         NvidiaInfoCollector(nodename="g001"),
         NvidiaInfoCollector(nodename="g002"),
