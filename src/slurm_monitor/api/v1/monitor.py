@@ -24,18 +24,24 @@ def get_user():
 
 
 def _get_slurmrestd(prefix: str):
-    if not prefix.startswith("/"):
-        prefix = f"/{prefix}"
+    try:
+        if not prefix.startswith("/"):
+            prefix = f"/{prefix}"
 
-    msg = f'echo -e "GET {SLURM_API_PREFIX}{prefix} HTTP/1.1\r\n" | slurmrestd -a rest_auth/local'
-    logger.debug(f"Query: {msg}")
-    response = subprocess.run(msg, shell=True, stdout=subprocess.PIPE).stdout.decode(
-        "utf-8"
-    )
-    header, content = response.split("\r\n\r\n", 1)
-    json_data = json.loads(content)
-    logger.debug(f"Response: {json_data}")
-    return json_data
+        msg = f'echo -e "GET {SLURM_API_PREFIX}{prefix} HTTP/1.1\r\n" | slurmrestd -a rest_auth/local'
+        logger.debug(f"Query: {msg}")
+        response = subprocess.run(msg, shell=True, stdout=subprocess.PIPE).stdout.decode(
+            "utf-8"
+        )
+        header, content = response.split("\r\n\r\n", 1)
+        json_data = json.loads(content)
+        logger.debug(f"Response: {json_data}")
+        return json_data
+    except Exception as e:
+        raise HTTPException(
+                status_code=503,
+                detail="The slurmrestd service seems to be down. SLURM or the server might be under maintenance"
+        )
 
 
 def _get_gpuinfo(nodelist: list[str] | None = None):
