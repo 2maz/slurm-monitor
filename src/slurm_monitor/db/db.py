@@ -9,12 +9,7 @@ from sqlalchemy import MetaData, event, create_engine
 from sqlalchemy.orm import DeclarativeMeta, sessionmaker
 from sqlalchemy.engine.url import URL, make_url
 
-from slurm_monitor.db.db_tables import (
-    GPUStatus,
-    JobStatus,
-    Nodes,
-    TableBase
-)
+from slurm_monitor.db.db_tables import GPUStatus, JobStatus, Nodes, TableBase
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -232,7 +227,10 @@ class SlurmMonitorDB(Database):
                     local_id = node_data[0].local_id
                 else:
                     local_id = idx
-                gpu_status_series = {"label": f"{node}-gpu-{local_id}", "data": node_data}
+                gpu_status_series = {
+                    "label": f"{node}-gpu-{local_id}",
+                    "data": node_data,
+                }
                 gpu_status_series_list.append(gpu_status_series)
         return gpu_status_series_list
 
@@ -245,6 +243,7 @@ class SlurmMonitorDB(Database):
             return data[0]
         else:
             return None
+
 
 if __name__ == "__main__":
     db_settings = DatabaseSettings(
