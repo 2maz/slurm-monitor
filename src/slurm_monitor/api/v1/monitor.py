@@ -154,3 +154,14 @@ async def gpustatus(
             resolution_in_s=resolution_in_s,
         )
     }
+
+@api_router.get("/job/{job_id}")
+async def job_status(
+    job_id: int,
+    dbi=Depends(db_ops.get_database),
+):
+    return {
+        "job_status": dbi.get_job(
+            job_id=job_id
+        )
+    }

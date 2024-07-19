@@ -1,54 +1,61 @@
 import subprocess
+import json
 from threading import Thread
 import time
 import datetime as dt
 from abc import abstractmethod
 from queue import Queue
+from typing import Generic, TypeVar
 
 import logging
 import re
 
 from slurm_monitor.utils import utcnow
-from slurm_monitor.db.db import SlurmMonitorDB, DatabaseSettings
-from slurm_monitor.db.db_tables import GPUStatus, Nodes
+from slurm_monitor.db.db import SlurmMonitorDB, DatabaseSettings, Database
+from slurm_monitor.db.db_tables import GPUStatus, JobStatus, Nodes
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
 
-class GPUObserver:
+class Observer(Generic[T]):
     _samples: Queue
 
     def __init__(self):
         self._samples = Queue()
 
-    def notify(self, samples: list[GPUStatus]):
+    def notify(self, samples: list[T]):
         [self._samples.put(x) for x in samples]
 
 
-class GPUObservable:
-    observers: list[GPUObserver]
+class Observable(Generic[T]):
+    observers: list[Observer[T]]
 
-    def __init__(self, observers: list[GPUObserver] = []):
+    def __init__(self, observers: list[Observer[T]] = []):
         self.observers = observers
 
-    def add_observer(self, observer: GPUObserver):
+    def add_observer(self, observer: Observer[T]):
         if observer not in self.observers:
             self.observers.append(observer)
 
-    def notify_all(self, samples: list[GPUStatus]):
+    def notify_all(self, samples: list[T]):
         [x.notify(samples) for x in self.observers]
 
-
-class DataCollector:
+class DataCollector(Observer[T]):
     thread: Thread
     _stop: bool = False
 
+    # adapts dynamically
     sampling_interval_in_s: int
+    # for resetting
+    _sampling_interval_in_s: int
+
     name: str
 
     def __init__(self, name: str, sampling_interval_in_s: int):
         self.name = name
         self.sampling_interval_in_s = sampling_interval_in_s
+        self._sampling_interval_in_s = sampling_interval_in_s
         self.thread = Thread(target=self._run, args=())
 
     @staticmethod
@@ -74,13 +81,16 @@ class DataCollector:
                 time.sleep(1)
             else:
                 try:
-                    data = self.run()
-                    self.notify(data=data)
+                    samples : list[T] = self.run()
+                    self.notify_all(samples=samples)
+
+                    # reset sampling interval upon successful retrieval
+                    self.sampling_interval_in_s = self._sampling_interval_in_s
                 except Exception as e:
                     # Dynamically increase the sampling interval for failing nodes, but cap at
                     # 15 min
                     self.sampling_interval_in_s = min(self.sampling_interval_in_s*2, 15*60)
-                    logger.warn(f"{self.name}: failed to collect data."
+                    logger.warning(f"{self.name}: failed to collect data."
                             f" Increasing sampling interval to {self.sampling_interval_in_s} s."
                             f" -- details: {e}")
 
@@ -89,11 +99,10 @@ class DataCollector:
     def stop(self):
         self._stop = True
 
-    def notify(self, data):
+    def notify(self, data: list[T]):
         pass
 
-
-class GPUInfoCollector(DataCollector, GPUObservable):
+class GPUStatusCollector(DataCollector[GPUStatus], Observable[GPUStatus]):
     nodename: str
     user: str = None
     gpu_type: str
@@ -107,9 +116,14 @@ class GPUInfoCollector(DataCollector, GPUObservable):
             self.user = self.get_user()
         self.nodename = nodename
 
-    def run(self) -> dict[str, any]:
+    def run(self) -> list[GPUStatus]:
         response = self.send_request(nodename=self.nodename, user=self.user)
-        return {self.nodename: {"gpus": self.parse_response(response)}}
+        if response == '' or response is None:
+            raise ValueError(f"GPUStatusCollector: {self.nodename}: No value response")
+
+        data = {self.nodename: {"gpus": self.parse_response(response)}}
+        return self.transform(data)
+
 
     def send_request(self, nodename: str, user: str) -> str:
         msg = f"ssh {user}@{nodename} '{self.query_cmd} {self.query_argument} {','.join(self.query_properties)}'"
@@ -132,7 +146,7 @@ class GPUInfoCollector(DataCollector, GPUObservable):
             gpus.append(gpu_data)
         return gpus
 
-    def notify(self, data):
+    def transform(self, data: list[dict, any]) -> list[GPUStatus]:
         samples = []
         timestamp = utcnow()
 
@@ -150,8 +164,7 @@ class GPUInfoCollector(DataCollector, GPUObservable):
                 timestamp=timestamp,
             )
             samples.append(sample)
-
-        self.notify_all(samples)
+        return samples
 
     def get_local_id_mapping(self) -> dict[str, int]:
         msg = f"ssh {self.user}@{self.nodename} '{self.query_cmd} -L'"
@@ -168,8 +181,51 @@ class GPUInfoCollector(DataCollector, GPUObservable):
             mapping[uuid] = local_id
         return mapping
 
+class CollectorPool(Generic[T], Observer[T]):
+    _collectors: list[DataCollector[T]]
+    db: Database
+    _stop: bool = False
 
-class NvidiaInfoCollector(GPUInfoCollector):
+    def __init__(self, db: Database):
+        super().__init__()
+
+        self._collectors = []
+        self.monitor_thread = Thread(target=self._run, args=())
+        self.save_thread = Thread(target=self._save, args=())
+
+        self.db = db
+
+    def add_collector(self, collector: DataCollector[T]):
+        if collector not in self._collectors:
+            collector.add_observer(self)
+            self._collectors.append(collector)
+
+    def _run(self):
+        [x.start() for x in self._collectors]
+        [x.thread.join() for x in self._collectors]
+
+    def _save(self):
+        while not self._stop:
+            sample: T = self._samples.get()
+            self.db.insert_or_update(sample)
+
+    def start(self):
+        self._stop = False
+
+        self.monitor_thread.start()
+        self.save_thread.start()
+
+    def stop(self):
+        self._stop = True
+
+        for x in self._collectors:
+            x.stop()
+
+    def join(self):
+        self.monitor_thread.join()
+        self.save_thread.join()
+
+class NvidiaInfoCollector(GPUStatusCollector):
     def __init__(self, nodename: str, user: str = None):
         super().__init__(nodename=nodename, gpu_type="nvidia", user=user)
 
@@ -199,7 +255,7 @@ class NvidiaInfoCollector(GPUInfoCollector):
         ]
 
 
-class HabanaInfoCollector(GPUInfoCollector):
+class HabanaInfoCollector(GPUStatusCollector):
     def __init__(self, nodename: str, user: str = None):
         super().__init__(nodename=nodename, gpu_type="habana", user=user)
 
@@ -225,7 +281,7 @@ class HabanaInfoCollector(GPUInfoCollector):
             "memory.total",
         ]
 
-    def notify(self, data):
+    def transform(self, data) -> list[GPUStatus]:
         samples = []
         timestamp = utcnow()
         for idx, value in enumerate(data[self.nodename]["gpus"]):
@@ -245,10 +301,10 @@ class HabanaInfoCollector(GPUInfoCollector):
             )
             samples.append(sample)
 
-        self.notify_all(samples)
+        return samples
 
 
-class ROCMInfoCollector(GPUInfoCollector):
+class ROCMInfoCollector(GPUStatusCollector):
     def __init__(self, nodename: str, user: str = None):
         super().__init__(nodename=nodename, gpu_type="amd", user=user)
 
@@ -271,21 +327,22 @@ class ROCMInfoCollector(GPUInfoCollector):
         return [
             "device",
             "Unique ID",  # uuid
-            "Temperature (Sensor edge)",  # 'temperature.sensor_edge
-            "Temperature (Senors junction)",  # temperature.sensor_junction
-            "Temperature (Sensor memory)",  # temperature.sensor_memory
-            "Temperature (Sensor HBM 0)",  # temperature.sensor_hbm_0
-            "Temperature (Sensor HBM 1)",  # temperature.sensor_hbm_1
-            "Temperature (Sensor HBM 2)",  # temperature.sensor_hbm_2
-            "Temperature (Sensor HBM 3)",  # temperature.sensor_hbm_3
+            "Temperature (Sensor edge) (C)",  # 'temperature.sensor_edge
+            "Temperature (Sensor junction) (C)",  # temperature.sensor_junction
+            "Temperature (Sensor memory) (C)",  # temperature.sensor_memory
+            # optional
+            "Temperature (Sensor HBM 0) (C)",  # temperature.sensor_hbm_0
+            "Temperature (Sensor HBM 1) (C)",  # temperature.sensor_hbm_1
+            "Temperature (Sensor HBM 2) (C)",  # temperature.sensor_hbm_2
+            "Temperature (Sensor HBM 3) (C)",  # temperature.sensor_hbm_3
             "Average Graphics Package Power (W)",  # power.draw
             "GPU use (%)",  # utilization.gpu
             "GFX Activity",  # utilization.gfx,
-            "GPU Memory use (%)",  # utilization.memory / high or low (1 or 0)
+            "GPU memory use (%)",  # utilization.memory / high or low (1 or 0)
             "Memory Activity",
             "Voltage (mV)",
             "VRAM Total Memory (B)",  # memory.total
-            "VRAM Total Used (B)",  # memory.used
+            "VRAM Total Used Memory (B)", # memory used
         ]
 
     def send_request(self, nodename: str, user: str) -> str:
@@ -296,15 +353,21 @@ class ROCMInfoCollector(GPUInfoCollector):
 
     def parse_response(self, response: str) -> dict[str]:
         gpus = []
+        field_names = response.strip().split("\n")[0].split(",")
+
         for line in response.strip().split("\n")[1:]:
             gpu_data = {}
             for idx, field in enumerate(line.split(",")):
+                property_name = field_names[idx]
+                if property_name not in self.query_properties:
+                    continue
+
                 value = field.strip()
-                gpu_data[self.query_properties[idx]] = value
+                gpu_data[property_name] = value
             gpus.append(gpu_data)
         return gpus
 
-    def notify(self, data):
+    def transform(self, data) -> list[GPUStatus]:
         samples = []
         timestamp = utcnow()
 
@@ -315,16 +378,14 @@ class ROCMInfoCollector(GPUInfoCollector):
                 local_id=idx,
                 node=self.nodename,
                 power_draw=value["Average Graphics Package Power (W)"],
-                temperature_gpu=value["Temperature (Sensor edge)"],
-                utilization_memory=int(value["VRAM Total Used (B)"])
-                * 1.0
-                / int(value["VRAM Total Memory (B)"]),
+                temperature_gpu=value["Temperature (Sensor edge) (C)"],
+                utilization_memory=int(value["VRAM Total Used Memory (B)"]) * 1.0 / int(value["VRAM Total Memory (B)"]),
                 utilization_gpu=value["GPU use (%)"],
                 memory_total=value["VRAM Total Memory (B)"],
                 timestamp=timestamp,
             )
             samples.append(sample)
-        self.notify_all(samples)
+        return samples
 
     def get_local_id_mapping(self) -> dict[str, int]:
         msg = f"ssh {self.user}@{self.nodename} '{self.query_cmd} --showuniqueid --csv'"
@@ -346,81 +407,93 @@ class ROCMInfoCollector(GPUInfoCollector):
         return mapping
 
 
-class CollectorPool(GPUObserver):
-    _collectors: list[GPUInfoCollector]
-    db: SlurmMonitorDB
-    _stop: bool = False
-
-    def __init__(self, db: SlurmMonitorDB | None = None):
-        super().__init__()
-
-        self._collectors = []
-        self.monitor_thread = Thread(target=self._run, args=())
-        self.save_thread = Thread(target=self._save, args=())
-
-        if db is None:
-            db_settings = DatabaseSettings()
-            self.db = SlurmMonitorDB(db_settings=db_settings)
-        else:
-            self.db = db
-
-    def add_collector(self, collector: GPUInfoCollector):
-        if collector not in self._collectors:
-            collector.add_observer(self)
-            self._collectors.append(collector)
-
-    def _run(self):
-        [x.start() for x in self._collectors]
-        [x.thread.join() for x in self._collectors]
-
+class GPUStatusCollectorPool(CollectorPool[GPUStatus]):
     def _save(self):
         while not self._stop:
             sample: GPUStatus = self._samples.get()
             self.db.insert_or_update(Nodes(name=sample.node))
             self.db.insert(sample)
 
-    def start(self):
-        self._stop = False
+class JobStatusCollector(DataCollector[JobStatus], Observable[JobStatus]):
+    user : str = None
+    def __init__(self, user: str = None):
+        super().__init__(name=f"job-info-collector", sampling_interval_in_s=30)
+        self.observers = []
 
-        self.monitor_thread.start()
-        self.save_thread.start()
+        if user is None:
+            self.user = self.get_user()
 
-    def stop(self):
-        self._stop = True
+    def send_request(self):
+        SLURM_API_PREFIX = "/slurm/v0.0.37"
+        prefix = "jobs"
 
-        for x in self._collectors:
-            x.stop()
+        if not prefix.startswith("/"):
+            prefix = f"/{prefix}"
 
-    def join(self):
-        self.monitor_thread.join()
-        self.save_thread.join()
+        msg = f'echo -e "GET {SLURM_API_PREFIX}{prefix} HTTP/1.1\r\n" | slurmrestd -a rest_auth/local'
+        logger.debug(f"Query: {msg}")
+        response = subprocess.run(msg, shell=True, stdout=subprocess.PIPE).stdout.decode(
+            "utf-8"
+        )
+        header, content = response.split("\r\n\r\n", 1)
+        json_data = json.loads(content)
+        logger.debug(f"Response: {json_data}")
+        return json_data
 
-def run():
-    db_settings = DatabaseSettings()
-    pool = CollectorPool(db=SlurmMonitorDB(db_settings=db_settings))
+    def run(self) -> list[JobStatus]:
+        response = self.send_request()
+        if response == '' or response is None:
+            raise ValueError("JobsCollector: No value response")
+
+        return [JobStatus.from_json(x) for x in response['jobs']]
+
+def run(db_settings: DatabaseSettings | None = None):
+    if db_settings is None:
+        db_settings = DatabaseSettings()
+
+    db = SlurmMonitorDB(db_settings=db_settings)
+    gpu_pool = GPUStatusCollectorPool(db=db)
 
     collectors = [
+        # Nvidia Volta V100
         NvidiaInfoCollector(nodename="g001"),
+        # Nvidia Volta A100
         NvidiaInfoCollector(nodename="g002"),
+
+        # AMD Vega20
+        ROCMInfoCollector(nodename="n001"),
+        ROCMInfoCollector(nodename="n002"),
+        ROCMInfoCollector(nodename="n003"),
+        # AMD Instinct Mi100
+        ROCMInfoCollector(nodename="n004"),
+
         NvidiaInfoCollector(nodename="n009"),
         NvidiaInfoCollector(nodename="n010"),
         NvidiaInfoCollector(nodename="n011"),
         NvidiaInfoCollector(nodename="n012"),
         NvidiaInfoCollector(nodename="n013"),
         NvidiaInfoCollector(nodename="n014"),
-        HabanaInfoCollector(nodename="h001"),
         ROCMInfoCollector(nodename="n015"),
         ROCMInfoCollector(nodename="n016"),
+
+        # Habana HL205
+        HabanaInfoCollector(nodename="h001"),
     ]
 
-    [pool.add_collector(x) for x in collectors]
+    [gpu_pool.add_collector(x) for x in collectors]
+    gpu_pool.start()
 
-    pool.start()
+    job_status_collector = JobStatusCollector()
+    jobs_pool = CollectorPool[JobStatus](db=db)
+    jobs_pool.add_collector(job_status_collector)
+    jobs_pool.start()
+
     while True:
-        print(f"queue size: {pool._samples.qsize()} {utcnow()} (UTC)\r", end="")
+        print(f"queue size: {gpu_pool._samples.qsize()} {utcnow()} (UTC)\r", end="")
         time.sleep(5)
 
-    pool.join()
+    gpu_pool.join()
+    jobs_pool.join()
 
 if __name__ == "__main__":
     run()

@@ -9,7 +9,12 @@ from sqlalchemy import MetaData, event, create_engine
 from sqlalchemy.orm import DeclarativeMeta, sessionmaker
 from sqlalchemy.engine.url import URL, make_url
 
-from slurm_monitor.db.db_tables import TableBase, Nodes, GPUStatus
+from slurm_monitor.db.db_tables import (
+    GPUStatus,
+    JobStatus,
+    Nodes,
+    TableBase
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -18,7 +23,7 @@ logger.setLevel(logging.INFO)
 class DatabaseSettings(BaseModel):
     user: str | None = None
     password: str | None = None
-    uri: str = f"sqlite:///{os.environ['HOME']}/.slurm-monitor/gpu-status-db.sqlite"
+    uri: str = f"sqlite:///{os.environ['HOME']}/.slurm-monitor/slurm-monitor-db.sqlite"
 
     create_missing: bool = True
 
@@ -134,6 +139,7 @@ class Database:
 
 class SlurmMonitorDB(Database):
     Nodes = Nodes
+    JobStatus = JobStatus
     GPUStatus = GPUStatus
 
     def apply_resolution(
@@ -230,6 +236,15 @@ class SlurmMonitorDB(Database):
                 gpu_status_series_list.append(gpu_status_series)
         return gpu_status_series_list
 
+    def get_job(self, job_id: int) -> JobStatus:
+        where = sqlalchemy.sql.true()
+        where &= JobStatus.job_id == job_id
+
+        data = self.fetch_all(JobStatus, where=where)
+        if data:
+            return data[0]
+        else:
+            return None
 
 if __name__ == "__main__":
     db_settings = DatabaseSettings(
