@@ -65,7 +65,7 @@ test = [
 
 [project.scripts]
 slurm-monitor = "slurm_monitor.cli.main:run"
-slurm-monitor-collector = "slurm_monitor.db.data_collector:run"
+slurm-monitor-collector = "slurm_monitor.db.data_collector:cli_run"
 
 [tool.mypy]
 ignore_missing_imports = true

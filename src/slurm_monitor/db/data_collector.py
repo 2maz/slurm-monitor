@@ -1,5 +1,9 @@
+from argparse import ArgumentParser
 import subprocess
 import json
+import os
+from pathlib import Path
+import sys
 from threading import Thread
 import time
 import datetime as dt
@@ -189,13 +193,16 @@ class GPUStatusCollector(DataCollector[GPUStatus], Observable[GPUStatus]):
 
 
 class CollectorPool(Generic[T], Observer[T]):
+    name: str
     _collectors: list[DataCollector[T]]
     db: Database
     _stop: bool = False
+    verbose: bool = True
 
-    def __init__(self, db: Database):
+    def __init__(self, db: Database, name: str = ''):
         super().__init__()
 
+        self.name = name
         self._collectors = []
         self.monitor_thread = Thread(target=self._run, args=())
         self.save_thread = Thread(target=self._save, args=())
@@ -209,15 +216,26 @@ class CollectorPool(Generic[T], Observer[T]):
 
     def _run(self):
         [x.start() for x in self._collectors]
+        if self.verbose:
+            while not self._stop:
+                print(f"{self.name} queue size: {self._samples.qsize()} {utcnow()} (UTC)\r", end="")
+                time.sleep(5)
         [x.thread.join() for x in self._collectors]
+
+    def save(self, sample):
+        self.db.insert_or_update(sample)
 
     def _save(self):
         while not self._stop:
             sample: T = self._samples.get()
-            self.db.insert_or_update(sample)
+            try: 
+                self.save(sample)
+            except Exception as e:
+                logger.warning(f"Error on save -- {e}")
 
-    def start(self):
+    def start(self, verbose: bool = True):
         self._stop = False
+        self.verbose = verbose
 
         self.monitor_thread.start()
         self.save_thread.start()
@@ -418,11 +436,9 @@ class ROCMInfoCollector(GPUStatusCollector):
 
 
 class GPUStatusCollectorPool(CollectorPool[GPUStatus]):
-    def _save(self):
-        while not self._stop:
-            sample: GPUStatus = self._samples.get()
-            self.db.insert_or_update(Nodes(name=sample.node))
-            self.db.insert(sample)
+    def save(self, sample):
+        self.db.insert_or_update(Nodes(name=sample.node))
+        self.db.insert(sample)
 
 
 class JobStatusCollector(DataCollector[JobStatus], Observable[JobStatus]):
@@ -459,13 +475,34 @@ class JobStatusCollector(DataCollector[JobStatus], Observable[JobStatus]):
 
         return [JobStatus.from_json(x) for x in response["jobs"]]
 
+def cli_run():
+    parser = ArgumentParser()
+    parser.add_argument("mode", default="prod")
+
+    args, unknown = parser.parse_known_args()
+
+    db_settings = DatabaseSettings()
+    db_home = Path(db_settings.uri.replace("sqlite:///","")).parent
+    db_home.mkdir(parents=True, exist_ok=True)
+
+    if args.mode == "dev":
+        db_settings.uri = db_settings.uri.replace(".sqlite", ".dev.sqlite")
+        logger.warning(f"Running in development mode: using {db_settings.uri}")
+    elif args.mode == "prod":
+        logger.warning(f"Running in production mode: using {db_settings.uri}")
+    else:
+        logger.warning(f"Missing 'mode'")
+        print(parser)
+        sys.exit(10)
+
+    run(db_settings)
 
 def run(db_settings: DatabaseSettings | None = None):
     if db_settings is None:
         db_settings = DatabaseSettings()
 
     db = SlurmMonitorDB(db_settings=db_settings)
-    gpu_pool = GPUStatusCollectorPool(db=db)
+    gpu_pool = GPUStatusCollectorPool(db=db, name='gpu status')
 
     collectors = [
         # Nvidia Volta V100
@@ -494,17 +531,17 @@ def run(db_settings: DatabaseSettings | None = None):
     gpu_pool.start()
 
     job_status_collector = JobStatusCollector()
-    jobs_pool = CollectorPool[JobStatus](db=db)
+    jobs_pool = CollectorPool[JobStatus](db=db, name='job status')
     jobs_pool.add_collector(job_status_collector)
     jobs_pool.start()
 
     while True:
-        print(f"queue size: {gpu_pool._samples.qsize()} {utcnow()} (UTC)\r", end="")
-        time.sleep(5)
+        answer = input("\nEnter 'q' to quit\n\n")
+        if answer.lower().startswith('q'):
+            break
 
-    gpu_pool.join()
-    jobs_pool.join()
-
+    gpu_pool.stop()
+    jobs_pool.stop()
 
 if __name__ == "__main__":
-    run()
+    cli_run()
