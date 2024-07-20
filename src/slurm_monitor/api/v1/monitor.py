@@ -37,7 +37,7 @@ def _get_slurmrestd(prefix: str):
         json_data = json.loads(content)
         logger.debug(f"Response: {json_data}")
         return json_data
-    except Exception as e:
+    except Exception:
         raise HTTPException(
                 status_code=503,
                 detail="The slurmrestd service seems to be down. SLURM or the server might be under maintenance"

@@ -500,7 +500,7 @@ def cli_run():
     elif args.mode == "prod":
         logger.warning(f"Running in production mode: using {db_settings.uri}")
     else:
-        logger.warning(f"Missing 'mode'")
+        logger.warning("Missing 'mode'")
         print(parser)
         sys.exit(10)
 

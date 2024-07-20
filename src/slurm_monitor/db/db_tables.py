@@ -71,14 +71,14 @@ class GPUIdList(types.TypeDecorator):
     @classmethod
     def get_logical_ids(cls, value):
         # gpu:tesla:1(IDX:3)
-        m = re.match(".*\(IDX:(.*)\)", value)
+        m = re.match(r".*\(IDX:(.*)\)", value)
         indices = m.group(1)
         idx_ranges = indices.split(",")
         gpu_logical_ids = []
 
         for idx_range in idx_ranges:
             if "-" in idx_range:
-                m_range = re.match("([0-9]+)-([0-9]+)", idx_range)
+                m_range = re.match(r"([0-9]+)-([0-9]+)", idx_range)
                 start_idx = int(m_range.group(1))
                 end_idx = int(m_range.group(2))
                 gpu_logical_ids.extend(range(start_idx, end_idx + 1))
