@@ -1,7 +1,6 @@
 from argparse import ArgumentParser
 import subprocess
 import json
-import os
 from pathlib import Path
 import sys
 from threading import Thread
@@ -118,8 +117,12 @@ class GPUStatusCollector(DataCollector[GPUStatus], Observable[GPUStatus]):
     user: str = None
     gpu_type: str
 
-    def __init__(self, nodename: str, gpu_type: str, user: str = None):
-        super().__init__(name=f"gpu-collector-{nodename}", sampling_interval_in_s=10)
+    def __init__(self, nodename: str, gpu_type: str, user: str = None, sampling_interval_in_s: int | None = None):
+        if sampling_interval_in_s is None:
+            sampling_interval_in_s = 10
+
+        super().__init__(name=f"gpu-collector-{nodename}", sampling_interval_in_s=sampling_interval_in_s)
+
         self.observers = []
         self.local_id_mapping = {}
 
@@ -152,7 +155,12 @@ class GPUStatusCollector(DataCollector[GPUStatus], Observable[GPUStatus]):
             gpu_data = {}
             for idx, field in enumerate(line.split(",")):
                 value = field.strip()
-                gpu_data[self.query_properties[idx]] = value
+                try:
+                    gpu_data[self.query_properties[idx]] = value
+                except IndexError:
+                    logger.warning(f"Index {idx} for {field} does not exist")
+                    raise
+
             gpus.append(gpu_data)
         return gpus
 
@@ -228,7 +236,7 @@ class CollectorPool(Generic[T], Observer[T]):
     def _save(self):
         while not self._stop:
             sample: T = self._samples.get()
-            try: 
+            try:
                 self.save(sample)
             except Exception as e:
                 logger.warning(f"Error on save -- {e}")
@@ -252,8 +260,8 @@ class CollectorPool(Generic[T], Observer[T]):
 
 
 class NvidiaInfoCollector(GPUStatusCollector):
-    def __init__(self, nodename: str, user: str = None):
-        super().__init__(nodename=nodename, gpu_type="nvidia", user=user)
+    def __init__(self, nodename: str, user: str = None, sampling_interval_in_s: int | None = None):
+        super().__init__(nodename=nodename, gpu_type="nvidia", user=user, sampling_interval_in_s=sampling_interval_in_s)
 
     @property
     def query_cmd(self):
@@ -282,8 +290,8 @@ class NvidiaInfoCollector(GPUStatusCollector):
 
 
 class HabanaInfoCollector(GPUStatusCollector):
-    def __init__(self, nodename: str, user: str = None):
-        super().__init__(nodename=nodename, gpu_type="habana", user=user)
+    def __init__(self, nodename: str, user: str = None, sampling_interval_in_s: int | None = None):
+        super().__init__(nodename=nodename, gpu_type="habana", user=user, sampling_interval_in_s=sampling_interval_in_s)
 
     @property
     def query_cmd(self):
@@ -331,8 +339,8 @@ class HabanaInfoCollector(GPUStatusCollector):
 
 
 class ROCMInfoCollector(GPUStatusCollector):
-    def __init__(self, nodename: str, user: str = None):
-        super().__init__(nodename=nodename, gpu_type="amd", user=user)
+    def __init__(self, nodename: str, user: str = None, sampling_interval_in_s: int | None = None):
+        super().__init__(nodename=nodename, gpu_type="amd", user=user, sampling_interval_in_s=sampling_interval_in_s)
 
     @property
     def query_cmd(self):
@@ -379,9 +387,10 @@ class ROCMInfoCollector(GPUStatusCollector):
 
     def parse_response(self, response: str) -> dict[str]:
         gpus = []
-        field_names = response.strip().split("\n")[0].split(",")
+        main_response = [x for x in response.strip().split("\n") if not x.lower().startswith("warn")]
 
-        for line in response.strip().split("\n")[1:]:
+        field_names = main_response[0].split(",")
+        for line in main_response[1:]:
             gpu_data = {}
             for idx, field in enumerate(line.split(",")):
                 property_name = field_names[idx]
