@@ -82,7 +82,7 @@ def _get_gpuinfo_for_node(nodename: str, user: str):
     return {"gpus": gpus}
 
 
-@api_router.get"/jobs", response_model=None)
+@api_router.get("/jobs", response_model=None)
 @cache(expire=30)
 async def jobs():
     """
