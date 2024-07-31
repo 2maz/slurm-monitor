@@ -50,7 +50,7 @@ class Database:
         if db_settings.uri == "sqlite://":
             from sqlalchemy.pool import StaticPool
 
-            engine_kwargs["connect_args"] = dict(check_same_thread=False)
+            engine_kwargs["connect_args"] = dict(check_same_thread=False, timeout=15)
             engine_kwargs["poolclass"] = StaticPool
 
         self.engine = create_engine(db_url, **engine_kwargs)

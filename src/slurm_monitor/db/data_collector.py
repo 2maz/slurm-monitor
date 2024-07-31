@@ -119,7 +119,7 @@ class GPUStatusCollector(DataCollector[GPUStatus], Observable[GPUStatus]):
 
     def __init__(self, nodename: str, gpu_type: str, user: str = None, sampling_interval_in_s: int | None = None):
         if sampling_interval_in_s is None:
-            sampling_interval_in_s = 10
+            sampling_interval_in_s = 20
 
         super().__init__(name=f"gpu-collector-{nodename}", sampling_interval_in_s=sampling_interval_in_s)
 
