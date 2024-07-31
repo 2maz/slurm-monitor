@@ -6,10 +6,11 @@ SSL_CERT_DIR=$SCRIPT_DIR/tests/data/ssl
 SSL_KEY_FILE=$SSL_CERT_DIR/key.pem
 SSL_CERT_FILE=$SSL_CERT_DIR/cert.pem
 
-if [ $1 == 'dev' ]; then
+DB_HOME="sqlite:///$HOME/.slurm-monitor"
+mkdir -p $HOME
+
+if [ "$1" == 'dev' ]; then
     echo "Running in development mode"
-    DB_HOME="$HOME/.slurm-monitor/slurm-monitor"
-    mkdir -p $HOME
     SLURM_MONITOR_DATABASE_URI="$DB_HOME/slurm-monitor-db.dev.sqlite"
     PORT=12001
 else
