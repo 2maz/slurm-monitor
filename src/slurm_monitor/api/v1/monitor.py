@@ -82,8 +82,8 @@ def _get_gpuinfo_for_node(nodename: str, user: str):
     return {"gpus": gpus}
 
 
-@api_router.get("/jobs", response_model=None)
-@cache(expire=2)
+@api_router.get"/jobs", response_model=None)
+@cache(expire=30)
 async def jobs():
     """
     Check status of jobs
@@ -92,7 +92,7 @@ async def jobs():
 
 
 @api_router.get("/nodes", response_model=None)
-@cache(expire=2)
+@cache(expire=60)
 async def nodes():
     """
     Check status of nodes
@@ -101,13 +101,13 @@ async def nodes():
 
 
 @api_router.get("/nodes/{nodename}/gpuinfo", response_model=None)
-@cache(expire=30)
+@cache(expire=120)
 async def node_gpuinfo(nodename: str):
     return _get_gpuinfo_for_node(nodename=nodename, user=get_user())
 
 
 @api_router.get("/partitions", response_model=None)
-@cache(expire=2)
+@cache(expire=3600)
 async def partitions():
     """
     Check status of partitions
@@ -122,6 +122,7 @@ async def gpuinfo():
 
 
 @api_router.get("/gpustatus")
+@cache(expire=3600)
 async def gpustatus(
     node: str | None = None,
     start_time_in_s: float | None = None,
