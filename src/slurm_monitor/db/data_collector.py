@@ -7,8 +7,9 @@ from threading import Thread
 import time
 import datetime as dt
 from abc import abstractmethod
-from queue import Queue
+from queue import Queue, Empty
 from typing import Generic, TypeVar
+from tqdm import tqdm
 
 import logging
 import re
@@ -107,6 +108,9 @@ class DataCollector(Observer[T]):
 
     def stop(self):
         self._stop = True
+
+    def join(self):
+        self.thread.join()
 
     def notify(self, data: list[T]):
         pass
@@ -230,17 +234,35 @@ class CollectorPool(Generic[T], Observer[T]):
                 time.sleep(5)
         [x.thread.join() for x in self._collectors]
 
-    def save(self, sample):
-        self.db.insert_or_update(sample)
+    def save(self, samples):
+        self.db.insert(samples)
 
-    def _save(self):
+    def _save(self, batch_size: int = 500):
         while not self._stop:
-            sample: T = self._samples.get()
+            samples = []
             try:
-                self.save(sample)
+                for i in range(0, batch_size):
+                    sample: T = self._samples.get(block=False)
+                    samples.append(sample)
+            except Empty:
+                pass
+
+            try:
+                if samples:
+                    self.save(samples)
             except Exception as e:
                 logger.warning(f"Error on save -- {e}")
 
+        # Finalize saving of sample after stop
+        samples = []
+        while True:
+            try:
+                samples.append(self._samples.get(block=False))
+            except Empty:
+                if samples:
+                    self.save(samples)
+                break
+        assert self._samples.qsize() == 0
     def start(self, verbose: bool = True):
         self._stop = False
         self.verbose = verbose
@@ -250,9 +272,7 @@ class CollectorPool(Generic[T], Observer[T]):
 
     def stop(self):
         self._stop = True
-
-        for x in self._collectors:
-            x.stop()
+        [x.stop() for x in self._collectors]
 
     def join(self):
         self.monitor_thread.join()
@@ -445,9 +465,9 @@ class ROCMInfoCollector(GPUStatusCollector):
 
 
 class GPUStatusCollectorPool(CollectorPool[GPUStatus]):
-    def save(self, sample):
-        self.db.insert_or_update(Nodes(name=sample.node))
-        self.db.insert(sample)
+    def add_collector(self, collector: DataCollector[T]):
+        super().add_collector(collector)
+        self.db.insert_or_update(Nodes(name=collector.nodename))
 
 
 class JobStatusCollector(DataCollector[JobStatus], Observable[JobStatus]):
@@ -459,6 +479,9 @@ class JobStatusCollector(DataCollector[JobStatus], Observable[JobStatus]):
 
         if user is None:
             self.user = self.get_user()
+
+    def save(self, samples):
+        self.db.insert_or_update(samples)
 
     def send_request(self):
         SLURM_API_PREFIX = "/slurm/v0.0.37"

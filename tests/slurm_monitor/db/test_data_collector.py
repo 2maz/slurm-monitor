@@ -2,10 +2,21 @@ import pytest
 import time
 
 from slurm_monitor.db.data_collector import (
-        Observer, Observable, GPUStatusCollector,
+        Observer, Observable, GPUStatusCollector, GPUStatusCollectorPool,
         NvidiaInfoCollector, ROCMInfoCollector, HabanaInfoCollector
 )
 from slurm_monitor.db.db_tables import GPUStatus
+from slurm_monitor.db.db import DatabaseSettings, SlurmMonitorDB
+from pathlib import Path
+from slurm_monitor.utils import utcnow
+
+@pytest.fixture
+def db_path(tmp_path):
+    return Path(tmp_path) / "slurm-monitor-db.sqlite"
+
+@pytest.fixture
+def db_settings(db_path):
+    return DatabaseSettings(uri=f"sqlite:///{db_path}")
 
 def test_Observer_Observable():
     observer = Observer[int]()
@@ -65,6 +76,7 @@ HL_SMI_RESPONSE=[
     "HL-205, 00P1-HL2000A1-14-P64W98-05-02-04, 103, 31, 14, 512, 32768",
     "HL-205, 00P1-HL2000A1-14-P64X00-08-05-09, 103, 38, 14, 512, 32768",
 ]
+
 @pytest.mark.parametrize(
         "cls,response,gpu_count",
         [
@@ -74,7 +86,7 @@ HL_SMI_RESPONSE=[
             [HabanaInfoCollector, HL_SMI_RESPONSE, 8],
         ]
 )
-def test_NvidiaInfoCollector(cls: GPUStatusCollector, response: list[str], gpu_count: int, monkeypatch):
+def test_GPUStatusCollector(cls: GPUStatusCollector, response: list[str], gpu_count: int, monkeypatch):
     observer = Observer[GPUStatus]()
     response = '\n'.join(response)
 
@@ -99,3 +111,59 @@ def test_NvidiaInfoCollector(cls: GPUStatusCollector, response: list[str], gpu_c
     for i in range(0,gpu_count):
         sample = observer._samples.get()
         assert type(sample) == GPUStatus
+
+def test_GPUStatusCollector_StressTest(db_settings, monkeypatch):
+    db = SlurmMonitorDB(db_settings=db_settings)
+
+    gpu_pool = GPUStatusCollectorPool(db=db, name='gpu status')
+    gpu_pool_called_save = False
+
+    save_orig = gpu_pool.save
+    def gpu_pool_save(sample) -> str:
+        called_save = True
+        save_orig(sample)
+
+    monkeypatch.setattr(gpu_pool, "save", gpu_pool_save)
+
+    def nvidia_send_request(self, nodename: str, user: str) -> str:
+        return '\n'.join(NVIDIA_SMI_RESPONSE)
+
+    def rocm_send_request(self, nodename: str, user: str) -> str:
+        return '\n'.join(ROCM_SMI_RESPONSE_V2)
+
+    def hl_send_request(self, nodename: str, user: str) -> str:
+        return '\n'.join(HL_SMI_RESPONSE)
+    
+    sampling_interval_in_s = 1
+    for cls, request_fn in [(NvidiaInfoCollector, nvidia_send_request), 
+            (HabanaInfoCollector, hl_send_request),
+            (ROCMInfoCollector, rocm_send_request)]:
+
+        monkeypatch.setattr(cls, "send_request", request_fn)
+        for i in range(0,200):
+            collector = cls(nodename='gpu_node', sampling_interval_in_s=sampling_interval_in_s)
+            assert collector.sampling_interval_in_s == sampling_interval_in_s
+
+            gpu_pool.add_collector(collector)
+            break
+        break
+
+    gpu_pool.start(verbose=False)
+    # allow collection to go ahead
+    time.sleep(5)
+    seconds_to_run = 2
+    number_of_results = 0
+
+    start_time = utcnow()
+    print(f"Running for {seconds_to_run} seconds -- from {utcnow()}\n")
+    while (utcnow() - start_time).total_seconds() < seconds_to_run:
+        results = db.fetch_all(GPUStatus)
+        current_number_of_results = len(results) 
+        #assert current_number_of_results > number_of_results
+        number_of_results = current_number_of_results
+        print(f"{(utcnow() - start_time).total_seconds():.2f} number of samples in db: {current_number_of_results} queue_size: {gpu_pool._samples.qsize()}\r", end="")
+    print("\n")
+
+    gpu_pool.stop()
+    gpu_pool.join()
+    assert gpu_pool._samples.qsize() == 0
