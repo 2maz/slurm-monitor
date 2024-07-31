@@ -206,6 +206,7 @@ class SlurmMonitorDB(Database):
         start_time_in_s: float | None = None,
         end_time_in_s: float | None = None,
         resolution_in_s: int | None = None,
+        local_indices: list[int] | None = None
     ) -> list[dict[str, any]]:
         gpu_status_series_list = []
 
@@ -215,6 +216,10 @@ class SlurmMonitorDB(Database):
         for node in nodes:
             uuids = self.get_gpu_uuids(node)
             for idx, uuid in enumerate(uuids):
+                if local_indices is not None:
+                    if idx not in local_indices:
+                        continue
+
                 node_data = self.get_gpu_status(
                     node=node,
                     uuid=uuid,

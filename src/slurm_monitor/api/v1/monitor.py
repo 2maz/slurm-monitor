@@ -128,6 +128,7 @@ async def gpustatus(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
+    local_indices: list[int] | None = None,
     dbi=Depends(db_ops.get_database),
 ):
     if end_time_in_s is None:
@@ -139,7 +140,7 @@ async def gpustatus(
         start_time_in_s = end_time_in_s - 60 * 60.0
 
     if resolution_in_s is None:
-        resolution_in_s = 30
+        resolution_in_s = int((end_time_in_s - start_time_in_s) / 120)
 
     if end_time_in_s < start_time_in_s:
         raise HTTPException(
@@ -159,6 +160,7 @@ async def gpustatus(
             start_time_in_s=start_time_in_s,
             end_time_in_s=end_time_in_s,
             resolution_in_s=resolution_in_s,
+            local_indices=local_indices,
         )
     }
 
