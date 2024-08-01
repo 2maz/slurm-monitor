@@ -9,7 +9,6 @@ import datetime as dt
 from abc import abstractmethod
 from queue import Queue, Empty
 from typing import Generic, TypeVar
-from tqdm import tqdm
 
 import logging
 import re
@@ -235,7 +234,7 @@ class CollectorPool(Generic[T], Observer[T]):
         [x.thread.join() for x in self._collectors]
 
     def save(self, samples):
-        self.db.insert(samples)
+        self.db.insert_or_update(samples)
 
     def _save(self, batch_size: int = 500):
         while not self._stop:
@@ -469,6 +468,9 @@ class GPUStatusCollectorPool(CollectorPool[GPUStatus]):
         super().add_collector(collector)
         self.db.insert_or_update(Nodes(name=collector.nodename))
 
+    def save(self, samples):
+        self.db.insert(samples)
+
 
 class JobStatusCollector(DataCollector[JobStatus], Observable[JobStatus]):
     user: str = None
@@ -479,9 +481,6 @@ class JobStatusCollector(DataCollector[JobStatus], Observable[JobStatus]):
 
         if user is None:
             self.user = self.get_user()
-
-    def save(self, samples):
-        self.db.insert_or_update(samples)
 
     def send_request(self):
         SLURM_API_PREFIX = "/slurm/v0.0.37"
