@@ -128,7 +128,7 @@ async def gpustatus(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    local_indices: list[int] | None = None,
+    local_indices: str | None = None,
     dbi=Depends(db_ops.get_database),
 ):
     if end_time_in_s is None:
@@ -153,6 +153,9 @@ async def gpustatus(
             status_code=500,
             detail=f"ValueError: {resolution_in_s=} must be >= 1 and <= 24*60*60",
         )
+
+    if local_indices is not None:
+        local_indices = [int(x) for x in local_indices.split(',')]
 
     return {
         "gpu_status": dbi.get_gpu_status_timeseries_list(
