@@ -210,6 +210,7 @@ class SlurmMonitorDB(Database):
     ) -> list[dict[str, any]]:
         gpu_status_series_list = []
 
+        logger.info(f"{nodes=} {start_time_in_s=} {end_time_in_s=} {resolution_in_s=} {local_indices=}")
         if nodes is None or nodes == []:
             nodes = self.fetch_all(Nodes.name)
 

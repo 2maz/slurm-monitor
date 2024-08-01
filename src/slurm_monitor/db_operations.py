@@ -14,7 +14,7 @@ def get_database(app_settings: AppSettings | None = None):
     if app_settings is None:
         app_settings = AppSettings.get_instance()
 
-    logger.info("Loading database with: {app_settings.database}")
+    logger.info(f"Loading database with: {app_settings.database}")
     try:
         return SlurmMonitorDB(app_settings.database)
     except sqlalchemy.exc.OperationalError:
