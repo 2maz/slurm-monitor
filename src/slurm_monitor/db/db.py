@@ -138,7 +138,7 @@ class SlurmMonitorDB(Database):
     GPUStatus = GPUStatus
 
     def apply_resolution(
-        self, data: list[GPUStatus], resolution_in_s: int
+            self, data: list[GPUStatus], resolution_in_s: int,
     ) -> list[GPUStatus]:
         smoothed_data = []
         new_sample = None

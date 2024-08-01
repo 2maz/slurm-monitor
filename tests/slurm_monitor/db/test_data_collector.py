@@ -116,11 +116,9 @@ def test_GPUStatusCollector_StressTest(db_settings, monkeypatch):
     db = SlurmMonitorDB(db_settings=db_settings)
 
     gpu_pool = GPUStatusCollectorPool(db=db, name='gpu status')
-    gpu_pool_called_save = False
 
     save_orig = gpu_pool.save
     def gpu_pool_save(sample) -> str:
-        called_save = True
         save_orig(sample)
 
     monkeypatch.setattr(gpu_pool, "save", gpu_pool_save)
@@ -133,9 +131,9 @@ def test_GPUStatusCollector_StressTest(db_settings, monkeypatch):
 
     def hl_send_request(self, nodename: str, user: str) -> str:
         return '\n'.join(HL_SMI_RESPONSE)
-    
+
     sampling_interval_in_s = 1
-    for cls, request_fn in [(NvidiaInfoCollector, nvidia_send_request), 
+    for cls, request_fn in [(NvidiaInfoCollector, nvidia_send_request),
             (HabanaInfoCollector, hl_send_request),
             (ROCMInfoCollector, rocm_send_request)]:
 
@@ -158,10 +156,11 @@ def test_GPUStatusCollector_StressTest(db_settings, monkeypatch):
     print(f"Running for {seconds_to_run} seconds -- from {utcnow()}\n")
     while (utcnow() - start_time).total_seconds() < seconds_to_run:
         results = db.fetch_all(GPUStatus)
-        current_number_of_results = len(results) 
+        current_number_of_results = len(results)
         #assert current_number_of_results > number_of_results
         number_of_results = current_number_of_results
-        print(f"{(utcnow() - start_time).total_seconds():.2f} number of samples in db: {current_number_of_results} queue_size: {gpu_pool._samples.qsize()}\r", end="")
+        print(f"{(utcnow() - start_time).total_seconds():.2f} number of samples in db:"
+              f" {current_number_of_results} queue_size: {gpu_pool._samples.qsize()}\r", end="")
     print("\n")
 
     gpu_pool.stop()
