@@ -150,7 +150,6 @@ def test_GPUStatusCollector_StressTest(db_settings, monkeypatch):
     # allow collection to go ahead
     time.sleep(5)
     seconds_to_run = 2
-    number_of_results = 0
 
     start_time = utcnow()
     print(f"Running for {seconds_to_run} seconds -- from {utcnow()}\n")
@@ -158,7 +157,6 @@ def test_GPUStatusCollector_StressTest(db_settings, monkeypatch):
         results = db.fetch_all(GPUStatus)
         current_number_of_results = len(results)
         #assert current_number_of_results > number_of_results
-        number_of_results = current_number_of_results
         print(f"{(utcnow() - start_time).total_seconds():.2f} number of samples in db:"
               f" {current_number_of_results} queue_size: {gpu_pool._samples.qsize()}\r", end="")
     print("\n")
