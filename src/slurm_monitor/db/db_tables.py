@@ -87,8 +87,8 @@ class GPUIdList(types.TypeDecorator):
         return gpu_logical_ids
 
     def transform_input(self, value: list[str]):
-        if len(value) > 1:
-            raise RuntimeError("Assuming maximum lenght of 1 for GPU details")
+        if len(set(value)) > 1:
+            raise RuntimeError(f"Assuming maximum length of 1 for GPU details, but found: {value}")
 
         for x in value:
             return self.get_logical_ids(x)
