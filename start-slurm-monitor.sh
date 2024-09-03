@@ -1,4 +1,4 @@
-#!/usr/bin/bash -i
+#!/usr/bin/bash -l
 
 SCRIPT_DIR=$(dirname $(realpath -L $0))
 
@@ -17,7 +17,7 @@ if [ ! -e $SSL_CERT_FILE ]; then
 fi
 
 SLURM_MONITOR_HOST=${SLURM_MONITOR_HOST:-0.0.0.0}
-DB_BASE_DIR=${DB_BASE_DIR:-$HOME/.slurm_monitor}
+DB_BASE_DIR=${DB_BASE_DIR:-$HOME/.slurm-monitor}
 DB_HOME="sqlite:///$DB_BASE_DIR"
 
 mkdir -p $DB_BASE_DIR
@@ -36,4 +36,4 @@ echo "    SLURM_MONITOR_DATABASE_URI=$SLURM_MONITOR_DATABASE_URI"
 echo "    HOST:PORT=$SLURM_MONITOR_HOST:$PORT"
 
 export SLURM_MONITOR_DATABASE_URI
-python3 -m uvicorn --reload slurm_monitor.main:app --port $PORT --host $SLURM_MONITOR_HOST --ssl-keyfile $SSL_KEY_FILE --ssl-certfile $SSL_CERT_FILE
+python3 -m uvicorn --reload slurm_monitor.main:app --port $PORT --host $SLURM_MONITOR_HOST --ssl-keyfile $SSL_KEY_FILE --ssl-certfile $SSL_CERT_FILE > slurm-monitor.main.log 2>&1 &
