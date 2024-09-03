@@ -10,6 +10,7 @@ from fastapi_cache.decorator import cache
 logger: Logger = getLogger(__name__)
 
 SLURM_API_PREFIX = "/slurm/v0.0.37"
+SLURM_RESTD_BIN= "/cm/shared/apps/slurm/current/sbin/slurmrestd"
 
 api_router = APIRouter(
     prefix="/monitor",
@@ -28,7 +29,7 @@ def _get_slurmrestd(prefix: str):
         if not prefix.startswith("/"):
             prefix = f"/{prefix}"
 
-        msg = f'echo -e "GET {SLURM_API_PREFIX}{prefix} HTTP/1.1\r\n" | slurmrestd -a rest_auth/local'
+        msg = f'echo -e "GET {SLURM_API_PREFIX}{prefix} HTTP/1.1\r\n" | {SLURM_RESTD_BIN} -a rest_auth/local'
         logger.debug(f"Query: {msg}")
         response = subprocess.run(msg, shell=True, stdout=subprocess.PIPE).stdout.decode(
             "utf-8"
