@@ -182,7 +182,7 @@ class GPUStatusCollector(DataCollector[GPUStatus], Observable[GPUStatus]):
                 temperature_gpu=value["temperature.gpu"],
                 utilization_memory=value["utilization.memory"],
                 utilization_gpu=value["utilization.gpu"],
-                memory_total=value["memory.used"] + value["memory.free"],
+                memory_total=int(value["memory.used"]) + int(value["memory.free"]),
                 timestamp=timestamp,
             )
             samples.append(sample)
@@ -350,7 +350,7 @@ class HabanaInfoCollector(GPUStatusCollector):
                 * 1.0
                 / int(value["memory.total"]),
                 utilization_gpu=value["utilization.aip"],
-                memory_total=value["memory.total"],
+                memory_total=int(value["memory.total"]),
                 timestamp=timestamp,
             )
             samples.append(sample)
@@ -444,7 +444,7 @@ class ROCMInfoCollector(GPUStatusCollector):
                 * 1.0
                 / int(value["VRAM Total Memory (B)"]),
                 utilization_gpu=value["GPU use (%)"],
-                memory_total=value["VRAM Total Memory (B)"],
+                memory_total=int(value["VRAM Total Memory (B)"])/(1024.0**2), # Use MB
                 timestamp=timestamp,
             )
             samples.append(sample)
