@@ -23,17 +23,24 @@ DB_HOME="sqlite:///$DB_BASE_DIR"
 mkdir -p $DB_BASE_DIR
 if [ "$1" == 'dev' ]; then
     echo "Running in development mode:"
-    SLURM_MONITOR_DATABASE_URI="$DB_HOME/slurm-monitor-db.dev.sqlite"
+    SLURM_MONITOR_DATABASE_URI="$DB_HOME/slurm-monitor-db.sqlite"
+    SLURM_MONITOR_HOST=$SLURM_MONITOR_HOST
     PORT=12001
+
+    echo "    SLURM_MONITOR_DATABASE_URI=$SLURM_MONITOR_DATABASE_URI"
+    echo "    HOST:PORT=$SLURM_MONITOR_HOST:$PORT"
+
+    export SLURM_MONITOR_DATABASE_URI
+    python3 -m uvicorn --reload slurm_monitor.main:app --port $PORT --host $SLURM_MONITOR_HOST --ssl-keyfile $SSL_KEY_FILE --ssl-certfile $SSL_CERT_FILE
 else
     echo "Running in production mode:"
     SLURM_MONITOR_DATABASE_URI="$DB_HOME/slurm-monitor-db.sqlite"
     SLURM_MONITOR_HOST=$SLURM_MONITOR_HOST
     PORT=12000
+
+    echo "    SLURM_MONITOR_DATABASE_URI=$SLURM_MONITOR_DATABASE_URI"
+    echo "    HOST:PORT=$SLURM_MONITOR_HOST:$PORT"
+
+    export SLURM_MONITOR_DATABASE_URI
+    python3 -m uvicorn --reload slurm_monitor.main:app --port $PORT --host $SLURM_MONITOR_HOST --ssl-keyfile $SSL_KEY_FILE --ssl-certfile $SSL_CERT_FILE > slurm-monitor.main.log 2>&1 &
 fi
-
-echo "    SLURM_MONITOR_DATABASE_URI=$SLURM_MONITOR_DATABASE_URI"
-echo "    HOST:PORT=$SLURM_MONITOR_HOST:$PORT"
-
-export SLURM_MONITOR_DATABASE_URI
-python3 -m uvicorn --reload slurm_monitor.main:app --port $PORT --host $SLURM_MONITOR_HOST --ssl-keyfile $SSL_KEY_FILE --ssl-certfile $SSL_CERT_FILE > slurm-monitor.main.log 2>&1 &
