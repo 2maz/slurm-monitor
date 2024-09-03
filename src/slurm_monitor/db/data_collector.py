@@ -374,7 +374,9 @@ class ROCMInfoCollector(GPUStatusCollector):
         #     vis_vram: visible VRAM - CPU accessible video memory
         #     gtt: Graphics Translation Table
         #     all: all of the above
-        return "--showuniqueid --showuse --showmemuse --showmeminfo vram --showvoltage --showtemp --showpower --csv"
+        # 
+        # --show-productname -> Card series,Card model,Card vendor,Card SKU
+        return "--showuniqueid --showproductname --showuse --showmemuse --showmeminfo vram --showvoltage --showtemp --showpower --csv"
 
     @property
     def query_properties(self):
@@ -397,6 +399,10 @@ class ROCMInfoCollector(GPUStatusCollector):
             "Voltage (mV)",
             "VRAM Total Memory (B)",  # memory.total
             "VRAM Total Used Memory (B)",  # memory used
+            "Card series",
+            "Card model",
+            "Card vendor",
+            "Card SKU"
         ]
 
     def send_request(self, nodename: str, user: str) -> str:
@@ -428,7 +434,7 @@ class ROCMInfoCollector(GPUStatusCollector):
 
         for idx, value in enumerate(data[self.nodename]["gpus"]):
             sample = GPUStatus(
-                name=value["device"],
+                name=value["Card series"],
                 uuid=value["Unique ID"],
                 local_id=idx,
                 node=self.nodename,
