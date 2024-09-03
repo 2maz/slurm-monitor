@@ -44,24 +44,24 @@ def _get_slurmrestd(prefix: str):
                 detail="The slurmrestd service seems to be down. SLURM or the server might be under maintenance"
         )
 
-def _get_gpuinfo(nodelist: list[str] | None = None, dbi=Depends(db_ops.get_database)):
-    if nodelist is None:
-        return {}
+def _get_gpuinfo(nodelist: list[str] | None, dbi):
+    if not nodelist:
+        nodelist = [x.name for x in dbi.get_nodes()]
 
     gpuinfo = {}
     for nodename in nodelist:
-        gpuinfo[nodename] = dbi.get_gpu_infos(nodename=nodename)
+        try:
+            gpuinfo[nodename] = dbi.get_gpu_infos(node=nodename)
+        except Exception as e:
+            logger.warn(f"Internal error: Retrieving GPU info for {nodename} failed -- {e}")
     return gpuinfo
 
-
-def _get_gpuinfo_for_node(nodename: str, user: str, dbi=Depends(db_ops.get_database)):
-    gpus = []
+def _get_gpuinfo_for_node(nodename: str, user: str, dbi):
     try:
-        gpu_uuids = dbi.get_gpu_uuids(node=nodename)
-        gpu_infos = [dbi.fetch_one(GPUStatus, GPUStatus.node == nodename) for gpu_uuid in gpu_uuids]
-
-        return { "gpus": [x.to_dict() for x in gpu_infos] }
+        return dbi.get_gpu_infos(node=nodename)
     except Exception as e:
+        logger.warn(e)
+
         raise HTTPException(
                 status_code=503,
                 detail=f"No GPU info found for {nodename}"
@@ -88,8 +88,8 @@ async def nodes():
 
 @api_router.get("/nodes/{nodename}/gpuinfo", response_model=None)
 @cache(expire=120)
-async def node_gpuinfo(nodename: str):
-    return _get_gpuinfo_for_node(nodename=nodename, user=get_user())
+async def node_gpuinfo(nodename: str, dbi = Depends(db_ops.get_database)):
+    return _get_gpuinfo_for_node(nodename=nodename, user=get_user(), dbi=dbi)
 
 
 @api_router.get("/partitions", response_model=None)
@@ -103,8 +103,8 @@ async def partitions():
 
 @api_router.get("/gpuinfo", response_model=None)
 @cache(expire=30)
-async def gpuinfo():
-    return _get_gpuinfo(nodelist=["g001", "g002"])
+async def gpuinfo(nodes: list[str] | None = None, dbi=Depends(db_ops.get_database)):
+    return _get_gpuinfo(nodelist=nodes, dbi=dbi)
 
 
 @api_router.get("/gpustatus")
