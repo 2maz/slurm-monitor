@@ -16,6 +16,7 @@ import re
 from slurm_monitor.utils import utcnow
 from slurm_monitor.db.db import SlurmMonitorDB, DatabaseSettings, Database
 from slurm_monitor.db.db_tables import GPUStatus, JobStatus, Nodes
+from slurm_monitor.api.v1.monitor import _get_slurmrestd
 
 logger = logging.getLogger(__name__)
 
@@ -482,25 +483,9 @@ class JobStatusCollector(DataCollector[JobStatus], Observable[JobStatus]):
         if user is None:
             self.user = self.get_user()
 
-    def send_request(self):
-        SLURM_API_PREFIX = "/slurm/v0.0.37"
-        prefix = "jobs"
-
-        if not prefix.startswith("/"):
-            prefix = f"/{prefix}"
-
-        msg = f'echo -e "GET {SLURM_API_PREFIX}{prefix} HTTP/1.1\r\n" | slurmrestd -a rest_auth/local'
-        logger.debug(f"Query: {msg}")
-        response = subprocess.run(
-            msg, shell=True, stdout=subprocess.PIPE
-        ).stdout.decode("utf-8")
-        header, content = response.split("\r\n\r\n", 1)
-        json_data = json.loads(content)
-        logger.debug(f"Response: {json_data}")
-        return json_data
-
     def run(self) -> list[JobStatus]:
-        response = self.send_request()
+        response = _get_slurmrestd("/jobs")
+
         if response == "" or response is None:
             raise ValueError("JobsCollector: No value response")
 
