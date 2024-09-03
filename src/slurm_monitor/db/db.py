@@ -122,6 +122,14 @@ class Database:
     def fetch_all(self, db_cls, where=None):
         return self._fetch(db_cls, where=where, _reduce=lambda q: list(q.all()))
 
+    def fetch_first(self, db_cls, where=None):
+        with self.make_session() as session:
+            query = session.query(*_listify(db_cls))
+            if where is not None:
+                query = query.filter(where)
+
+            return query.first()
+
     def insert(self, db_obj):
         with self.make_writeable_session() as session:
             session.add_all(_listify(db_obj))
@@ -167,6 +175,19 @@ class SlurmMonitorDB(Database):
                 session.query(GPUStatus.uuid).where(GPUStatus.node == node).distinct()
             )
             return [x[0] for x in query.all()]
+
+    def get_gpu_infos(self, node: str) -> dict[str, any]:
+        gpus = []
+        try:
+            gpu_uuids = self.get_gpu_uuids(node=node)
+            gpu_infos = [self.fetch_first(GPUStatus, (GPUStatus.node == node) & (GPUStatus.uuid == gpu_uuid)) for gpu_uuid in gpu_uuids]
+            gpu_info_dicts = [x.to_dict() for x in gpu_infos]
+            return { "gpus": { x["uuid"] : x for x in gpu_info_dicts } } 
+        except Exception as e:
+            logger.warn(e)
+            raise
+
+        return {"gpus": []}
 
     def get_gpu_status(
         self,

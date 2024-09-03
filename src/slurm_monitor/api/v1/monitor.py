@@ -44,43 +44,28 @@ def _get_slurmrestd(prefix: str):
                 detail="The slurmrestd service seems to be down. SLURM or the server might be under maintenance"
         )
 
-
-def _get_gpuinfo(nodelist: list[str] | None = None):
+def _get_gpuinfo(nodelist: list[str] | None = None, dbi=Depends(db_ops.get_database)):
     if nodelist is None:
         return {}
 
     gpuinfo = {}
     for nodename in nodelist:
-        gpuinfo[nodename] = _get_gpuinfo_for_node(nodename=nodename, user=get_user())
-
+        gpuinfo[nodename] = dbi.get_gpu_infos(nodename=nodename)
     return gpuinfo
 
 
-def _get_gpuinfo_for_node(nodename: str, user: str):
-    query_properties = [
-        "gpu_name",
-        "uuid",
-        "pstate",
-        "temperature.gpu",
-        "power.draw",
-        "utilization.gpu",
-        "utilization.memory",
-        "memory.used",
-        "memory.free",
-    ]
-
-    msg = f"ssh {user}@{nodename} 'nvidia-smi --query-gpu={','.join(query_properties)} --format=csv,nounits,noheader'"
-    response = subprocess.run(msg, shell=True, stdout=subprocess.PIPE).stdout.decode(
-        "utf-8"
-    )
+def _get_gpuinfo_for_node(nodename: str, user: str, dbi=Depends(db_ops.get_database)):
     gpus = []
-    for gpu_idx, line in enumerate(response.strip().split("\n")):
-        gpu_data = {"index": gpu_idx}
-        for idx, field in enumerate(line.split(",")):
-            value = field.strip()
-            gpu_data[query_properties[idx]] = value
-        gpus.append(gpu_data)
-    return {"gpus": gpus}
+    try:
+        gpu_uuids = dbi.get_gpu_uuids(node=nodename)
+        gpu_infos = [dbi.fetch_one(GPUStatus, GPUStatus.node == nodename) for gpu_uuid in gpu_uuids]
+
+        return { "gpus": [x.to_dict() for x in gpu_infos] }
+    except Exception as e:
+        raise HTTPException(
+                status_code=503,
+                detail=f"No GPU info found for {nodename}"
+        )
 
 
 @api_router.get("/jobs", response_model=None)

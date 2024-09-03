@@ -282,6 +282,12 @@ class GPUStatus(TableBase):
 
     timestamp = Column(String(255), index=True, primary_key=True)
 
+    def to_dict(self):
+        data = {}
+        for column in self.__table__.columns:
+            data[column.name] = getattr(self, column.name)
+        return data
+
     def merge(self, other, merge_op=max) -> GPUStatus:
         assert self.uuid == other.uuid
         return GPUStatus(
