@@ -3,26 +3,32 @@ from fastapi import APIRouter, Depends, HTTPException
 from logging import getLogger, Logger
 import subprocess
 import json
+import yaml
 from slurm_monitor.utils import utcnow
 import slurm_monitor.db_operations as db_ops
 from fastapi_cache.decorator import cache
+from pathlib import Path
+from tqdm import tqdm
 
 logger: Logger = getLogger(__name__)
 
 SLURM_API_PREFIX = "/slurm/v0.0.37"
 SLURM_RESTD_BIN= "/cm/shared/apps/slurm/current/sbin/slurmrestd"
 
+
 api_router = APIRouter(
     prefix="/monitor",
     tags=["monitor"],
 )
+
+NODE_INFOS = {}
+NODE_INFOS_FILENAME="/tmp/slurm-monitor/nodeinfo.yaml"
 
 
 def get_user():
     return (
         subprocess.run("whoami", stdout=subprocess.PIPE).stdout.decode("utf-8").strip()
     )
-
 
 def _get_slurmrestd(prefix: str):
     try:
@@ -44,18 +50,58 @@ def _get_slurmrestd(prefix: str):
                 detail="The slurmrestd service seems to be down. SLURM or the server might be under maintenance"
         )
 
+def _get_node_names() -> list[str]:
+    nodes_data = _get_slurmrestd("/nodes")
+    return [node["name"] for node in nodes_data["nodes"]]
+
+
+def _get_cpu_infos(node: str, user: str = get_user()):
+    msg = f"ssh -oBatchMode=yes -l {user} {node} lscpu | sed -rn '/Model name/ s/.*:\s*(.*)/\\1/p'"
+    try:
+        model_name = subprocess.run(msg, shell=True, stdout=subprocess.PIPE).stdout.decode(
+                "utf-8"
+        ).strip()
+    except Exception as e:
+        logger.warn(e)
+        return { "cpus": {}}
+
+    return { "cpus": {"model": model_name}}
+
+
 def _get_nodeinfo(nodelist: list[str] | None, dbi):
     if not nodelist:
-        nodelist = [x.name for x in dbi.get_nodes()]
+        nodelist = _get_node_names()
+
+    gpu_nodelist = [x.name for x in dbi.get_nodes()]
 
     nodeinfo = {}
-    for nodename in nodelist:
+    for nodename in tqdm(nodelist):
+        nodeinfo[nodename] = {}
+        if nodename in gpu_nodelist:
+            try:
+                nodeinfo[nodename].update(dbi.get_gpu_infos(node=nodename))
+            except Exception as e:
+                logger.warn(f"Internal error: Retrieving GPU info for {nodename} failed -- {e}")
+
         try:
-            nodeinfo[nodename] = dbi.get_gpu_infos(node=nodename)
+            nodeinfo[nodename].update( _get_cpu_infos(nodename) )
         except Exception as e:
-            logger.warn(f"Internal error: Retrieving GPU info for {nodename} failed -- {e}")
+            logger.warn(f"Internal error: Retrieving CPU info for {nodename} failed -- {e}")
     return nodeinfo
 
+def load_node_infos(refresh: bool = False):
+    global NODE_INFOS
+    node_info_path = Path(NODE_INFOS_FILENAME)
+    if not refresh and node_info_path.exists():
+        with open(node_info_path, "r") as f:
+            NODE_INFOS = yaml.safe_load(f)
+    else:
+        dbi = db_ops.get_database()
+        NODE_INFOS = _get_nodeinfo(None, dbi)
+
+        node_info_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(node_info_path, "w") as f:
+            yaml.dump(NODE_INFOS, f)
 
 @api_router.get("/jobs", response_model=None)
 @cache(expire=30)
@@ -78,7 +124,7 @@ async def nodes():
 @api_router.get("/nodes/{nodename}/info", response_model=None)
 @cache(expire=3600*24)
 async def node_gpuinfo(nodename: str, dbi = Depends(db_ops.get_database)):
-    return _get_nodeinfo(nodelist=[nodename], dbi=dbi)[nodename]
+    return NODE_INFOS[nodename]
 
 
 @api_router.get("/partitions", response_model=None)
@@ -93,7 +139,12 @@ async def partitions():
 @api_router.get("/nodes/info", response_model=None)
 @cache(expire=3600*24)
 async def nodeinfo(nodes: list[str] | None = None, dbi=Depends(db_ops.get_database)):
-    return {'nodes': _get_nodeinfo(nodelist=nodes, dbi=dbi)}
+    return {'nodes': NODE_INFOS}
+
+@api_router.get("/nodes/refresh_info", response_model=None)
+async def nodeinfo():
+    load_node_infos()
+    return {'nodes': NODE_INFOS} 
 
 
 @api_router.get("/gpustatus")

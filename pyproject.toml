@@ -38,6 +38,7 @@ dependencies = [
     "pyyaml",
     "sqlalchemy",
     "uvicorn",
+    "tqdm",
 ]
 
 [project.urls]

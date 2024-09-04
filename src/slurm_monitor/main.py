@@ -15,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from slurm_monitor.api.v1.router import app as api_v1_app
+import slurm_monitor.api.v1.monitor as monitor
 from slurm_monitor.app_settings import AppSettings
 
 import logging
@@ -35,6 +36,10 @@ async def lifespan(app: FastAPI):
     logger.info("Setting up cache ...")
     FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
     logger.info("Connecting ...")
+
+    logger.info("Querying system info for nodes")
+    monitor.load_node_infos()
+    logger.info("Done")
 
     yield
     # Do nothing at shutdown
