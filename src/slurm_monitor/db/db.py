@@ -182,10 +182,15 @@ class SlurmMonitorDB(Database):
         return self.fetch_all(Nodes)
 
     def get_gpu_infos(self, node: str) -> dict[str, any]:
-        gpus = []
         try:
             gpu_uuids = self.get_gpu_uuids(node=node)
-            gpu_infos = [self.fetch_first(GPUStatus, where=((GPUStatus.node == node) & (GPUStatus.uuid == gpu_uuid)), order_by=GPUStatus.timestamp) for gpu_uuid in gpu_uuids]
+            gpu_infos = [
+                    self.fetch_first(GPUStatus,
+                        where=((GPUStatus.node == node) & (GPUStatus.uuid == gpu_uuid)),
+                        order_by=GPUStatus.timestamp
+                    )
+                for gpu_uuid in gpu_uuids
+            ]
             gpu_info_dicts = [x.to_dict() for x in gpu_infos]
             return { "gpus": gpu_info_dicts }
         except Exception as e:

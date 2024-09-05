@@ -1,6 +1,5 @@
 from argparse import ArgumentParser
 import subprocess
-import json
 from pathlib import Path
 import sys
 from threading import Thread
@@ -374,9 +373,10 @@ class ROCMInfoCollector(GPUStatusCollector):
         #     vis_vram: visible VRAM - CPU accessible video memory
         #     gtt: Graphics Translation Table
         #     all: all of the above
-        # 
+        #
         # --show-productname -> Card series,Card model,Card vendor,Card SKU
-        return "--showuniqueid --showproductname --showuse --showmemuse --showmeminfo vram --showvoltage --showtemp --showpower --csv"
+        return "--showuniqueid --showproductname --showuse --showmemuse \
+                --showmeminfo vram --showvoltage --showtemp --showpower --csv"
 
     @property
     def query_properties(self):

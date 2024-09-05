@@ -16,7 +16,7 @@ def number_of_gpus() -> int:
 def test_db(tmp_path, number_of_nodes, number_of_gpus) -> SlurmMonitorDB:
     db_path = Path(tmp_path) / "slurm-monitor.test.db"
     db_uri = f"sqlite:///{db_path.resolve()}"
-    
+
     db_settings = DatabaseSettings(uri=db_uri)
     db = SlurmMonitorDB(db_settings)
 
@@ -49,6 +49,3 @@ def test_gpu_infos(test_db, number_of_nodes, number_of_gpus):
 
         assert "gpus" in gpu_infos
         assert len(gpu_infos["gpus"]) == number_of_gpus
-
-
-
