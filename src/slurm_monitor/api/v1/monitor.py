@@ -166,7 +166,7 @@ async def gpustatus(
         start_time_in_s = end_time_in_s - 60 * 60.0
 
     if resolution_in_s is None:
-        resolution_in_s = min(900, int((end_time_in_s - start_time_in_s) / 120))
+        resolution_in_s = max(60, int((end_time_in_s - start_time_in_s) / 120))
 
     if end_time_in_s < start_time_in_s:
         raise HTTPException(
