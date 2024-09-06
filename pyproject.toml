@@ -32,6 +32,7 @@ classifiers = [
 dependencies = [
     "fastapi",
     "fastapi-cache2[memcache]",
+    "numpy",
     "prometheus-fastapi-instrumentator",
     "pydantic",
     "pydantic-settings",

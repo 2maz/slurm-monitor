@@ -3,7 +3,8 @@ import logging
 import sqlalchemy
 import json
 import re
-from typing import ClassVar, Any
+import numpy as np
+from typing import ClassVar, Any, Callable
 
 from sqlalchemy import (
     DateTime,
@@ -288,19 +289,29 @@ class GPUStatus(TableBase):
             data[column.name] = getattr(self, column.name)
         return data
 
-    def merge(self, other, merge_op=max) -> GPUStatus:
-        assert self.uuid == other.uuid
-        return GPUStatus(
-            name=self.name,
-            uuid=self.uuid,
-            local_id=self.local_id,
-            node=self.node,
-            temperature_gpu=merge_op(self.temperature_gpu, other.temperature_gpu),
-            power_draw=merge_op(self.power_draw, other.power_draw),
-            utilization_gpu=merge_op(self.utilization_gpu, other.utilization_gpu),
-            utilization_memory=merge_op(
-                self.utilization_memory, other.utilization_memory
-            ),
-            memory_total=merge_op(self.memory_total, other.memory_total),
-            timestamp=other.timestamp,
+    @classmethod
+    def merge(cls, samples: list[GPUStatus], merge_op: Callable[list[int | float]] | None = np.mean) -> GPUStatus:
+        values = {}
+
+        reference_sample = samples[-1]
+        for sample in samples:
+            assert sample.uuid == reference_sample.uuid, f"sample uuid {sample.uuid} does not match reference_sample {reference_sample.uuid}"
+            for attribute in ["temperature_gpu", "power_draw", "utilization_gpu", "utilization_memory"]:
+                value = getattr(sample, attribute)
+                if attribute not in values:
+                    values[attribute] = [value]
+                else:
+                    values[attribute].append(value)
+
+        return cls(
+            name=reference_sample.name,
+            uuid=reference_sample.uuid,
+            local_id=reference_sample.local_id,
+            node=reference_sample.node,
+            temperature_gpu=merge_op(values["temperature_gpu"]),
+            power_draw=merge_op(values["power_draw"]),
+            utilization_gpu=merge_op(values["utilization_gpu"]),
+            utilization_memory=merge_op(values["utilization_gpu"]),
+            memory_total=reference_sample.name,
+            timestamp=reference_sample.timestamp,
         )

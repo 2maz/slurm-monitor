@@ -151,23 +151,36 @@ class SlurmMonitorDB(Database):
             self, data: list[GPUStatus], resolution_in_s: int,
     ) -> list[GPUStatus]:
         smoothed_data = []
-        new_sample = None
-        for sample in data:
-            if new_sample is None:
-                new_sample = sample
-                start_time = dt.datetime.fromisoformat(sample.timestamp)
-            elif (
-                dt.datetime.fromisoformat(sample.timestamp) - start_time
-            ).total_seconds() < resolution_in_s:
-                # merge while within window
-                new_sample = new_sample.merge(sample)
-            else:
-                smoothed_data.append(new_sample)
-                new_sample = sample
-                start_time = dt.datetime.fromisoformat(sample.timestamp)
+        samples_in_window = {}
 
-        if new_sample is not None:
-            smoothed_data.append(new_sample)
+        base_time = None
+        window_start_time = None
+        window_index = 0
+
+        for sample in data:
+            if not base_time:
+                base_time = dt.datetime.fromisoformat(sample.timestamp)
+                window_start_time = base_time
+                window_index = 0
+
+            if (
+                dt.datetime.fromisoformat(sample.timestamp) - window_start_time
+            ).total_seconds() < resolution_in_s:
+                if sample.uuid not in samples_in_window:
+                    samples_in_window[sample.uuid] = [sample]
+                else:
+                    samples_in_window[sample.uuid].append(sample)
+            else:
+                smoothed_data.append(GPUStatus.merge(samples_in_window[sample.uuid]))
+                window_index += 1
+
+                samples_in_window[sample.uuid] = [sample]
+                window_start_time = base_time + dt.timedelta(seconds=window_index*resolution_in_s)
+
+
+        for uuid, values in samples_in_window.items():
+            if values:
+                smoothed_data.append(GPUStatus.merge(values))
 
         return smoothed_data
 
