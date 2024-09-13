@@ -22,8 +22,6 @@ import logging
 import re
 
 from slurm_monitor.utils import utcnow
-from .db_tables import GPUStatus
-
 logger = logging.getLogger("faststream")
 
 KAFKA_NODE_STATUS_TOPIC = "node-status"
@@ -44,6 +42,39 @@ class CPUStatus:
     def __iter__(self):
         yield "local_id", self.local_id
         yield "cpu_percent", self.cpu_percent
+        yield "timestamp", self.timestamp
+
+# from .db_tables import GPUs, GPUStatus
+@dataclass
+class GPUStatus:
+    uuid: str
+    node: str
+    model: str
+    local_id: int
+    memory_total: int
+
+    temperature_gpu: float
+    power_draw: float
+    utilization_gpu: float
+    utilization_memory: float
+
+    timestamp: str | dt.datetime
+
+    pstate: str | None = None
+
+    def __iter__(self):
+        yield "uuid", self.uuid
+        yield "node", self.node
+        yield "model", self.model
+        yield "local_id", self.local_id
+        yield "memory_total", self.memory_total
+
+        yield "temperature_gpu", self.temperature_gpu
+        yield "power_draw", self.power_draw
+        yield "utilization_gpu", self.utilization_gpu
+        yield "utilization_memory", self.utilization_memory
+
+        yield "pstate", self.pstate
         yield "timestamp", self.timestamp
 
 @dataclass
