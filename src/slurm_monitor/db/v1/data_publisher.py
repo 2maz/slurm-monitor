@@ -30,17 +30,20 @@ import logging
 import re
 
 from slurm_monitor.utils import utcnow
-from slurm_monitor.db.db import SlurmMonitorDB, DatabaseSettings, Database
-from slurm_monitor.db.db_tables import GPUStatus, JobStatus, Nodes
+from .db import SlurmMonitorDB, DatabaseSettings, Database
+from .db_tables import GPUStatus, JobStatus, Nodes
 from argparse import ArgumentParser
 
 logger = logging.getLogger("faststream")
+
+KAFKA_NODE_STATUS_TOPIC = "node-status"
+KAFKA_PROBE_CONTROL_TOPIC = "slurm-monitor-probe-control"
 
 T = TypeVar("T")
 
 broker = KafkaBroker()
 app = FastStream(broker)
-node_status_publisher = broker.publisher("node-status")
+node_status_publisher = broker.publisher(KAFKA_NODE_STATUS_TOPIC)
 
 @dataclass
 class CPUStatus:
@@ -86,16 +89,16 @@ class DataCollector():
                 self._stop = True
                 logger.warning(f"{e.__class__} {e}")
             finally:
-                logger.info(f"Sleeping for {self.sampling_interval_in_s}")
+                logger.debug(f"Sleeping for {self.sampling_interval_in_s}")
                 await asyncio.sleep(self.sampling_interval_in_s)
 
 
 
 class NodeStatusCollector(DataCollector):
     nodename: str
-    gpu_type: str
+    gpu_type: str | None
 
-    def __init__(self, gpu_type: str, sampling_interval_in_s: int | None = None):
+    def __init__(self, gpu_type: str | None = None, sampling_interval_in_s: int | None = None):
         if sampling_interval_in_s is None:
             sampling_interval_in_s = 20
 
@@ -103,14 +106,20 @@ class NodeStatusCollector(DataCollector):
 
         self.nodename = platform.node()
         self.local_id_mapping = {}
+        self.gpu_type = gpu_type
+
+    def has_gpus(self) -> bool:
+        return self.gpu_type is not None
 
     def run(self) -> NodeStatus:
-        response = self.get_gpu_info()
-        if response == "" or response is None:
-            raise ValueError(f"NodeStatusCollector: No value response")
+        gpu_status = []
+        if self.has_gpus():
+            response = self.get_gpu_info()
+            if response == "" or response is None:
+                raise ValueError(f"NodeStatusCollector: No value response")
 
-        data = {self.nodename: {"gpus": self.parse_response(response)}}
-        gpu_status = self.transform(data)
+            data = {self.nodename: {"gpus": self.parse_response(response)}}
+            gpu_status = self.transform(data)
 
         timestamp = utcnow()
         cpu_status = [CPUStatus(cpu_percent=percent, local_id=idx, timestamp=timestamp) for idx, percent in enumerate(psutil.cpu_percent(percpu=True))]
@@ -121,7 +130,6 @@ class NodeStatusCollector(DataCollector):
                 cpus=cpu_status)
 
     def get_gpu_info(self) -> str:
-
         msg = f"{self.query_cmd} {self.query_argument}={','.join(self.query_properties)}"
         return subprocess.run(msg, shell=True, stdout=subprocess.PIPE).stdout.decode(
             "utf-8"
@@ -373,11 +381,6 @@ class ROCMInfoCollector(NodeStatusCollector):
 
         return mapping
 
-def cli_run():
-    parser = ArgumentParser()
-    args, unknown = parser.parse_known_args()
-    run()
-
 def has_command(command: str):
     p = subprocess.run(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if p.returncode == 0:
@@ -392,7 +395,7 @@ def get_status_collector() -> NodeStatusCollector:
     elif has_command(command="hl-smi"):
         return HabanaInfoCollector()
     else:
-        raise RuntimeError("Could find neither, nvidia, rocm or habana GPU")
+        return NodeStatusCollector()
 
 # Main function to run the app and scheduler
 async def main(*, host: str, port: int):
@@ -403,12 +406,23 @@ async def main(*, host: str, port: int):
     hostname = socket.gethostname()
     status_collector = get_status_collector()
 
-    #probe_control_subscriber = broker.subscriber("slurm-probe-control")
-    @broker.subscriber("slurm-probe-control")
+    # Handle control messages
+    @broker.subscriber(KAFKA_PROBE_CONTROL_TOPIC)
     def handle(data, logger: Logger):
+        handle_message = False
         if "node" in data:
-            if re.match(data["node"], hostname) is None:
+            node = data["node"]
+            if type(node) == list:
+                for name_pattern in node:
+                    if re.match(name_pattern, hostname):
+                        handle_message = True
+                        break
+            elif re.match(name_pattern, hostname) is None:
                 return
+
+        if not handle_message:
+            # this is not the correct receiver
+            return
 
         if "action" in data:
             action = data["action"] 

@@ -1,32 +1,24 @@
+from argparse import ArgumentParser
 from faststream import FastStream
 from faststream.kafka import KafkaBroker
 import aiokafka
-from slurm_monitor.db.db import DatabaseSettings, SlurmMonitorDB
-from slurm_monitor.db.db_tables import CPUStatus, GPUs, GPUStatus, Nodes
+import asyncio
+from .db import DatabaseSettings, SlurmMonitorDB
+from .db_tables import CPUStatus, GPUs, GPUStatus, Nodes
 
-broker = KafkaBroker("srl-login3.ex3.simula.no:10092")
+broker = KafkaBroker()
 app = FastStream(broker)
 
-gpu_status_publisher = broker.subscriber("node-status", batch=True)
+from .data_publisher import KAFKA_NODE_STATUS_TOPIC
 
-db_settings = DatabaseSettings(
-    user="", password="", uri=f"timescaledb://slurmuser:test@localhost:7000/ex3cluster"
-)
-
-db = SlurmMonitorDB(db_settings=db_settings)
-db.insert_or_update(Nodes(
-    name="n016", 
-    cpu_count="256",
-    cpu_model="Epyc"
-    )
-)
-    
 nodes = {}
+database = None
 
-@broker.subscriber("node-status", batch=True)
+@broker.subscriber(KAFKA_NODE_STATUS_TOPIC, batch=True)
 def handle_message(samples):
     global nodes
     nodes_update = {}
+
     for sample in samples:
         nodename = sample["node"]
         cpu_samples = [CPUStatus(**(x | {'node': nodename})) for x in sample["cpus"]]
@@ -61,10 +53,41 @@ def handle_message(samples):
                 )
 
         if nodes_update:
-            db.insert_or_update([x for x in nodes_update.values()])
+            database.insert_or_update([x for x in nodes_update.values()])
             nodes |= nodes_update
 
-        db.insert_or_update(cpu_samples)
+        database.insert_or_update(cpu_samples)
         if gpus:
-            db.insert_or_update([x for x in gpus.values()])
-            db.insert_or_update(gpu_samples)
+            database.insert_or_update([x for x in gpus.values()])
+            database.insert_or_update(gpu_samples)
+
+async def main(*, host: str, port: int):
+    await broker.connect(f"{host}:{port}")
+
+    # Schedule the FastStream app to run
+    app_task = asyncio.create_task(app.run())
+
+    try:
+        await asyncio.gather(app_task)
+    except asyncio.CancelledError:
+        print("Application shutdown requested")
+    finally:
+        print("All tasks gracefully stopped")
+
+def cli_run():
+    global database
+
+    parser = ArgumentParser()
+    parser.add_argument("--host", type=str, default=None, required=True)
+    parser.add_argument("--db_uri", type=str, required=True, help="timescaledb://slurmuser:test@localhost:7000/ex3cluster")
+    parser.add_argument("--port", type=int, default=10092)
+
+    args, options = parser.parse_known_args()
+
+    db_settings = DatabaseSettings(
+        user="", password="", uri=args.db_uri
+    )
+    database = SlurmMonitorDB(db_settings=db_settings)
+
+    # Use asyncio.run to start the event loop and run the main coroutine
+    asyncio.run(main(host=args.host, port=args.port))
