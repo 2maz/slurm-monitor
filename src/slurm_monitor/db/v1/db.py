@@ -1,5 +1,4 @@
 import logging
-import os
 import sqlalchemy
 from contextlib import contextmanager
 import datetime as dt
@@ -20,7 +19,7 @@ class DatabaseSettings(BaseModel):
     user: str | None = None
     password: str | None = None
     #uri: str = f"sqlite:///{os.environ['HOME']}/.slurm-monitor/slurm-monitor-db.sqlite"
-    uri: str = f"timescaledb://slurmuser:test@localhost:7000/ex3-cluster/"
+    uri: str = "timescaledb://slurmuser:test@localhost:7000/ex3-cluster/"
 
     create_missing: bool = True
 
@@ -208,7 +207,7 @@ class SlurmMonitorDB(Database):
 
     def get_gpu_uuids(self, node: str) -> list[str]:
         return self.fetch_all(GPUs.uuid, GPUs.node == node)
-        
+
     def get_nodes(self) -> list[Nodes]:
         return self.fetch_all(Nodes)
 
@@ -307,7 +306,7 @@ class SlurmMonitorDB(Database):
 
 if __name__ == "__main__":
     db_settings = DatabaseSettings(
-        user="", password="", uri=f"timescaledb://slurmuser:test@localhost:7000/ex3cluster"
+        user="", password="", uri="timescaledb://slurmuser:test@localhost:7000/ex3cluster"
     )
     db = SlurmMonitorDB(db_settings=db_settings)
 
@@ -324,7 +323,7 @@ if __name__ == "__main__":
     #}
 
     #db.insert_or_update(Nodes(
-    #    name="g001", 
+    #    name="g001",
     #    gpu_count=16,
     #    gpu_model="Tesla",
     #    cpu_count="128",

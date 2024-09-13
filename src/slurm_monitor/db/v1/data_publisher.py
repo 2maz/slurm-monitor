@@ -1,8 +1,6 @@
-from faststream import FastStream, ContextRepo, Logger
+from faststream import FastStream, Logger
 from faststream.kafka import KafkaBroker
-from pydantic_settings import BaseSettings
 
-import aiokafka
 import asyncio
 
 import platform
@@ -12,15 +10,9 @@ from dataclasses import dataclass
 
 from argparse import ArgumentParser
 import subprocess
-import json
-from pathlib import Path
-import sys
-from threading import Thread
-import time
 import datetime as dt
 from abc import abstractmethod
-from queue import Queue, Empty
-from typing import Generic, TypeVar
+from typing import TypeVar
 
 import os
 import signal
@@ -30,9 +22,7 @@ import logging
 import re
 
 from slurm_monitor.utils import utcnow
-from .db import SlurmMonitorDB, DatabaseSettings, Database
-from .db_tables import GPUStatus, JobStatus, Nodes
-from argparse import ArgumentParser
+from .db_tables import GPUStatus
 
 logger = logging.getLogger("faststream")
 
@@ -116,13 +106,16 @@ class NodeStatusCollector(DataCollector):
         if self.has_gpus():
             response = self.get_gpu_info()
             if response == "" or response is None:
-                raise ValueError(f"NodeStatusCollector: No value response")
+                raise ValueError("NodeStatusCollector: No value response")
 
             data = {self.nodename: {"gpus": self.parse_response(response)}}
             gpu_status = self.transform(data)
 
         timestamp = utcnow()
-        cpu_status = [CPUStatus(cpu_percent=percent, local_id=idx, timestamp=timestamp) for idx, percent in enumerate(psutil.cpu_percent(percpu=True))]
+        cpu_status = [
+                CPUStatus(cpu_percent=percent, local_id=idx, timestamp=timestamp)
+                for idx, percent in enumerate(psutil.cpu_percent(percpu=True))
+        ]
 
         return NodeStatus(
                 node=platform.node(),
@@ -288,7 +281,8 @@ class ROCMInfoCollector(NodeStatusCollector):
         #     all: all of the above
         #
         # --show-productname -> Card series,Card model,Card vendor,Card SKU
-        return "--showuniqueid --showproductname --showuse --showmemuse --showmeminfo vram --showvoltage --showtemp --showpower --csv"
+        return "--showuniqueid --showproductname --showuse --showmemuse \
+                --showmeminfo vram --showvoltage --showtemp --showpower --csv"
 
     @property
     def query_properties(self):
@@ -425,7 +419,7 @@ async def main(*, host: str, port: int):
             return
 
         if "action" in data:
-            action = data["action"] 
+            action = data["action"]
             if action == "stop":
                 logger.warning(f"Shutdown requested for {hostname}")
                 shutdown_event.set()

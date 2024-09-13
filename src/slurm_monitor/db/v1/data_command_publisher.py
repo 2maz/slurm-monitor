@@ -1,32 +1,13 @@
 from faststream import FastStream
 from faststream.kafka import KafkaBroker
-import aiokafka
 import anyio
 
-import platform
-import psutil
 
-from dataclasses import dataclass
 
-from argparse import ArgumentParser
-import subprocess
-import json
-from pathlib import Path
-import sys
-from threading import Thread
-import time
-import datetime as dt
-from abc import abstractmethod
-from queue import Queue, Empty
-from typing import Generic, TypeVar
-import os
+from typing import TypeVar
 
 import logging
-import re
 
-from slurm_monitor.utils import utcnow
-from slurm_monitor.db.db import SlurmMonitorDB, DatabaseSettings, Database
-from slurm_monitor.db.db_tables import GPUStatus, JobStatus, Nodes
 
 logger = logging.getLogger(__name__)
 
@@ -51,4 +32,3 @@ async def publish():
 if __name__ == "__main__":
     # Use asyncio.run to start the event loop and run the main coroutine
     anyio.run(publish)
-

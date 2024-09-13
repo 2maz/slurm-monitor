@@ -1,15 +1,14 @@
 from argparse import ArgumentParser
 from faststream import FastStream
 from faststream.kafka import KafkaBroker
-import aiokafka
 import asyncio
 from .db import DatabaseSettings, SlurmMonitorDB
 from .db_tables import CPUStatus, GPUs, GPUStatus, Nodes
+from .data_publisher import KAFKA_NODE_STATUS_TOPIC
 
 broker = KafkaBroker()
 app = FastStream(broker)
 
-from .data_publisher import KAFKA_NODE_STATUS_TOPIC
 
 nodes = {}
 database = None
@@ -22,7 +21,7 @@ def handle_message(samples):
     for sample in samples:
         nodename = sample["node"]
         cpu_samples = [CPUStatus(**(x | {'node': nodename})) for x in sample["cpus"]]
-        
+
         if nodename not in nodes:
             nodes_update[nodename] = Nodes(name=nodename,
                     cpu_count=len(cpu_samples),

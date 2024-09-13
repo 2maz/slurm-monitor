@@ -295,7 +295,8 @@ class GPUStatus(TableBase):
 
         reference_sample = samples[-1]
         for sample in samples:
-            assert sample.uuid == reference_sample.uuid, f"sample uuid {sample.uuid} does not match reference_sample {reference_sample.uuid}"
+            assert sample.uuid == reference_sample.uuid, \
+                f"sample uuid {sample.uuid} does not match reference_sample {reference_sample.uuid}"
             for attribute in ["temperature_gpu", "power_draw", "utilization_gpu", "utilization_memory"]:
                 value = getattr(sample, attribute)
                 if attribute not in values:

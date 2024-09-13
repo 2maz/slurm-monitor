@@ -52,6 +52,3 @@ class Slurm:
     def get_node_names(cls) -> list[str]:
         nodes_data = cls.get_slurmrestd("/nodes")
         return [node["name"] for node in nodes_data["nodes"]]
-
-
-

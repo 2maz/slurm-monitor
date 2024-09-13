@@ -2,7 +2,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from logging import getLogger, Logger
 import subprocess
-import json
 import yaml
 from slurm_monitor.utils import utcnow
 import slurm_monitor.db_operations as db_ops
@@ -122,13 +121,13 @@ async def partitions():
 
 @api_router.get("/nodes/info", response_model=None)
 @cache(expire=3600*24)
-async def nodeinfo(nodes: list[str] | None = None, dbi=Depends(db_ops.get_database)):
+async def nodes_info(nodes: list[str] | None = None, dbi=Depends(db_ops.get_database)):
     return {'nodes': NODE_INFOS}
 
 @api_router.get("/nodes/refresh_info", response_model=None)
-async def nodeinfo():
+async def nodes_refreshinfo():
     load_node_infos()
-    return {'nodes': NODE_INFOS} 
+    return {'nodes': NODE_INFOS}
 
 
 @api_router.get("/gpustatus")

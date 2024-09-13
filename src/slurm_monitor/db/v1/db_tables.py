@@ -53,7 +53,7 @@ class TableBase:
 class GPUIdList(types.TypeDecorator):
     impl = Text
     cache_ok = True
- 
+
     def load_dialect_impl(self, dialect):
         """
         see https://docs.sqlalchemy.org/en/20/core/custom_types.html#sqlalchemy.types.TypeDecorator.load_dialect_impl
@@ -63,7 +63,7 @@ class GPUIdList(types.TypeDecorator):
 
         if dialect.name == "mysql":
             return dialect.type_descriptor(LONGTEXT)
- 
+
         # TODO: if requiring postgresql check the JSON type:
         # https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#sqlalchemy.dialects.postgresql.JSON
         raise NotImplementedError(
@@ -326,7 +326,8 @@ class GPUStatus(TableBase):
 
         reference_sample = samples[-1]
         for sample in samples:
-            assert sample.uuid == reference_sample.uuid, f"sample uuid {sample.uuid} does not match reference_sample {reference_sample.uuid}"
+            assert sample.uuid == reference_sample.uuid, \
+                    f"sample uuid {sample.uuid} does not match reference_sample {reference_sample.uuid}"
             for attribute in ["temperature_gpu", "power_draw", "utilization_gpu", "utilization_memory"]:
                 value = getattr(sample, attribute)
                 if attribute not in values:

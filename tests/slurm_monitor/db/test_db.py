@@ -4,7 +4,6 @@ from slurm_monitor.db.db_tables import GPUs, GPUStatus, Nodes
 import datetime as dt
 from pathlib import Path
 
-import pandas
 
 @pytest.fixture
 def number_of_nodes() -> int:
@@ -74,4 +73,3 @@ def test_dataframe(test_db, number_of_gpus, number_of_samples):
     uuids = test_db.get_gpu_uuids(node="node-1")
     df = test_db._fetch_dataframe(GPUStatus, GPUStatus.uuid.in_(uuids))
     assert len(df) == number_of_gpus*number_of_samples
-

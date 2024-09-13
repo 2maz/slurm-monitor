@@ -1,5 +1,5 @@
 import pytest
-from slurm_monitor.db.db_tables import GPUs, GPUStatus, GPUIdList
+from slurm_monitor.db.db_tables import GPUs, GPUIdList
 
 
 @pytest.mark.parametrize(
@@ -25,4 +25,3 @@ def test_GPUs():
 
     gpu = GPUs(**args)
     assert args == dict(gpu)
-
