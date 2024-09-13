@@ -69,9 +69,11 @@ dev = [
 ]
 test = [
     "coverage",
+    "httpx",
     "pytest",
     "pytest-cov",
-    "pydot"
+    "pytest-asyncio",
+    "pydot",
 ]
 
 [project.scripts]

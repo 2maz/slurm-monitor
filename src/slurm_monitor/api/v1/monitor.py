@@ -10,11 +10,9 @@ from fastapi_cache.decorator import cache
 from pathlib import Path
 from tqdm import tqdm
 
+from slurm_monitor.slurm import Slurm
+
 logger: Logger = getLogger(__name__)
-
-SLURM_API_PREFIX = "/slurm/v0.0.37"
-SLURM_RESTD_BIN= "/cm/shared/apps/slurm/current/sbin/slurmrestd"
-
 
 api_router = APIRouter(
     prefix="/monitor",
@@ -24,57 +22,43 @@ api_router = APIRouter(
 NODE_INFOS = {}
 NODE_INFOS_FILENAME="/tmp/slurm-monitor/nodeinfo.yaml"
 
-
-def get_user():
-    return (
-        subprocess.run("whoami", stdout=subprocess.PIPE).stdout.decode("utf-8").strip()
-    )
+Slurm.ensure_restd()
 
 def _get_slurmrestd(prefix: str):
     try:
-        if not prefix.startswith("/"):
-            prefix = f"/{prefix}"
-
-        msg = f'echo -e "GET {SLURM_API_PREFIX}{prefix} HTTP/1.1\r\n" | {SLURM_RESTD_BIN} -a rest_auth/local'
-        logger.debug(f"Query: {msg}")
-        response = subprocess.run(msg, shell=True, stdout=subprocess.PIPE).stdout.decode(
-            "utf-8"
-        )
-        header, content = response.split("\r\n\r\n", 1)
-        json_data = json.loads(content)
-        logger.debug(f"Response: {json_data}")
-        return json_data
+        return Slurm.get_slurmrestd(prefix)
     except Exception:
         raise HTTPException(
                 status_code=503,
                 detail="The slurmrestd service seems to be down. SLURM or the server might be under maintenance"
         )
 
-def _get_node_names() -> list[str]:
-    nodes_data = _get_slurmrestd("/nodes")
-    return [node["name"] for node in nodes_data["nodes"]]
-
-
-def _get_cpu_infos(node: str, user: str = get_user()):
+def _get_cpu_infos(node: str, user: str = Slurm.get_user()):
     msg = f"ssh -oBatchMode=yes -l {user} {node} lscpu | sed -rn '/Model name/ s/.*:\s*(.*)/\\1/p'"
+    cpus = {}
     try:
-        model_name = subprocess.run(msg, shell=True, stdout=subprocess.PIPE).stdout.decode(
-                "utf-8"
-        ).strip()
+        response = subprocess.run(msg, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        error_message = response.stderr.decode("utf-8").strip()
+        if error_message:
+            cpus["error"] = error_message
+            logger.warning(f"Host is not reachable - {error_message}")
+        else:
+            cpus["model_name"] = response.stdout.decode("utf-8").strip()
     except Exception as e:
         logger.warn(e)
-        return { "cpus": {}}
 
-    return { "cpus": {"model": model_name}}
+    return { "cpus": cpus }
 
 
 def _get_nodeinfo(nodelist: list[str] | None, dbi):
     if not nodelist:
-        nodelist = _get_node_names()
+        nodelist = Slurm.get_node_names()
 
     gpu_nodelist = [x.name for x in dbi.get_nodes()]
 
     nodeinfo = {}
+    import pdb
+    pdb.set_trace()
     for nodename in tqdm(nodelist):
         nodeinfo[nodename] = {}
         if nodename in gpu_nodelist:

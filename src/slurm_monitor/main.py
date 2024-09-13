@@ -15,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from slurm_monitor.api.v1.router import app as api_v1_app
+from slurm_monitor.slurm import Slurm
 import slurm_monitor.api.v1.monitor as monitor
 from slurm_monitor.app_settings import AppSettings
 
@@ -23,7 +24,6 @@ from logging import getLogger
 
 logger = getLogger(__name__)
 logger.setLevel(logging.INFO)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -45,6 +45,9 @@ async def lifespan(app: FastAPI):
     # Do nothing at shutdown
     logger.info("Shutting down ...")
 
+
+# First make sure that this runs on a slurm system
+Slurm.ensure_restd()
 
 AppSettings.initialize()
 

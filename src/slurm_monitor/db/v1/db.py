@@ -9,7 +9,7 @@ from sqlalchemy import MetaData, event, create_engine
 from sqlalchemy.orm import DeclarativeMeta, sessionmaker
 from sqlalchemy.engine.url import URL, make_url
 
-from slurm_monitor.db.db_tables import CPUStatus, GPUs, GPUStatus, JobStatus, Nodes, TableBase
+from .db_tables import CPUStatus, GPUs, GPUStatus, JobStatus, Nodes, TableBase
 import pandas as pd
 
 logger = logging.getLogger(__name__)
