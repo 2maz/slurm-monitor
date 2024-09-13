@@ -65,6 +65,7 @@ app.add_middleware(
 )  # This is called before any FastAPI Request (Cross-Origin Resource Sharing), i.e.
 # when the JavaScript code in front-end communicates with the backend
 
+# Instrumenting prometheus metrics on /metrics
 Instrumentator().instrument(app).expose(app)
 
 
