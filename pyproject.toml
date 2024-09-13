@@ -30,16 +30,10 @@ classifiers = [
 ]
 
 dependencies = [
-    "fastapi",
-    "fastapi-cache2[memcache]",
     "numpy",
-    "prometheus-fastapi-instrumentator",
     "pydantic",
     "pydantic-settings",
     "pyyaml",
-    "sqlalchemy",
-    "uvicorn",
-    "tqdm",
 ]
 
 [project.urls]
@@ -50,6 +44,21 @@ repository = "https://gitlab.com/simula/slurm-monitor"
 #[project.entry-points]
 
 [project.optional-dependencies]
+restapi = [
+    "fastapi",
+    "fastapi-cache2[memcache]",
+    "prometheus-fastapi-instrumentator",
+    "sqlalchemy",
+    "sqlalchemy-timescaledb",
+    "uvicorn",
+    "tqdm",
+]
+
+probe = [
+    "faststream",
+    "psutils",
+]
+
 dev = [
     "isort",
     "jupyter-book",
@@ -68,6 +77,7 @@ test = [
 [project.scripts]
 slurm-monitor = "slurm_monitor.cli.main:run"
 slurm-monitor-collector = "slurm_monitor.db.data_collector:cli_run"
+slurm-monitor-probe = "slurm_monitor.db.data_publisher:cli_run"
 
 [tool.mypy]
 ignore_missing_imports = true
