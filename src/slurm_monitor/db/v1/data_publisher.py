@@ -185,7 +185,7 @@ class NodeStatusCollector(DataCollector):
 
         for idx, value in enumerate(data[self.nodename]["gpus"]):
             sample = GPUStatus(
-                name=value["name"],
+                model=value["name"],
                 uuid=value["uuid"],
                 local_id=idx,
                 node=self.nodename,
@@ -276,7 +276,7 @@ class HabanaInfoCollector(NodeStatusCollector):
         timestamp = utcnow()
         for idx, value in enumerate(data[self.nodename]["gpus"]):
             sample = GPUStatus(
-                name=value["name"],
+                model=value["name"],
                 uuid=value["uuid"],
                 local_id=idx,
                 node=self.nodename,
@@ -371,7 +371,7 @@ class ROCMInfoCollector(NodeStatusCollector):
 
         for idx, value in enumerate(data[self.nodename]["gpus"]):
             sample = GPUStatus(
-                name=value["Card series"],
+                model=value["Card series"],
                 uuid=value["Unique ID"],
                 local_id=idx,
                 node=self.nodename,

@@ -46,7 +46,7 @@ def handle_message(samples):
 
                 gpus[uuid] = GPUs(uuid=uuid,
                      node=x['node'],
-                     model=x['name'],
+                     model=x['model'],
                      local_id=x['local_id'],
                      memory_total=x['memory_total']
                 )
