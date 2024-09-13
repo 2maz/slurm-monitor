@@ -86,7 +86,7 @@ class NodeStatus:
     def __iter__(self):
         yield "node", self.node
         yield "cpus", [dict(x) for x in self.cpus]
-        yield "gpus", [x.to_dict() for x in self.gpus]
+        yield "gpus", [dict(x) for x in self.gpus]
 
 class DataCollector():
     _stop: bool = False
