@@ -16,12 +16,11 @@ from slurm_monitor.utils import utcnow
 from .db import SlurmMonitorDB, DatabaseSettings, Database
 from .db_tables import GPUStatus, JobStatus, Nodes
 
-from slurm_monitor.api.v1.monitor import _get_slurmrestd
+from slurm_monitor.slurm import Slurm
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
-
 
 class Observer(Generic[T]):
     _samples: Queue
@@ -494,7 +493,7 @@ class JobStatusCollector(DataCollector[JobStatus], Observable[JobStatus]):
             self.user = self.get_user()
 
     def run(self) -> list[JobStatus]:
-        response = _get_slurmrestd("/jobs")
+        response = Slurm.get_slurmrestd("/jobs")
 
         if response == "" or response is None:
             raise ValueError("JobsCollector: No value response")
@@ -502,6 +501,8 @@ class JobStatusCollector(DataCollector[JobStatus], Observable[JobStatus]):
         return [JobStatus.from_json(x) for x in response["jobs"]]
 
 def cli_run():
+    Slurm.ensure_restd()
+
     parser = ArgumentParser()
     parser.add_argument("mode", default="prod")
 
