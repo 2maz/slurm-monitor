@@ -1,12 +1,12 @@
 import pytest
 import time
 
-from slurm_monitor.db.data_collector import (
+from slurm_monitor.db.v0.data_collector import (
         Observer, Observable, GPUStatusCollector, GPUStatusCollectorPool,
         NvidiaInfoCollector, ROCMInfoCollector, HabanaInfoCollector
 )
-from slurm_monitor.db.db_tables import GPUStatus
-from slurm_monitor.db.db import DatabaseSettings, SlurmMonitorDB
+from slurm_monitor.db.v0.db_tables import GPUStatus
+from slurm_monitor.db.v0.db import DatabaseSettings, SlurmMonitorDB
 from pathlib import Path
 from slurm_monitor.utils import utcnow
 
@@ -51,8 +51,10 @@ ROCM_SMI_RESPONSE_V1=[
     "Temperature (Sensor HBM 0) (C),Temperature (Sensor HBM 1) (C),Temperature (Sensor HBM 2) (C),"
     "Temperature (Sensor HBM 3) (C),"
     "Average Graphics Package Power (W),GPU use (%),GFX Activity,"
-    "GPU memory use (%),Memory Activity,Voltage (mV),VRAM Total Memory (B),VRAM Total Used Memory (B)",
-    "card0,0x2490210172fc1a88,33.0,34.0,32.0,0.0,0.0,0.0,0.0,19.0,0,0,0,0,762,17163091968,10854400"
+    "GPU memory use (%),Memory Activity,Voltage (mV),VRAM Total Memory (B),VRAM Total Used Memory (B),"
+    "Card series,Card model,Card vendor,Card SKU",
+    "card0,0x2490210172fc1a88,33.0,34.0,32.0,0.0,0.0,0.0,0.0,19.0,0,0,0,0,762,17163091968,10854400,"
+    "Vega 20 [Radeon Pro VII/Radeon Instinct MI50 32GB],0x081e,Advanced Micro Devices Inc. [AMD/ATI],D1640600"
 ]
 
 ROCM_SMI_RESPONSE_V2=[
@@ -61,9 +63,12 @@ ROCM_SMI_RESPONSE_V2=[
     "Temperature (Sensor HBM 0) (C),Temperature (Sensor HBM 1) (C),Temperature (Sensor HBM 2) (C),"
     "Temperature (Sensor HBM 3) (C),"
     "Average Graphics Package Power (W),GPU use (%),GFX Activity,GPU memory use (%),"
-    "Memory Activity,Voltage (mV),VRAM Total Memory (B),VRAM Total Used Memory (B)",
-    "card0,0x18f68e602b8a790f,41.0,44.0,53.0,52.0,50.0,53.0,52.0,41.0,0,391,0,0,793,68702699520,10960896",
-    "card1,0x95a1ca7691e7c391,44.0,44.0,49.0,49.0,48.0,49.0,49.0,39.0,0,415,0,0,793,68702699520,10960896",
+    "Memory Activity,Voltage (mV),VRAM Total Memory (B),VRAM Total Used Memory (B),"
+    "Card series,Card model,Card vendor,Card SKU",
+    "card0,0x18f68e602b8a790f,41.0,44.0,53.0,52.0,50.0,53.0,52.0,41.0,0,391,0,0,793,68702699520,10960896,"
+    "Instinct MI210,0x0c34,Advanced Micro Devices Inc. [AMD/ATI],D67301",
+    "card1,0x95a1ca7691e7c391,44.0,44.0,49.0,49.0,48.0,49.0,49.0,39.0,0,415,0,0,793,68702699520,10960896,"
+    "Instinct MI210,0x0c34,Advanced Micro Devices Inc. [AMD/ATI],D67301",
 ]
 
 HL_SMI_RESPONSE=[

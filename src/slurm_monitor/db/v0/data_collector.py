@@ -13,8 +13,9 @@ import logging
 import re
 
 from slurm_monitor.utils import utcnow
-from slurm_monitor.db.db import SlurmMonitorDB, DatabaseSettings, Database
-from slurm_monitor.db.db_tables import GPUStatus, JobStatus, Nodes
+from .db import SlurmMonitorDB, DatabaseSettings, Database
+from .db_tables import GPUStatus, JobStatus, Nodes
+
 from slurm_monitor.api.v1.monitor import _get_slurmrestd
 
 logger = logging.getLogger(__name__)
@@ -414,6 +415,9 @@ class ROCMInfoCollector(GPUStatusCollector):
     def parse_response(self, response: str) -> dict[str]:
         gpus = []
         main_response = [x for x in response.strip().split("\n") if not x.lower().startswith("warn")]
+
+        import pdb
+        pdb.set_trace()
 
         field_names = main_response[0].split(",")
         for line in main_response[1:]:
