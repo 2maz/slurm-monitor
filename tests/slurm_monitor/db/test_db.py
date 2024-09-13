@@ -4,6 +4,8 @@ from slurm_monitor.db.db_tables import GPUStatus, Nodes
 import datetime as dt
 from pathlib import Path
 
+import pandas
+
 @pytest.fixture
 def number_of_nodes() -> int:
     return 5
@@ -62,4 +64,8 @@ def test_gpu_status(test_db, number_of_nodes, number_of_gpus, number_of_samples)
         resolution_in_s = 10
         gpu_status = test_db.get_gpu_status(node=nodename, resolution_in_s=resolution_in_s)
         assert len(gpu_status) >= (number_of_samples / resolution_in_s)
+
+def test_dataframe(test_db):
+    df = test_db._fetch_dataframe(GPUStatus, where=(GPUStatus.node == "node-1"))
+    print(df)
 

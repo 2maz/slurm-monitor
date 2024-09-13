@@ -10,6 +10,7 @@ from sqlalchemy.orm import DeclarativeMeta, sessionmaker
 from sqlalchemy.engine.url import URL, make_url
 
 from slurm_monitor.db.db_tables import GPUStatus, JobStatus, Nodes, TableBase
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -118,6 +119,23 @@ class Database:
         if _unpack and not isinstance(db_cls, (tuple, list, DeclarativeMeta)):
             result = [r[0] for r in result]
         return result
+
+    def _fetch_dataframe(self, db_cls, where=None, order_by=None, _reduce=None, chunksize: int = 10000):
+        with self.make_session() as session:
+            query = session.query(*_listify(db_cls))
+            if where is not None:
+                query = query.filter(where)
+            if order_by is not None:
+                query = query.order_by(order_by.desc())
+
+            dfs = []
+            compiled_query = query.statement.compile()
+            for chunk in pd.read_sql_query(str(compiled_query), con=self.engine, chunksize=chunksize, params=compiled_query.params):
+                dfs.append(chunk)
+
+            # Combine all chunks into a single DataFrame
+            df = pd.concat(dfs, ignore_index=True)
+            return df
 
     def fetch_all(self, db_cls, where=None):
         return self._fetch(db_cls, where=where, _reduce=lambda q: list(q.all()))
