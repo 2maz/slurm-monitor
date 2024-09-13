@@ -58,6 +58,7 @@ restapi = [
 probe = [
     "faststream",
     "psutil",
+    "aiokafka",
 ]
 
 dev = [
