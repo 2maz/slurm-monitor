@@ -16,7 +16,7 @@ class Slurm:
         for hint in cls._RESTD_BIN_HINTS:
             path = cls.cmd_is_available(hint)
             if path:
-                cls.RESTD_BIN = path
+                cls.RESTD_BIN = path.strip()
                 return cls.RESTD_BIN
         raise RuntimeError("Slurm: could not find 'slurmrestd' on this system")
 
@@ -43,7 +43,7 @@ class Slurm:
         response = subprocess.run(msg, shell=True, stdout=subprocess.PIPE).stdout.decode(
             "utf-8"
         )
-        header, content = response.split(" {", 1)
+        header, content = response.split("{", 1)
         json_data = json.loads("{" + content)
         logger.debug(f"Response: {json_data}")
         return json_data

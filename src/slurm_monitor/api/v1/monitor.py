@@ -26,7 +26,8 @@ Slurm.ensure_restd()
 def _get_slurmrestd(prefix: str):
     try:
         return Slurm.get_slurmrestd(prefix)
-    except Exception:
+    except Exception as e:
+        logger.warn(e)
         raise HTTPException(
                 status_code=503,
                 detail="The slurmrestd service seems to be down. SLURM or the server might be under maintenance"
@@ -56,8 +57,6 @@ def _get_nodeinfo(nodelist: list[str] | None, dbi):
     gpu_nodelist = [x.name for x in dbi.get_nodes()]
 
     nodeinfo = {}
-    import pdb
-    pdb.set_trace()
     for nodename in tqdm(nodelist):
         nodeinfo[nodename] = {}
         if nodename in gpu_nodelist:
@@ -130,8 +129,7 @@ async def nodes_refreshinfo():
     return {'nodes': NODE_INFOS}
 
 
-@api_router.get("/gpustatus")
-@cache(expire=3600)
+@api_router.get("/nodes/gpustatus")
 async def gpustatus(
     node: str | None = None,
     start_time_in_s: float | None = None,
@@ -166,9 +164,10 @@ async def gpustatus(
     if local_indices is not None:
         local_indices = [int(x) for x in local_indices.split(',')]
 
+    nodes = [] if node is None else [node]
     return {
         "gpu_status": dbi.get_gpu_status_timeseries_list(
-            nodes=[node],
+            nodes=nodes,
             start_time_in_s=start_time_in_s,
             end_time_in_s=end_time_in_s,
             resolution_in_s=resolution_in_s,

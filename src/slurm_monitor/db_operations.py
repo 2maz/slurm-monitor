@@ -4,7 +4,7 @@ import sqlalchemy
 
 from fastapi import HTTPException
 from slurm_monitor.app_settings import AppSettings
-from slurm_monitor.db import SlurmMonitorDB
+from slurm_monitor.db.v1.db import SlurmMonitorDB
 
 logger: Logger = getLogger(__name__)
 

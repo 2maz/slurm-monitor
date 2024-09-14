@@ -174,6 +174,10 @@ class SlurmMonitorDB(Database):
         window_start_time = None
         window_index = 0
 
+        # requiring ordered list (oldest first)
+        if data[0].timestamp > data[-1].timestamp:
+            data.reverse()
+
         for sample in data:
             sample_timestamp = sample.timestamp
             if type(sample.timestamp) == str:
@@ -281,11 +285,11 @@ class SlurmMonitorDB(Database):
                     end_time_in_s=end_time_in_s,
                     resolution_in_s=resolution_in_s,
                 )
+                result = self.fetch_all(GPUs.local_id, GPUs.uuid == uuid)
+                if not result:
+                    raise RuntimeError("Failed to retrieve local_id for GPU {uuid=}")
 
-                if node_data:
-                    local_id = node_data[0].local_id
-                else:
-                    local_id = idx
+                local_id = result[0]
                 gpu_status_series = {
                     "label": f"{node}-gpu-{local_id}",
                     "data": node_data,
