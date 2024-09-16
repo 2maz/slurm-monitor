@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    BigInteger,
     Integer,
     String,
     inspect,
@@ -72,8 +73,10 @@ class GPUIdList(types.TypeDecorator):
         )
 
     @classmethod
-    def get_logical_ids(cls, value):
-        # gpu:tesla:1(IDX:3)
+    def get_logical_ids(cls, value: int | str):
+        if type(value) == int:
+            return value
+
         m = re.match(r".*\(IDX:(.*)\)", value)
         indices = m.group(1)
         idx_ranges = indices.split(",")
@@ -89,9 +92,14 @@ class GPUIdList(types.TypeDecorator):
                 gpu_logical_ids.append(int(idx_range))
         return gpu_logical_ids
 
-    def transform_input(self, value: list[str]):
+    def transform_input(self, value: list[str|int]):
         if len(set(value)) > 1:
-            raise RuntimeError(f"Assuming maximum length of 1 for GPU details, but found: {value}")
+            if type(value[0]) == str:
+                raise RuntimeError(f"Assuming maximum length of 1 for GPU details, but found: {value}")
+            elif type(value[0]) == int:
+                return value
+            else:
+                raise RuntimeError(f"Wrong list type in {value}, expected str|int")
 
         for x in value:
             return self.get_logical_ids(x)
@@ -122,7 +130,7 @@ class GPUs(TableBase):
 
     model = Column(String(255))
     local_id = Column(Integer)
-    memory_total = Column(Integer)
+    memory_total = Column(BigInteger)
 
 class JobStatus(TableBase):
     __tablename__ = "job_status"
@@ -135,12 +143,12 @@ class JobStatus(TableBase):
     end_time = Column(DateTime, nullable=True)
 
     account = Column(String(100))
-    accrue_time = Column(Integer)
+    accrue_time = Column(BigInteger)
     admin_comment = Column(String(255))
     array_job_id = Column(Integer)  # 244843
     array_task_id = Column(Integer, nullable=True)  # 984
     array_max_tasks = Column(Integer)  # 20
-    array_task_string = Column(Integer)  #
+    array_task_string = Column(String(255))  #
     association_id = Column(Integer)  # ": 0,
     # batch_features": "",
     # batch_flag": true,
@@ -165,11 +173,11 @@ class JobStatus(TableBase):
     # deadline": 0,
     # delay_boot": 0,
     # dependency": "",
-    derived_exit_code = Column(Integer)  # ": 256,
+    derived_exit_code = Column(BigInteger)  # ": 256,
     eligible_time = Column(Integer)  # ": 1720736375,
     end_time = Column(Integer)  # ": 1720739331,
     # excluded_nodes": "",
-    exit_code = Column(Integer)  # ": 0,
+    exit_code = Column(BigInteger)  # ": 0,
     # features": "",
     # federation_origin": "",
     # federation_siblings_active": "",
@@ -213,7 +221,7 @@ class JobStatus(TableBase):
     # het_job_id": 0,
     # het_job_id_set": "",
     # het_job_offset": 0,
-    partition = Column(String(25))  # "slowq",
+    partition = Column(String(255))  # "slowq",
     # memory_per_node": null,
     # memory_per_cpu": null,
     # minimum_cpus_per_node": 1,
@@ -238,8 +246,8 @@ class JobStatus(TableBase):
     # sockets_per_board": 0,
     # sockets_per_node": null,
     start_time = Column(Integer)  # 1720736375,
-    state_description = Column(String(25))  # "",
-    state_reason = Column(String(25))  # "None",
+    state_description = Column(String(255))  # "",
+    state_reason = Column(String(255))  # "None",
     # standard_error": "/home/.../scripts/logs/%j-stderr.txt",
     # standard_input": "/dev/null",
     # standard_output": "/home/.../scripts/logs/%j-stdout.txt",
@@ -313,12 +321,6 @@ class GPUStatus(TableBase):
     pstate = Column(String(10), nullable=True)
 
     timestamp = Column(DateTime(), default=dt.datetime.now, primary_key=True)
-
-    def to_dict(self):
-        data = {}
-        for column in self.__table__.columns:
-            data[column.name] = getattr(self, column.name)
-        return data
 
     @classmethod
     def merge(cls, samples: list[GPUStatus], merge_op: Callable[list[int | float]] | None = np.mean) -> GPUStatus:

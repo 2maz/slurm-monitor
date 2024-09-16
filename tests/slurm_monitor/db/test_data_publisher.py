@@ -2,7 +2,6 @@ import pytest
 import asyncio
 
 from slurm_monitor.db.v1.data_publisher import DataCollector, Controller
-import kafka
 
 import os
 import signal
@@ -14,7 +13,11 @@ def nodename() -> str:
 
 @pytest.fixture
 def controller(nodename, monkeypatch):
-    def mock_controller__init__(self, collector: DataCollector, bootstrap_servers: str, shutdown_event: asyncio.Event, **kwargs):
+    def mock_controller__init__(self,
+            collector: DataCollector,
+            bootstrap_servers: str,
+            shutdown_event: asyncio.Event,
+            **kwargs):
         assert type(bootstrap_servers) is str
         self.collector = collector
         self.hostname = nodename

@@ -36,7 +36,7 @@ class TableBase:
     def __init__(self, **kwargs):
         pass
 
-    def __iter(self):
+    def __iter__(self):
         return (
             (c.key, getattr(self, c.key)) for c in inspect(self).mapper.column_attrs
         )
@@ -65,7 +65,7 @@ class GPUIdList(types.TypeDecorator):
         # TODO: if requiring postgresql check the JSON type:
         # https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#sqlalchemy.dialects.postgresql.JSON
         raise NotImplementedError(
-            "The field type for the encountered database dialect '{dialect.name}' has not been"
+            f"The field type for the encountered database dialect '{dialect.name}' has not been"
             "specified - please inform the developer to add support"
         )
 
@@ -129,7 +129,7 @@ class JobStatus(TableBase):
     array_job_id = Column(Integer)  # 244843
     array_task_id = Column(Integer, nullable=True)  # 984
     array_max_tasks = Column(Integer)  # 20
-    array_task_string = Column(Integer)  #
+    array_task_string = Column(String(255))  #
     association_id = Column(Integer)  # ": 0,
     # batch_features": "",
     # batch_flag": true,
