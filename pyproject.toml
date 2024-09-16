@@ -51,14 +51,14 @@ restapi = [
     "prometheus-fastapi-instrumentator",
     "sqlalchemy",
     "sqlalchemy-timescaledb",
+    "psycopg2-binary",
     "uvicorn",
     "tqdm",
 ]
 
 probe = [
-    "faststream",
+    "kafka-python-ng",
     "psutil",
-    "aiokafka",
 ]
 
 dev = [
@@ -73,8 +73,9 @@ test = [
     "coverage",
     "httpx",
     "pytest",
-    "pytest-cov",
     "pytest-asyncio",
+    "pytest-cov",
+    "pytest-mock",
     "pydot",
 ]
 

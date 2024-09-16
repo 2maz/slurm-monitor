@@ -1,10 +1,7 @@
-from faststream import FastStream, Logger
-from faststream.kafka import KafkaBroker
-
-import asyncio
-
 import platform
 import psutil
+import asyncio
+from kafka import KafkaConsumer, KafkaProducer
 
 from dataclasses import dataclass
 
@@ -17,21 +14,18 @@ from typing import TypeVar
 import os
 import signal
 import socket
+import json
 
 import logging
 import re
 
 from slurm_monitor.utils import utcnow
-logger = logging.getLogger("faststream")
+logger = logging.getLogger(__name__)
 
 KAFKA_NODE_STATUS_TOPIC = "node-status"
 KAFKA_PROBE_CONTROL_TOPIC = "slurm-monitor-probe-control"
 
 T = TypeVar("T")
-
-broker = KafkaBroker()
-app = FastStream(broker)
-node_status_publisher = broker.publisher(KAFKA_NODE_STATUS_TOPIC)
 
 @dataclass
 class CPUStatus:
@@ -98,22 +92,19 @@ class DataCollector():
         self.name = name
         self.sampling_interval_in_s = sampling_interval_in_s
 
-    async def publish(self, sample: NodeStatus):
-        await node_status_publisher.publish(dict(sample))
-
-    async def collect(self, shutdown_event: asyncio.Event):
+    async def collect(self, shutdown_event: asyncio.Event, publish_fn):
         while not shutdown_event.is_set() and not self._stop:
             try:
                 sample: NodeStatus = self.run()
-                await self.publish(sample=sample)
+                if publish_fn:
+                    publish_fn(sample)
+
             except Exception as e:
                 self._stop = True
                 logger.warning(f"{e.__class__} {e}")
             finally:
                 logger.debug(f"Sleeping for {self.sampling_interval_in_s}")
                 await asyncio.sleep(self.sampling_interval_in_s)
-
-
 
 class NodeStatusCollector(DataCollector):
     nodename: str
@@ -422,28 +413,47 @@ def get_status_collector() -> NodeStatusCollector:
     else:
         return NodeStatusCollector()
 
-# Main function to run the app and scheduler
-async def main(*, host: str, port: int):
-    shutdown_event = asyncio.Event()
 
-    await broker.connect(f"{host}:{port}")
+class Controller:
+    collector: DataCollector
+    consumer: KafkaConsumer
+    shutdown_event: asyncio.Event
 
-    hostname = socket.gethostname()
-    status_collector = get_status_collector()
+    hostname: str
+
+    def __init__(self, collector: DataCollector,
+            bootstrap_servers: str,
+            shutdown_event: asyncio.Event,
+            listen_interval_in_s: int = 2):
+        self.consumer = KafkaConsumer(bootstrap_servers=bootstrap_servers)
+        self.collector = collector
+        self.shutdown_event = shutdown_event
+
+        self._listen_interval_in_s = listen_interval_in_s
+        self.hostname = socket.gethostname()
+
+    async def run(self):
+        while not self.shutdown_event.is_set():
+            msg = self.consumer.poll()
+            if msg:
+                command = json.loads(msg.decode("UTF-8"))
+                logger.debug(f"Control command received: {command}")
+                self.handle(command)
+
+            await asyncio.sleep(self._listen_interval_in_s)
 
     # Handle control messages
-    @broker.subscriber(KAFKA_PROBE_CONTROL_TOPIC)
-    def handle(data, logger: Logger):
+    def handle(self, data):
         handle_message = False
         if "node" in data:
             node = data["node"]
             if type(node) == list:
                 for name_pattern in node:
-                    if re.match(name_pattern, hostname):
+                    if re.match(name_pattern, self.hostname):
                         handle_message = True
                         break
-            elif re.match(name_pattern, hostname) is None:
-                return
+            elif re.match(node, self.hostname):
+                handle_message = True
 
         if not handle_message:
             # this is not the correct receiver
@@ -452,21 +462,43 @@ async def main(*, host: str, port: int):
         if "action" in data:
             action = data["action"]
             if action == "stop":
-                logger.warning(f"Shutdown requested for {hostname}")
-                shutdown_event.set()
+                logger.warning(f"Shutdown requested for {self.hostname}")
+                self.shutdown_event.set()
                 os.kill(os.getpid(), signal.SIGINT)
             elif action == "set_interval":
                 new_interval = int(data["interval_in_s"])
                 logger.info(f"Setting new interval: {new_interval}")
-                status_collector.sampling_interval_in_s = new_interval
+                self.collector.sampling_interval_in_s = new_interval
 
-    # Schedule the FastStream app to run
-    app_task = asyncio.create_task(app.run())
+
+# Main function to run the app and scheduler
+async def main(*, host: str, port: int):
+    shutdown_event = asyncio.Event()
+
+    broker = f"{host}:{port}"
+    status_collector = get_status_collector()
+
+    node_status_producer = KafkaProducer(
+            value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8'),
+            bootstrap_servers=broker
+    )
+
+    def publish_fn(sample):
+        try:
+            future = node_status_producer.send(KAFKA_NODE_STATUS_TOPIC, dict(sample))
+            future.get(timeout=10)
+            logger.debug("Published message")
+            return True
+        except Exception as e:
+            logger.warning(f"Publishing failed: {e}")
+            return False
 
     # Schedule the periodic publisher
-    collector_task = asyncio.create_task(status_collector.collect(shutdown_event))
+    collector_task = asyncio.create_task(status_collector.collect(shutdown_event, publish_fn))
+    controller = Controller(status_collector, bootstrap_servers=broker, shutdown_event=shutdown_event)
+    control_task = asyncio.create_task(controller.run())
 
-    tasks = [app_task, collector_task]
+    tasks = [control_task, collector_task]
     # Wait for all tasks to complete (they run forever)
     try:
         await asyncio.gather(*tasks)
@@ -478,6 +510,9 @@ async def main(*, host: str, port: int):
         print("All tasks gracefully stopped")
 
 def cli_run():
+    logging.basicConfig()
+    logger.setLevel(logging.INFO)
+
     parser = ArgumentParser()
     parser.add_argument("--host", type=str, default=None, required=True)
     parser.add_argument("--port", type=int, default=10092)
