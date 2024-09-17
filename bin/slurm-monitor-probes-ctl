@@ -1,6 +1,8 @@
 #!/usr/bin/bash -i
 
+SCRIPT_NAME=$(realpath -L $0)
 SCRIPT_DIR=$(realpath -L $(dirname $0))
+VENV_ACTIVATE=$SCRIPT_DIR/activate
 
 TARGET_HOST=srl-login3.cm.cluster
 BASE_DIR=/tmp/slurm-monitor-probe
@@ -23,10 +25,10 @@ function deploy() {
         else
             if [ $DRYRUN -eq 1 ]; then
                 echo "Deploying to $node -- dryrun"
-                echo "ssh roehr@${node} $SCRIPT_DIR/probes.sh start-probe"
+                echo "ssh roehr@${node} $SCRIPT_NAME start-probe"
             else
                echo "Deploying to $node"
-               ssh roehr@${node} $SCRIPT_DIR/probes.sh start-probe
+               ssh roehr@${node} $SCRIPT_NAME start-probe
             fi
             echo $node >> $TARGET_LOG
         fi
@@ -59,7 +61,7 @@ function stop_probe() {
 function start_probe() {
     stop_probe
 
-    venv-activate slurm-monitor-dev
+    . $VENV_ACTIVATE
     echo "Starting slurm-monitor-probe (check $LOG_FILE)"
     nohup slurm-monitor-probe --host $TARGET_HOST > $LOG_FILE 2>&1 &
     echo $! > $PID_FILE
