@@ -14,10 +14,12 @@ from fastapi_cache.backends.inmemory import InMemoryBackend
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from slurm_monitor.api.v1.router import app as api_v1_app
 from slurm_monitor.slurm import Slurm
-import slurm_monitor.api.v1.monitor as monitor
 from slurm_monitor.app_settings import AppSettings
+from slurm_monitor.api.v1.router import app as api_v1_app
+import slurm_monitor.api.v1.monitor as monitor
+from slurm_monitor.db.v1.data_collector import start_jobs_collection
+from slurm_monitor.db.v1.db import SlurmMonitorDB
 
 import logging
 from logging import getLogger
@@ -41,9 +43,15 @@ async def lifespan(app: FastAPI):
     monitor.load_node_infos()
     logger.info("Done")
 
+    app_settings = AppSettings.initialize()
+    database = SlurmMonitorDB(app_settings.database)
+    logger.info("Startup of jobs collector")
+    jobs_pool = start_jobs_collection(database)
+
     yield
-    # Do nothing at shutdown
+
     logger.info("Shutting down ...")
+    jobs_pool.stop()
 
 
 # First make sure that this runs on a slurm system

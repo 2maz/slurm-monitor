@@ -13,10 +13,12 @@ import logging
 import re
 
 from slurm_monitor.utils import utcnow
+from slurm_monitor.app_settings import AppSettings
+from slurm_monitor.slurm import Slurm
+
 from .db import SlurmMonitorDB, DatabaseSettings, Database
 from .db_tables import GPUStatus, JobStatus, Nodes
 
-from slurm_monitor.slurm import Slurm
 
 logger = logging.getLogger(__name__)
 
@@ -207,48 +209,9 @@ class JobStatusCollector(DataCollector[JobStatus], Observable[JobStatus]):
 
         return [JobStatus.from_json(x) for x in response["jobs"]]
 
-def cli_run():
-    Slurm.ensure_restd()
-
-    parser = ArgumentParser()
-    parser.add_argument("mode", default="prod")
-    parser.add_argument("--db_uri", type=str, help="timescaledb://slurmuser:ex3cluster@srl-login3.cm.cluster:10100/ex3cluster")
-
-    args, unknown = parser.parse_known_args()
-
-    db_settings = DatabaseSettings()
-    db_settings.uri = args.db_uri
-
-    if db_settings.uri.startswith("sqlite:///"):
-        db_home = Path(db_settings.uri.replace("sqlite:///","")).parent
-        db_home.mkdir(parents=True, exist_ok=True)
-
-    if args.mode == "dev":
-        db_settings.uri = db_settings.uri.replace(".sqlite", ".dev.sqlite")
-        logger.warning(f"Running in development mode: using {db_settings.uri}")
-    elif args.mode == "prod":
-        logger.warning(f"Running in production mode: using {db_settings.uri}")
-    else:
-        logger.warning("Missing 'mode'")
-        print(parser)
-        sys.exit(10)
-
-    run(db_settings)
-
-def run(db_settings: DatabaseSettings | None = None):
-    if db_settings is None:
-        db_settings = DatabaseSettings()
-
-    db = SlurmMonitorDB(db_settings=db_settings)
-
+def start_jobs_collection(database: SlurmMonitorDB | None = None) -> CollectorPool[JobStatus]:
     job_status_collector = JobStatusCollector()
-    jobs_pool = CollectorPool[JobStatus](db=db, name='job status')
+    jobs_pool = CollectorPool[JobStatus](db=database, name='job status')
     jobs_pool.add_collector(job_status_collector)
     jobs_pool.start()
-
-    while True:
-        answer = input("\nEnter 'q' to quit\n\n")
-        if answer.lower().startswith('q'):
-            break
-
-    jobs_pool.stop()
+    return jobs_pool

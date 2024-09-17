@@ -84,7 +84,6 @@ slurm-monitor = "slurm_monitor.cli.main:run"
 slurm-monitor-collector = "slurm_monitor.db.v0.data_collector:cli_run"
 
 slurm-monitor-probe = "slurm_monitor.db.v1.data_publisher:cli_run"
-slurm-monitor-job_collector = "slurm_monitor.db.v1.data_collector:cli_run"
 slurm-monitor-db_subscriber = "slurm_monitor.db.v1.data_subscriber:cli_run"
 
 slurm-monitor-migrate = "slurm_monitor.db.migrate:cli_run"
