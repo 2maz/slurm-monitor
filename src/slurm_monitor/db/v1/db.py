@@ -174,6 +174,9 @@ class SlurmMonitorDB(Database):
         window_start_time = None
         window_index = 0
 
+        if not data:
+            return data
+
         # requiring ordered list (oldest first)
         if data[0].timestamp > data[-1].timestamp:
             data.reverse()
