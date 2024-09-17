@@ -8,8 +8,6 @@ BASE_DIR=$(realpath -L $SCRIPT_DIR/../../)
 VENV_NAME="$BASE_DIR/venv-$(uname -p)"
 
 
-TARGET_HOST=srl-login3.cm.cluster
-
 LOG_DIR=/tmp/slurm-monitor-probe
 PID_FILE=$LOG_DIR/pid 
 LOG_FILE=$LOG_DIR/main.log
@@ -20,19 +18,56 @@ if [ ! -d $BASE_DIR ]; then
     mkdir -p $BASE_DIR
 fi
 
+# Default assumes probe is triggered from the receiving node
+TARGET_HOST=$(hostname)
+RUNUSER=$USER
+MODE=
+
+function usage() {
+    echo "usage $0 [-t <target-host>] [-u <user>] [-d] deploy | undeploy | start-probe | stop-probe"
+    echo "options:"
+    echo "    -d  dry-run"
+}
+
+function process_options() {
+    local OPTIND
+    while getopts 't:u:dh' option; do
+        case $option in
+            t)
+                TARGET_HOST=$OPTARG
+                ;;
+            u)
+                RUNUSER=$OPTARG
+                ;;
+            d)
+                DRYRUN=1
+                ;;
+            h)
+                usage
+                ;;
+            *)
+                echo "Unknown option $option"
+                usage
+                ;;
+        esac
+    done
+    MODE="${@:$OPTIND:1}"
+}
+
 function deploy() {
-    TARGET_LOG=$BASE_DIR/deployed-probes-$(date +%Y%m%d-%H%M%S).target.log
+    TARGET_LOG=$LOG_DIR/deployed-probes-$(date +%Y%m%d-%H%M%S).target.log
     for node in `sinfo -N | cut -d' ' -f1 | tail -n +2 | uniq`; do
+        # Some site-specific excludes
         if [[ "$node" =~ ^srl-[amn] ]] || [[ "$node" =~ ^v ]]; then
             echo "Skip $node"
             echo "# $node " >> $TARGET_LOG
         else
             if [ $DRYRUN -eq 1 ]; then
                 echo "Deploying to $node -- dryrun"
-                echo "ssh roehr@${node} $SCRIPT_NAME start-probe"
+                echo "ssh ${RUNUSER}@${node} $SCRIPT_NAME -t $TARGET_HOST start-probe"
             else
                echo "Deploying to $node"
-               ssh roehr@${node} $SCRIPT_NAME start-probe
+               ssh ${RUNUSER}@${node} $SCRIPT_NAME -t $TARGET_HOST start-probe
             fi
             echo $node >> $TARGET_LOG
         fi
@@ -68,17 +103,29 @@ function start_probe() {
     if [ ! -d $VENV_NAME ]; then
         python3 -m venv $VENV_NAME
         . $VENV_NAME/bin/activate
-        pip install $BASE_DIR/slurm-monitor
+
+        if [ -e $SCRIPT_DIR/../pyproject.toml ]; then
+            pip install $SCRIPT_DIR/..
+        else
+            pip install $BASE_DIR/slurm-monitor
+        fi
+    else
+        echo "Sourcing $VENV_NAME/bin/activate"
+        . $VENV_NAME/bin/activate
     fi
 
     echo "Starting slurm-monitor-probe (check $LOG_FILE)"
-    nohup slurm-monitor-probe --host $TARGET_HOST > $LOG_FILE 2>&1 &
-    echo $! > $PID_FILE
+    if [ $DRYRUN -eq 0 ]; then
+        nohup slurm-monitor-probe --host $TARGET_HOST > $LOG_FILE 2>&1 &
+        echo $! > $PID_FILE
+    else
+        echo "nohup slurm-monitor-probe --host $TARGET_HOST > $LOG_FILE 2>&1 & (dryrun)"
+    fi
 }
 
 
 function undeploy() {
-    _LASTFILE=$(ls -rt deployed-probes-* | tail -n 1)
+    _LASTFILE=$(ls -rt $LOG_DIR/deployed-probes-* | tail -n 1)
     NODES=${1:-${_LASTFILE}}
 
     while [ 0 ]; do
@@ -95,8 +142,8 @@ function undeploy() {
             echo "Ignoring $node"
         else
             echo "Stopping probe on: $node"
-            echo "ssh $USER@${node} $SCRIPT_DIR/probes.sh stop-probe"
-            ssh $USER@${node} $SCRIPT_DIR/probes.sh stop-probe
+            echo "ssh $USER@${node} $SCRIPT_NAME stop-probe"
+            ssh $USER@${node} $SCRIPT_NAME stop-probe
         fi
     done <$NODES
 
@@ -106,19 +153,9 @@ function undeploy() {
     done
 }
 
+process_options $@
 
-if [ -z "$1" ]; then
-    echo "usage $0 [deploy | undeploy | start_probe | stop_probe ] [--dry-run]"
-    exit 0
-fi
-
-if [ -n "$2" ]; then
-    if [[ $2 =~ --dry-run ]]; then
-        DRYRUN=1
-    fi
-fi
-
-case $1 in
+case $MODE in
     "deploy")
         deploy
         ;;
@@ -132,6 +169,7 @@ case $1 in
         start_probe
         ;;
     *)
-        echo "unknown command"
+        echo "Unknown mode '$MODE'"
+        usage
         ;;
 esac
