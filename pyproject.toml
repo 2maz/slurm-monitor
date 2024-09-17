@@ -30,11 +30,17 @@ classifiers = [
 ]
 
 dependencies = [
+    "kafka-python-ng",
     "numpy",
     "pandas",
+    "psutil",
     "pydantic",
     "pydantic-settings",
     "pyyaml",
+    "psycopg2-binary",
+    "sqlalchemy",
+    "sqlalchemy-timescaledb",
+    "tqdm",
 ]
 
 [project.urls]
@@ -49,16 +55,7 @@ restapi = [
     "fastapi",
     "fastapi-cache2[memcache]",
     "prometheus-fastapi-instrumentator",
-    "sqlalchemy",
-    "sqlalchemy-timescaledb",
-    "psycopg2-binary",
     "uvicorn",
-    "tqdm",
-]
-
-probe = [
-    "kafka-python-ng",
-    "psutil",
 ]
 
 dev = [

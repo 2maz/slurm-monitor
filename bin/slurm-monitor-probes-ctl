@@ -2,13 +2,17 @@
 
 SCRIPT_NAME=$(realpath -L $0)
 SCRIPT_DIR=$(realpath -L $(dirname $0))
-VENV_ACTIVATE=$SCRIPT_DIR/activate
+
+# This script will be called from a venv directory - when installed
+BASE_DIR=$(realpath -L $SCRIPT_DIR/../../)
+VENV_NAME="$BASE_DIR/venv-$(uname -p)"
+
 
 TARGET_HOST=srl-login3.cm.cluster
-BASE_DIR=/tmp/slurm-monitor-probe
 
-PID_FILE=$BASE_DIR/pid 
-LOG_FILE=$BASE_DIR/main.log
+LOG_DIR=/tmp/slurm-monitor-probe
+PID_FILE=$LOG_DIR/pid 
+LOG_FILE=$LOG_DIR/main.log
 
 DRYRUN=0
 
@@ -60,8 +64,13 @@ function stop_probe() {
 
 function start_probe() {
     stop_probe
+    
+    if [ ! -d $VENV_NAME ]; then
+        python3 -m venv $VENV_NAME
+        . $VENV_NAME/bin/activate
+        pip install $BASE_DIR/slurm-monitor
+    fi
 
-    . $VENV_ACTIVATE
     echo "Starting slurm-monitor-probe (check $LOG_FILE)"
     nohup slurm-monitor-probe --host $TARGET_HOST > $LOG_FILE 2>&1 &
     echo $! > $PID_FILE
