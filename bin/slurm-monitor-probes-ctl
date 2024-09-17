@@ -1,0 +1,126 @@
+#!/usr/bin/bash -i
+
+SCRIPT_DIR=$(realpath -L $(dirname $0))
+
+TARGET_HOST=srl-login3.cm.cluster
+BASE_DIR=/tmp/slurm-monitor-probe
+
+PID_FILE=$BASE_DIR/pid 
+LOG_FILE=$BASE_DIR/main.log
+
+DRYRUN=0
+
+if [ ! -d $BASE_DIR ]; then
+    mkdir -p $BASE_DIR
+fi
+
+function deploy() {
+    TARGET_LOG=$BASE_DIR/deployed-probes-$(date +%Y%m%d-%H%M%S).target.log
+    for node in `sinfo -N | cut -d' ' -f1 | tail -n +2 | uniq`; do
+        if [[ "$node" =~ ^srl-[amn] ]] || [[ "$node" =~ ^v ]]; then
+            echo "Skip $node"
+            echo "# $node " >> $TARGET_LOG
+        else
+            if [ $DRYRUN -eq 1 ]; then
+                echo "Deploying to $node -- dryrun"
+                echo "ssh roehr@${node} $SCRIPT_DIR/probes.sh start-probe"
+            else
+               echo "Deploying to $node"
+               ssh roehr@${node} $SCRIPT_DIR/probes.sh start-probe
+            fi
+            echo $node >> $TARGET_LOG
+        fi
+    done
+}
+
+function stop_probe() {
+    if [ -e $PID_FILE ]; then
+        PID=$(< $PID_FILE)
+        # check if process is still activate
+        ps $PID > /dev/null
+        if [ $? -eq 0 ]; then
+            kill $PID
+            echo "$(hostname): sent kill signal to shutdown probe, now waiting for $PID to stop "
+            while [ true ]; do
+                ps $PID > /dev/null
+                if [ $? -eq 1 ]; then
+                    break;
+                fi
+                echo -n "."
+                sleep 5
+            done
+        fi
+        rm $PID_FILE
+        echo "$(hostname): cleanup completed"
+    fi
+    echo "Probe $(hostname) stopped"
+}
+
+function start_probe() {
+    stop_probe
+
+    venv-activate slurm-monitor-dev
+    echo "Starting slurm-monitor-probe (check $LOG_FILE)"
+    nohup slurm-monitor-probe --host $TARGET_HOST > $LOG_FILE 2>&1 &
+    echo $! > $PID_FILE
+}
+
+
+function undeploy() {
+    _LASTFILE=$(ls -rt deployed-probes-* | tail -n 1)
+    NODES=${1:-${_LASTFILE}}
+
+    while [ 0 ]; do
+        echo -n "Use $NODES? [Y/n]"
+        read answer
+        if [[ $answer =~ ^[yY] ]]; then
+            break
+        fi
+    done
+
+
+    while read node; do
+        if [[ $node =~ \# ]]; then
+            echo "Ignoring $node"
+        else
+            echo "Stopping probe on: $node"
+            echo "ssh $USER@${node} $SCRIPT_DIR/probes.sh stop-probe"
+            ssh $USER@${node} $SCRIPT_DIR/probes.sh stop-probe
+        fi
+    done <$NODES
+
+    echo "Waiting for jobs"
+    for job in `jobs -p`; do
+        wait $job
+    done
+}
+
+
+if [ -z "$1" ]; then
+    echo "usage $0 [deploy | undeploy | start_probe | stop_probe ] [--dry-run]"
+    exit 0
+fi
+
+if [ -n "$2" ]; then
+    if [[ $2 =~ --dry-run ]]; then
+        DRYRUN=1
+    fi
+fi
+
+case $1 in
+    "deploy")
+        deploy
+        ;;
+    "undeploy")
+        echo "undeploy"
+        ;;
+    "stop-probe")
+        stop_probe
+        ;;
+    "start-probe")
+        start_probe
+        ;;
+    *)
+        echo "unknown command"
+        ;;
+esac

@@ -91,12 +91,11 @@ slurm-monitor-migrate = "slurm_monitor.db.migrate:cli_run"
 [tool.mypy]
 ignore_missing_imports = true
 
-[tools.setuptools]
-package-dir = "src"
-
-# Disable to be able to debug in IDE
-#[tool.pytest.ini_options]
-#addopts = "--cov --cov-report html:doc/ --cov-report term-missing"
+[tool.setuptools]
+    script-files = [
+        "bin/slurm-monitor-probes-ctl",
+        "bin/slurm-monitor-ctl"
+    ]
 
 [tool.coverage.run]
 source = ["src"]

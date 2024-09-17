@@ -2,7 +2,37 @@
 
 SCRIPT_DIR=$(dirname $(realpath -L $0))
 
-SSL_CERT_DIR=${SSL_CERT_DIR:-$SCRIPT_DIR/tests/data/ssl}
+MODE=prod
+SSL_CERT_DIR=$SSL_CERT_DIR/tests/data/ssl
+LOG_DIR=.
+
+function usage() {
+    echo "usage $0 [-m prod|dev] [-c <cert-dir>] [-l <log-dir>]"
+}
+
+while getopts 'm:c:' option; do
+    case $option in
+        m)
+            MODE=$OPTARG
+            ;;
+        c)
+            SSL_CERT_DIR=$OPTARG
+            ;;
+        l)
+            LOG_DIR=$OPTARG
+            ;;
+        *)
+            echo "Unkown option: $option"
+            usage
+            exit 10
+            ;;
+    esac
+done
+
+if [ ! -d "$SSL_CERT_DIR" ]; then
+    echo "SSL_CERT_DIR does not exist"
+    exit 20
+fi
 
 SSL_KEY_FILE=$SSL_CERT_DIR/key.pem
 SSL_CERT_FILE=$SSL_CERT_DIR/cert.pem
@@ -16,6 +46,11 @@ if [ ! -e $SSL_CERT_FILE ]; then
     exit 11
 fi
 
+if [ ! -d $LOG_DIR ]; then
+    mkdir -p $LOG_DIR
+fi
+
+
 SLURM_MONITOR_HOST=${SLURM_MONITOR_HOST:-0.0.0.0}
 SLURM_MONITOR_PORT=${SLURM_MONITOR_PORT:-12000}
 
@@ -24,7 +59,7 @@ DB_HOME="sqlite:///$DB_BASE_DIR"
 
 
 mkdir -p $DB_BASE_DIR
-if [ "$1" == 'dev' ]; then
+if [ "$MODE" == 'dev' ]; then
     echo "Running in development mode:"
     SLURM_MONITOR_DATABASE_URI="$DB_HOME/slurm-monitor-db.sqlite"
     SLURM_MONITOR_HOST=$SLURM_MONITOR_HOST
@@ -32,6 +67,7 @@ if [ "$1" == 'dev' ]; then
 
     echo "    SLURM_MONITOR_DATABASE_URI=$SLURM_MONITOR_DATABASE_URI"
     echo "    HOST:PORT=$SLURM_MONITOR_HOST:$SLURM_MONITOR_PORT"
+    echo "    LOG_DIR=$LOG_DIR"
 
     export SLURM_MONITOR_DATABASE_URI
     python3 -m uvicorn --reload slurm_monitor.main:app --port $SLURM_MONITOR_PORT --host $SLURM_MONITOR_HOST --ssl-keyfile $SSL_KEY_FILE --ssl-certfile $SSL_CERT_FILE
@@ -49,6 +85,7 @@ else
     fi
 
     echo "    HOST:PORT=$SLURM_MONITOR_HOST:$SLURM_MONITOR_PORT"
+    echo "    LOG_DIR=$LOG_DIR"
 
-    python3 -m uvicorn --reload slurm_monitor.main:app --port $SLURM_MONITOR_PORT --host $SLURM_MONITOR_HOST --ssl-keyfile $SSL_KEY_FILE --ssl-certfile $SSL_CERT_FILE > slurm-monitor.main.log 2>&1 &
+    python3 -m uvicorn --reload slurm_monitor.main:app --port $SLURM_MONITOR_PORT --host $SLURM_MONITOR_HOST --ssl-keyfile $SSL_KEY_FILE --ssl-certfile $SSL_CERT_FILE > $LOG_DIR/slurm-monitor.main.log 2>&1 &
 fi
