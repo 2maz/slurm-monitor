@@ -8,7 +8,8 @@ class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
                     env_file='.env',
                     env_nested_delimiter='_',
-                    env_prefix='SLURM_MONITOR_'
+                    env_prefix='SLURM_MONITOR_',
+                    extra='ignore'
                 )
     host: str = Field(default="localhost")
     port: int = Field(default=12000)
