@@ -1,4 +1,4 @@
-#!/usr/bin/bash -i
+#!/usr/bin/bash
 
 SCRIPT_NAME=$(realpath -L $0)
 SCRIPT_DIR=$(realpath -L $(dirname $0))
@@ -60,7 +60,6 @@ function deploy() {
         # Some site-specific excludes
         if [[ "$node" =~ ^srl-[amn] ]] || [[ "$node" =~ ^v ]]; then
             echo "Skip $node"
-            echo "# $node " >> $TARGET_LOG
         else
             if [ $DRYRUN -eq 1 ]; then
                 echo "Deploying to $node -- dryrun"
@@ -136,16 +135,18 @@ function undeploy() {
         fi
     done
 
-
-    while read node; do
-        if [[ $node =~ \# ]]; then
-            echo "Ignoring $node"
+    for node in $(cat $NODES); do
+        if [[ $node =~ ^# ]]; then
+            echo "Skipping $node"
         else
-            echo "Stopping probe on: $node"
-            echo "ssh $USER@${node} $SCRIPT_NAME stop-probe"
-            ssh $USER@${node} $SCRIPT_NAME stop-probe
+            echo "Stopping probe on: $node";
+            if [ $DRYRUN -eq 0 ]; then
+                ssh $USER@${node} $SCRIPT_NAME stop-probe
+            else
+                echo "ssh $USER@${node} $SCRIPT_NAME stop-probe (dryrun)"
+            fi
         fi
-    done <$NODES
+    done
 
     echo "Waiting for jobs"
     for job in `jobs -p`; do
@@ -160,7 +161,7 @@ case $MODE in
         deploy
         ;;
     "undeploy")
-        echo "undeploy"
+        undeploy
         ;;
     "stop-probe")
         stop_probe
