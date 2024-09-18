@@ -22,16 +22,17 @@ fi
 TARGET_HOST=$(hostname)
 RUNUSER=$USER
 MODE=
+NODELIST=
 
 function usage() {
-    echo "usage $0 [-t <target-host>] [-u <user>] [-d] deploy | undeploy | start-probe | stop-probe"
+    echo "usage $0 [-t <target-host>] [-u <user>] [-n <nodelist>] [-d] deploy | undeploy | start-probe | stop-probe"
     echo "options:"
     echo "    -d  dry-run"
 }
 
 function process_options() {
     local OPTIND
-    while getopts 't:u:dh' option; do
+    while getopts 't:u:n:dh' option; do
         case $option in
             t)
                 TARGET_HOST=$OPTARG
@@ -45,6 +46,9 @@ function process_options() {
             h)
                 usage
                 ;;
+            n)
+                NODELIST=$OPTARG
+                ;;
             *)
                 echo "Unknown option $option"
                 usage
@@ -56,19 +60,26 @@ function process_options() {
 
 function deploy() {
     TARGET_LOG=$LOG_DIR/deployed-probes-$(date +%Y%m%d-%H%M%S).target.log
-    for node in `sinfo -N | cut -d' ' -f1 | tail -n +2 | uniq`; do
+
+    if [ -z "$NODELIST" ]; then
+        NODELIST=`sinfo -N | cut -d' ' -f1 | tail -n +2 | uniq`
+    else
+        NODELIST=`echo $NODELIST | sed 's/,/\n/g' | uniq`
+    fi
+
+    for node in $NODELIST; do
         # Some site-specific excludes
         if [[ "$node" =~ ^srl-[amn] ]] || [[ "$node" =~ ^v ]]; then
             echo "Skip $node"
         else
             if [ $DRYRUN -eq 1 ]; then
-                echo "Deploying to $node -- dryrun"
-                echo "ssh ${RUNUSER}@${node} $SCRIPT_NAME -t $TARGET_HOST start-probe"
+                 echo "Deploying to $node -- dryrun"
+                 echo "ssh ${RUNUSER}@${node} $SCRIPT_NAME -t $TARGET_HOST start-probe"
             else
-               echo "Deploying to $node"
-               ssh ${RUNUSER}@${node} $SCRIPT_NAME -t $TARGET_HOST start-probe
+                echo "Deploying to $node"
+                ssh ${RUNUSER}@${node} $SCRIPT_NAME -t $TARGET_HOST start-probe
+                echo $node >> $TARGET_LOG
             fi
-            echo $node >> $TARGET_LOG
         fi
     done
 }
