@@ -1,5 +1,6 @@
 import pytest
-from slurm_monitor.db.db_tables import GPUs, GPUIdList
+from slurm_monitor.db.v1.db_tables import GPUs, GPUIdList, GPUStatus
+import datetime as dt
 
 
 @pytest.mark.parametrize(
@@ -25,3 +26,31 @@ def test_GPUs():
 
     gpu = GPUs(**args)
     assert args == dict(gpu)
+
+def test_GPUStatus_merge():
+
+    now = dt.datetime.utcnow()
+    uuid = "gpu-1"
+
+    status_a = GPUStatus(uuid=uuid,
+            temperature_gpu=5,
+            power_draw=10,
+            utilization_gpu=20,
+            utilization_memory=30,
+            timestamp=now)
+
+    status_b = GPUStatus(uuid=uuid,
+            temperature_gpu=10,
+            power_draw=20,
+            utilization_gpu=30,
+            utilization_memory=40,
+            timestamp=now)
+
+    status_ab = GPUStatus.merge([status_a, status_b])
+
+    assert status_ab.uuid == uuid
+    assert status_ab.temperature_gpu == 7.5
+    assert status_ab.power_draw == 15
+    assert status_ab.utilization_gpu == 25
+    assert status_ab.utilization_memory == 35
+

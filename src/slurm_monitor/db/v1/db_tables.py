@@ -342,6 +342,6 @@ class GPUStatus(TableBase):
             temperature_gpu=merge_op(values["temperature_gpu"]),
             power_draw=merge_op(values["power_draw"]),
             utilization_gpu=merge_op(values["utilization_gpu"]),
-            utilization_memory=merge_op(values["utilization_gpu"]),
+            utilization_memory=merge_op(values["utilization_memory"]),
             timestamp=reference_sample.timestamp,
         )
