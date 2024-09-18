@@ -5,9 +5,9 @@ import logging
 import json
 import datetime as dt
 
-from .db import DatabaseSettings, SlurmMonitorDB
-from .db_tables import CPUStatus, GPUs, GPUStatus, Nodes
-from .data_publisher import KAFKA_NODE_STATUS_TOPIC
+from slurm_monitor.db.v1.db import DatabaseSettings, SlurmMonitorDB
+from slurm_monitor.db.v1.db_tables import CPUStatus, GPUs, GPUStatus, Nodes
+from slurm_monitor.db.v1.data_publisher import KAFKA_NODE_STATUS_TOPIC
 from slurm_monitor.app_settings import AppSettings
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class MessageHandler:
         self.database = database
         self.nodes = {}
 
-    def process(self, message):
+    def process(self, message) -> dt.datetime:
         nodes_update = {}
 
         sample = {}
@@ -69,11 +69,15 @@ class MessageHandler:
         if nodes_update:
             self.database.insert_or_update([x for x in nodes_update.values()])
             self.nodes |= nodes_update
-
-        self.database.insert_or_update(cpu_samples)
+       
+        self.database.insert(cpu_samples)
         if gpus:
             self.database.insert_or_update([x for x in gpus.values()])
-            self.database.insert_or_update(gpu_samples)
+            self.database.insert(gpu_samples)
+
+
+        # Current timestamp
+        return cpu_samples[0].node, cpu_samples[0].timestamp
 
 
 def run(*,
@@ -88,8 +92,11 @@ def run(*,
             start_time = dt.datetime.utcnow()
             while True:
                 for idx, msg in enumerate(consumer, 1):
-                    msg_handler.process(msg.value.decode("UTF-8"))
-                    print(f"Messages consumed: {idx} since {start_time}\r", flush=True, end='')
+                    try:
+                        node, timestamp = msg_handler.process(msg.value.decode("UTF-8"))
+                        print(f"{dt.datetime.utcnow()} messages consumed: {idx} since {start_time} -- last received at {timestamp} from {node}      \r", flush=True, end='')
+                    except Exception as e:
+                        logger.warning("Message processing failed: {e}")
         except Exception as e:
             logger.warning(f"Connection failed - retrying in 5s - {e}")
             time.sleep(retry_timeout_in_s)
