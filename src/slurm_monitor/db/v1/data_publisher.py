@@ -368,9 +368,7 @@ class ROCMInfoCollector(NodeStatusCollector):
                 node=self.nodename,
                 power_draw=value["Average Graphics Package Power (W)"],
                 temperature_gpu=value["Temperature (Sensor edge) (C)"],
-                utilization_memory=int(value["VRAM Total Used Memory (B)"])
-                * 1.0
-                / int(value["VRAM Total Memory (B)"]),
+                utilization_memory=int(value["GPU memory use (%)"]),
                 utilization_gpu=value["GPU use (%)"],
                 memory_total=int(value["VRAM Total Memory (B)"])/(1024**2),
                 timestamp=timestamp,
