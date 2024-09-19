@@ -508,14 +508,18 @@ async def main(*, host: str, port: int):
         print("All tasks gracefully stopped")
 
 def cli_run():
-    logging.basicConfig()
-    logger.setLevel(logging.INFO)
-
     parser = ArgumentParser()
     parser.add_argument("--host", type=str, default=None, required=True)
     parser.add_argument("--port", type=int, default=10092)
+    parser.add_argument("--log-level", type=str, default="INFO")
 
     args, options = parser.parse_known_args()
+
+    logging.basicConfig(
+            format='%(asctime)s %(levelname)-8s %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    logger.setLevel(logging.getLevelName(args.log_level))
 
     # Use asyncio.run to start the event loop and run the main coroutine
     asyncio.run(main(host=args.host, port=args.port))
