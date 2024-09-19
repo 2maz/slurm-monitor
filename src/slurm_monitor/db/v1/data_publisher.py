@@ -274,7 +274,7 @@ class HabanaInfoCollector(NodeStatusCollector):
                 power_draw=value["power.draw"],
                 temperature_gpu=value["temperature.aip"],
                 utilization_memory=int(value["memory.used"])
-                * 1.0
+                * 100.0
                 / int(value["memory.total"]),
                 utilization_gpu=value["utilization.aip"],
                 memory_total=value["memory.total"],
