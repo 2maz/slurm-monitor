@@ -5,6 +5,7 @@ from slurm_monitor.cli.base import BaseParser
 from logging import basicConfig, getLogger
 
 from slurm_monitor.cli.run import RunParser
+from slurm_monitor.cli.system_info import SystemInfoParser
 
 logger = getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -13,7 +14,9 @@ logger.setLevel(logging.INFO)
 class MainParser(ArgumentParser):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
         self.description = "slurm-monitor - provide interface for monitoring slurm"
+        self.add_argument("--log-level", type=str, default="INFO", help="Logging level")
 
         self.subparsers = self.add_subparsers(help="sub-command help")
 
@@ -28,13 +31,19 @@ def run():
     basicConfig()
 
     main_parser = MainParser()
+
     main_parser.attach_subcommand_parser(
         subcommand="run", help="Run", parser_klass=RunParser
+    )
+    main_parser.attach_subcommand_parser(
+        subcommand="system-info", help="Extract system information", parser_klass=SystemInfoParser
     )
 
     args = main_parser.parse_args()
     args.active_subparser.execute(args)
 
+    for logger in [logging.getLogger(x) for x in logging.root.manager.loggerDict]:
+        logger.setLevel(logging.getLevelName(args.log_level))
 
 if __name__ == "__main__":
     run()
