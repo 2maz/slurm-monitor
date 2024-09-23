@@ -9,7 +9,7 @@ VENV_NAME="$BASE_DIR/venv-$(uname -p)"
 
 
 LOG_DIR=/tmp/slurm-monitor-probe
-PID_FILE=$LOG_DIR/pid 
+PID_FILE=$LOG_DIR/pid
 LOG_FILE=$LOG_DIR/main.log
 
 DRYRUN=0
@@ -109,7 +109,7 @@ function stop_probe() {
 
 function start_probe() {
     stop_probe
-    
+
     if [ ! -d $VENV_NAME ]; then
         python3 -m venv $VENV_NAME
         . $VENV_NAME/bin/activate
