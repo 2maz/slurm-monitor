@@ -155,6 +155,12 @@ async def gpustatus(
             detail=f"ValueError: {end_time_in_s=} cannot be smaller than {start_time_in_s=}",
         )
 
+    if (end_time_in_s - start_time_in_s) > 3600*24*14:
+        raise HTTPException(
+            status_code=500,
+            detail="ValueError: timeframe cannot exceed 14 days",
+        )
+
     if resolution_in_s <= 0:
         raise HTTPException(
             status_code=500,
@@ -175,10 +181,79 @@ async def gpustatus(
         )
     }
 
-
-@api_router.get("/job/{job_id}")
-async def job_status(
-    job_id: int,
+@api_router.get("/nodes/{nodename}/gpu_status")
+async def gpu_status(
+    nodename: str,
+    start_time_in_s: float | None = None,
+    end_time_in_s: float | None = None,
+    resolution_in_s: int | None = None,
+    local_indices: str | None = None,
     dbi=Depends(db_ops.get_database),
 ):
-    return {"job_status": dbi.get_job(job_id=job_id)}
+    return gpustatus(nodename,
+            start_time_in_s=start_time_in_s,
+            end_time_in_s=end_time_in_s,
+            resolution_in_s=resolution_in_s,
+            local_indices=local_indices,
+            dbi=Depends(db_ops.get_database))
+
+
+
+@api_router.get("/job/{job_id}")
+@api_router.get("/jobs/{job_id}/info")
+async def job_status(
+    job_id: int,
+    start_time_in_s: float | None = None,
+    end_time_in_s: float | None = None,
+    resolution_in_s: int | None = None,
+    dbi=Depends(db_ops.get_database),
+):
+    return {"job_status": dbi.get_job(job_id=job_id) }
+
+
+@api_router.get("/jobs/{job_id}/system_status")
+async def job_system_status(
+    job_id: int,
+    start_time_in_s: float | None = None,
+    end_time_in_s: float | None = None,
+    resolution_in_s: int | None = None,
+    dbi=Depends(db_ops.get_database),
+):
+    if end_time_in_s is None:
+        now = utcnow()
+        end_time_in_s = now.timestamp()
+
+    # Default 1h interval
+    if start_time_in_s is None:
+        start_time_in_s = end_time_in_s - 60 * 60.0
+
+    if resolution_in_s is None:
+        resolution_in_s = max(60, int((end_time_in_s - start_time_in_s) / 120))
+
+    if end_time_in_s < start_time_in_s:
+        raise HTTPException(
+            status_code=500,
+            detail=f"ValueError: {end_time_in_s=} cannot be smaller than {start_time_in_s=}",
+        )
+
+    if (end_time_in_s - start_time_in_s) > 3600*24*14:
+        raise HTTPException(
+            status_code=500,
+            detail="ValueError: timeframe cannot exceed 14 days",
+        )
+
+    if resolution_in_s <= 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"ValueError: {resolution_in_s=} must be >= 1 and <= 24*60*60",
+        )
+
+    data = {}
+    processes = dbi.get_job_status_timeseries_list(
+            job_id=job_id,
+            start_time_in_s=start_time_in_s,
+            end_time_in_s=end_time_in_s,
+            resolution_in_s=resolution_in_s,
+    )
+    data["processes"] = processes
+    return data

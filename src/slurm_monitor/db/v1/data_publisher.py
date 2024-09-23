@@ -3,7 +3,6 @@ import psutil
 import asyncio
 from kafka import KafkaConsumer, KafkaProducer
 
-from dataclasses import dataclass
 
 from argparse import ArgumentParser
 import subprocess
@@ -20,6 +19,11 @@ import logging
 import re
 
 from slurm_monitor.utils import utcnow
+from slurm_monitor.utils.process import ProcessStats, JobMonitor
+
+from pydantic import BaseModel
+from pydantic_settings import BaseSettings
+
 logger = logging.getLogger(__name__)
 
 KAFKA_NODE_STATUS_TOPIC = "node-status"
@@ -27,20 +31,12 @@ KAFKA_PROBE_CONTROL_TOPIC = "slurm-monitor-probe-control"
 
 T = TypeVar("T")
 
-@dataclass
-class CPUStatus:
+class CPUStatus(BaseModel):
     local_id: int
     cpu_percent: float
-    timestamp: dt.datetime
-
-    def __iter__(self):
-        yield "local_id", self.local_id
-        yield "cpu_percent", self.cpu_percent
-        yield "timestamp", self.timestamp
 
 # from .db_tables import GPUs, GPUStatus
-@dataclass
-class GPUStatus:
+class GPUStatus(BaseModel):
     uuid: str
     node: str
     model: str
@@ -52,35 +48,17 @@ class GPUStatus:
     utilization_gpu: float
     utilization_memory: float
 
+    pstate: str | None = None
     timestamp: str | dt.datetime
 
-    pstate: str | None = None
 
-    def __iter__(self):
-        yield "uuid", self.uuid
-        yield "node", self.node
-        yield "model", self.model
-        yield "local_id", self.local_id
-        yield "memory_total", self.memory_total
-
-        yield "temperature_gpu", self.temperature_gpu
-        yield "power_draw", self.power_draw
-        yield "utilization_gpu", self.utilization_gpu
-        yield "utilization_memory", self.utilization_memory
-
-        yield "pstate", self.pstate
-        yield "timestamp", self.timestamp
-
-@dataclass
-class NodeStatus:
+class NodeStatus(BaseSettings):
     node: str
     cpus: list[CPUStatus]
     gpus: list[GPUStatus]
+    jobs: dict[int, list[ProcessStats]]
 
-    def __iter__(self):
-        yield "node", self.node
-        yield "cpus", [dict(x) for x in self.cpus]
-        yield "gpus", [dict(x) for x in self.gpus]
+    timestamp: dt.datetime
 
 class DataCollector():
     _stop: bool = False
@@ -135,14 +113,17 @@ class NodeStatusCollector(DataCollector):
 
         timestamp = utcnow()
         cpu_status = [
-                CPUStatus(cpu_percent=percent, local_id=idx, timestamp=timestamp)
+                CPUStatus(cpu_percent=percent, local_id=idx)
                 for idx, percent in enumerate(psutil.cpu_percent(percpu=True))
         ]
 
+        job_status = JobMonitor.get_active_jobs()
         return NodeStatus(
                 node=platform.node(),
                 gpus=gpu_status,
-                cpus=cpu_status)
+                cpus=cpu_status,
+                jobs=job_status.jobs,
+                timestamp=timestamp)
 
     def get_gpu_info(self) -> str:
         msg = f"{self.query_cmd} {self.query_argument}={','.join(self.query_properties)}"
@@ -422,8 +403,9 @@ class Controller:
     def __init__(self, collector: DataCollector,
             bootstrap_servers: str,
             shutdown_event: asyncio.Event,
-            listen_interval_in_s: int = 2):
-        self.consumer = KafkaConsumer(bootstrap_servers=bootstrap_servers)
+            listen_interval_in_s: int = 2,
+            subscriber_topic: str = KAFKA_PROBE_CONTROL_TOPIC):
+        self.consumer = KafkaConsumer(KAFKA_PROBE_CONTROL_TOPIC, bootstrap_servers=bootstrap_servers)
         self.collector = collector
         self.shutdown_event = shutdown_event
 
@@ -470,7 +452,9 @@ class Controller:
 
 
 # Main function to run the app and scheduler
-async def main(*, host: str, port: int):
+async def main(*, host: str, port: int,
+        publisher_topic: str = KAFKA_NODE_STATUS_TOPIC,
+        subscriber_topic: str = KAFKA_PROBE_CONTROL_TOPIC):
     shutdown_event = asyncio.Event()
 
     broker = f"{host}:{port}"
@@ -481,11 +465,11 @@ async def main(*, host: str, port: int):
             bootstrap_servers=broker
     )
 
-    def publish_fn(sample):
+    def publish_fn(sample: NodeStatus):
         try:
-            future = node_status_producer.send(KAFKA_NODE_STATUS_TOPIC, dict(sample))
+            future = node_status_producer.send(publisher_topic, sample.model_dump())
             future.get(timeout=10)
-            logger.debug("Published message")
+            logger.debug(f"Published message (on topic: {publisher_topic})")
             return True
         except Exception as e:
             logger.warning(f"Publishing failed: {e}")
@@ -493,7 +477,10 @@ async def main(*, host: str, port: int):
 
     # Schedule the periodic publisher
     collector_task = asyncio.create_task(status_collector.collect(shutdown_event, publish_fn))
-    controller = Controller(status_collector, bootstrap_servers=broker, shutdown_event=shutdown_event)
+    controller = Controller(status_collector,
+            bootstrap_servers=broker,
+            shutdown_event=shutdown_event,
+            subscriber_topic=subscriber_topic)
     control_task = asyncio.create_task(controller.run())
 
     tasks = [control_task, collector_task]
@@ -513,6 +500,17 @@ def cli_run():
     parser.add_argument("--port", type=int, default=10092)
     parser.add_argument("--log-level", type=str, default="INFO")
 
+    parser.add_argument("--publisher-topic",
+            type=str,
+            default=KAFKA_NODE_STATUS_TOPIC,
+            help=f"Topic under which samples are published -- default {KAFKA_NODE_STATUS_TOPIC}"
+    )
+    parser.add_argument("--subscriber-topic",
+            type=str,
+            default=KAFKA_PROBE_CONTROL_TOPIC,
+            help=f"Topic which is subscribed for control messages -- default {KAFKA_PROBE_CONTROL_TOPIC}"
+    )
+
     args, options = parser.parse_known_args()
 
     logging.basicConfig(
@@ -522,7 +520,10 @@ def cli_run():
     logger.setLevel(logging.getLevelName(args.log_level))
 
     # Use asyncio.run to start the event loop and run the main coroutine
-    asyncio.run(main(host=args.host, port=args.port))
+    asyncio.run(main(host=args.host, port=args.port,
+        publisher_topic=args.publisher_topic,
+        subscriber_topic=args.subscriber_topic
+        ))
 
 
 if __name__ == "__main__":

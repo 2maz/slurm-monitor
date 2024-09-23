@@ -132,6 +132,55 @@ class GPUs(TableBase):
     local_id = Column(Integer)
     memory_total = Column(BigInteger)
 
+class ProcessStatus(TableBase):
+    __tablename__ = "process_status"
+    __table_args__ = ({
+        'timescaledb_hypertable': {
+            'time_column_name': 'timestamp',
+            'chunk_time_interval': '24 hours',
+        }
+    })
+
+    pid = Column(Integer, index=True, primary_key=True)
+    job_id = Column(Integer, ForeignKey("job_status.job_id"), primary_key=True)
+    node = Column(String(255), ForeignKey("nodes.name"), primary_key=True)
+
+    cpu_percent = Column(Float)
+    memory_percent = Column(Float)
+
+    timestamp = Column(DateTime(), default=dt.datetime.now, primary_key=True)
+
+    def get_id(self) -> str:
+        return f"{self.node}-{self.job_id}-{self.pid}"
+
+    @classmethod
+    def merge(cls,
+            samples: list[ProcessStatus],
+            merge_op: Callable[list[int | float]] | None = np.mean) -> ProcessStatus:
+        values = {}
+
+        reference_sample = samples[-1]
+        for sample in samples:
+            assert sample.get_id() == reference_sample.get_id(), \
+                    f"sample id {sample.get_id()} does not match reference_sample {reference_sample.get_id()}"
+
+            for attribute in ["cpu_percent", "memory_percent"]:
+                value = getattr(sample, attribute)
+                if attribute not in values:
+                    values[attribute] = [value]
+                else:
+                    values[attribute].append(value)
+
+        return cls(
+            node=reference_sample.node,
+            job_id=reference_sample.job_id,
+            pid=reference_sample.pid,
+            cpu_percent=merge_op(values["cpu_percent"]),
+            memory_percent=merge_op(values["memory_percent"]),
+            timestamp=reference_sample.timestamp,
+        )
+
+
 class JobStatus(TableBase):
     __tablename__ = "job_status"
 
@@ -321,6 +370,9 @@ class GPUStatus(TableBase):
     pstate = Column(String(10), nullable=True)
 
     timestamp = Column(DateTime(), default=dt.datetime.now, primary_key=True)
+
+    def get_id(self):
+        return self.uuid
 
     @classmethod
     def merge(cls, samples: list[GPUStatus], merge_op: Callable[list[int | float]] | None = np.mean) -> GPUStatus:

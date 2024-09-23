@@ -1,23 +1,17 @@
-from argparse import ArgumentParser
 import subprocess
-from pathlib import Path
-import sys
 from threading import Thread
 import time
 import datetime as dt
-from abc import abstractmethod
 from queue import Queue, Empty
 from typing import Generic, TypeVar
 
 import logging
-import re
 
 from slurm_monitor.utils import utcnow
-from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.slurm import Slurm
 
-from .db import SlurmMonitorDB, DatabaseSettings, Database
-from .db_tables import GPUStatus, JobStatus, Nodes
+from .db import SlurmMonitorDB, Database
+from .db_tables import JobStatus
 
 
 logger = logging.getLogger(__name__)

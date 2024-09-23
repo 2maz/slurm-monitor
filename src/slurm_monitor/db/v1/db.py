@@ -8,8 +8,9 @@ from sqlalchemy import MetaData, event, create_engine
 from sqlalchemy.orm import DeclarativeMeta, sessionmaker
 from sqlalchemy.engine.url import URL, make_url
 
-from .db_tables import CPUStatus, GPUs, GPUStatus, JobStatus, Nodes, TableBase
+from .db_tables import CPUStatus, GPUs, GPUStatus, JobStatus, Nodes, ProcessStatus, TableBase
 import pandas as pd
+from typing import TypeVar
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -163,10 +164,13 @@ class SlurmMonitorDB(Database):
     JobStatus = JobStatus
     GPUStatus = GPUStatus
     CPUStatus = CPUStatus
+    ProcessStatus = ProcessStatus
 
+    T = TypeVar('T')
+    # T needs to comply to merge and get_id
     def apply_resolution(
-            self, data: list[GPUStatus], resolution_in_s: int,
-    ) -> list[GPUStatus]:
+            self, data: list[T], resolution_in_s: int,
+    ) -> list[T]:
         smoothed_data = []
         samples_in_window = {}
 
@@ -194,21 +198,21 @@ class SlurmMonitorDB(Database):
             if (
                 sample_timestamp - window_start_time
             ).total_seconds() < resolution_in_s:
-                if sample.uuid not in samples_in_window:
-                    samples_in_window[sample.uuid] = [sample]
+                if sample.get_id() not in samples_in_window:
+                    samples_in_window[sample.get_id()] = [sample]
                 else:
-                    samples_in_window[sample.uuid].append(sample)
+                    samples_in_window[sample.get_id()].append(sample)
             else:
-                smoothed_data.append(GPUStatus.merge(samples_in_window[sample.uuid]))
+                smoothed_data.append(sample.merge(samples_in_window[sample.get_id()]))
                 window_index += 1
 
-                samples_in_window[sample.uuid] = [sample]
+                samples_in_window[sample.get_id()] = [sample]
                 window_start_time = base_time + dt.timedelta(seconds=window_index*resolution_in_s)
 
 
-        for uuid, values in samples_in_window.items():
+        for _, values in samples_in_window.items():
             if values:
-                smoothed_data.append(GPUStatus.merge(values))
+                smoothed_data.append(sample.merge(values))
 
         return smoothed_data
 
@@ -309,6 +313,48 @@ class SlurmMonitorDB(Database):
             return data[0]
         else:
             return None
+
+    def get_job_status_timeseries_list(
+        self,
+        job_id: int,
+        start_time_in_s: float | None = None,
+        end_time_in_s: float | None = None,
+        resolution_in_s: int | None = None,
+    ) -> list[dict[str, any]]:
+        job_timeseries = []
+        logger.info(f"{job_id=} {start_time_in_s=} {end_time_in_s=} {resolution_in_s=}")
+
+        where = (ProcessStatus.job_id == job_id)
+        if start_time_in_s is not None:
+            start_time = dt.datetime.utcfromtimestamp(start_time_in_s)
+            logger.info(f"SlurmMonitorDB.get_job_status_timeseries: {start_time=}")
+            where &= ProcessStatus.timestamp >= start_time
+
+        if end_time_in_s is not None:
+            end_time = dt.datetime.utcfromtimestamp(end_time_in_s)
+            logger.info(f"SlurmMonitorDB.get_job_status_timeseries: {end_time=}")
+            where &= ProcessStatus.timestamp < end_time
+
+
+        with self.make_session() as session:
+            pids = session.query(ProcessStatus.pid).filter(where).distinct().all()
+            if pids:
+                pids = [x[0] for x in pids]
+
+        job_timeseries = {}
+        for pid in pids:
+            process_status_timeseries = self.fetch_all(ProcessStatus, where=where & (ProcessStatus.pid == pid))
+
+            if resolution_in_s is not None:
+                process_status_timeseries = self.apply_resolution(
+                        data=process_status_timeseries,
+                        resolution_in_s=resolution_in_s
+                )
+
+            job_timeseries[pid] = process_status_timeseries
+
+        return job_timeseries
+
 
 
 if __name__ == "__main__":

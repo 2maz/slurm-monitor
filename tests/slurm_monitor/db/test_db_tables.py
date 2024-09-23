@@ -53,4 +53,3 @@ def test_GPUStatus_merge():
     assert status_ab.power_draw == 15
     assert status_ab.utilization_gpu == 25
     assert status_ab.utilization_memory == 35
-
