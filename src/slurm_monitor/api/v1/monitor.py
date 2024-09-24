@@ -1,7 +1,6 @@
 # from slurm_monitor.backend.worker import celery_app
 from fastapi import APIRouter, Depends, HTTPException
 from logging import getLogger, Logger
-import subprocess
 import yaml
 from slurm_monitor.utils import utcnow
 import slurm_monitor.db_operations as db_ops
@@ -9,7 +8,8 @@ from fastapi_cache.decorator import cache
 from pathlib import Path
 from tqdm import tqdm
 
-from slurm_monitor.slurm import Slurm
+from slurm_monitor.utils.command import Command
+from slurm_monitor.utils.slurm import Slurm
 
 logger: Logger = getLogger(__name__)
 
@@ -21,8 +21,6 @@ api_router = APIRouter(
 NODE_INFOS = {}
 NODE_INFOS_FILENAME="/tmp/slurm-monitor/nodeinfo.yaml"
 
-Slurm.ensure_restd()
-
 def _get_slurmrestd(prefix: str):
     try:
         return Slurm.get_slurmrestd(prefix)
@@ -33,18 +31,13 @@ def _get_slurmrestd(prefix: str):
                 detail="The slurmrestd service seems to be down. SLURM or the server might be under maintenance"
         )
 
-def _get_cpu_infos(node: str, user: str = Slurm.get_user()):
+def _get_cpu_infos(node: str, user: str = Command.get_user()):
     msg = f"ssh -oBatchMode=yes -l {user} {node} lscpu | sed -rn '/Model name/ s/.*:\s*(.*)/\\1/p'"
     cpus = {}
     try:
-        response = subprocess.run(msg, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        error_message = response.stderr.decode("utf-8").strip()
-        if error_message:
-            cpus["error"] = error_message
-            logger.warning(f"Host is not reachable - {error_message}")
-        else:
-            cpus["model_name"] = response.stdout.decode("utf-8").strip()
+        cpus["model_name"] = Command.run(msg)
     except Exception as e:
+        cpus["error"] = e
         logger.warn(e)
 
     return { "cpus": cpus }
@@ -71,9 +64,42 @@ def _get_nodeinfo(nodelist: list[str] | None, dbi):
             logger.warn(f"Internal error: Retrieving CPU info for {nodename} failed -- {e}")
     return nodeinfo
 
-def load_node_infos(refresh: bool = False):
+
+def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None, resolution_in_s: int | None):
+    if end_time_in_s is None:
+        now = utcnow()
+        end_time_in_s = now.timestamp()
+
+    # Default 1h interval
+    if start_time_in_s is None:
+        start_time_in_s = end_time_in_s - 60 * 60.0
+
+    if resolution_in_s is None:
+        resolution_in_s = max(60, int((end_time_in_s - start_time_in_s) / 120))
+
+    if end_time_in_s < start_time_in_s:
+        raise HTTPException(
+            status_code=500,
+            detail=f"ValueError: {end_time_in_s=} cannot be smaller than {start_time_in_s=}",
+        )
+
+    if (end_time_in_s - start_time_in_s) > 3600*24*14:
+        raise HTTPException(
+            status_code=500,
+            detail="ValueError: timeframe cannot exceed 14 days",
+        )
+
+    if resolution_in_s <= 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"ValueError: {resolution_in_s=} must be >= 1 and <= 24*60*60",
+        )
+
+    return start_time_in_s, end_time_in_s, resolution_in_s
+
+def load_node_infos(refresh: bool = False, filename: Path | str  = NODE_INFOS_FILENAME) -> dict[str, any]:
     global NODE_INFOS
-    node_info_path = Path(NODE_INFOS_FILENAME)
+    node_info_path = Path(filename)
     if not refresh and node_info_path.exists():
         with open(node_info_path, "r") as f:
             NODE_INFOS = yaml.safe_load(f)
@@ -84,6 +110,8 @@ def load_node_infos(refresh: bool = False):
         node_info_path.parent.mkdir(parents=True, exist_ok=True)
         with open(node_info_path, "w") as f:
             yaml.dump(NODE_INFOS, f)
+
+    return NODE_INFOS
 
 @api_router.get("/jobs", response_model=None)
 @cache(expire=30)
@@ -129,48 +157,26 @@ async def nodes_refreshinfo():
     return {'nodes': NODE_INFOS}
 
 
+@api_router.get("/nodes/{nodename}/gpu_status")
 @api_router.get("/nodes/gpustatus")
 async def gpustatus(
-    node: str | None = None,
+    nodename: str | None = None,
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
     local_indices: str | None = None,
     dbi=Depends(db_ops.get_database),
 ):
-    if end_time_in_s is None:
-        now = utcnow()
-        end_time_in_s = now.timestamp()
-
-    # Default 1h interval
-    if start_time_in_s is None:
-        start_time_in_s = end_time_in_s - 60 * 60.0
-
-    if resolution_in_s is None:
-        resolution_in_s = max(60, int((end_time_in_s - start_time_in_s) / 120))
-
-    if end_time_in_s < start_time_in_s:
-        raise HTTPException(
-            status_code=500,
-            detail=f"ValueError: {end_time_in_s=} cannot be smaller than {start_time_in_s=}",
-        )
-
-    if (end_time_in_s - start_time_in_s) > 3600*24*14:
-        raise HTTPException(
-            status_code=500,
-            detail="ValueError: timeframe cannot exceed 14 days",
-        )
-
-    if resolution_in_s <= 0:
-        raise HTTPException(
-            status_code=500,
-            detail=f"ValueError: {resolution_in_s=} must be >= 1 and <= 24*60*60",
-        )
+    start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
+            start_time_in_s=start_time_in_s,
+            end_time_in_s=end_time_in_s,
+            resolution_in_s=resolution_in_s
+    )
 
     if local_indices is not None:
         local_indices = [int(x) for x in local_indices.split(',')]
 
-    nodes = [] if node is None else [node]
+    nodes = [] if nodename is None else [nodename]
     return {
         "gpu_status": dbi.get_gpu_status_timeseries_list(
             nodes=nodes,
@@ -180,23 +186,6 @@ async def gpustatus(
             local_indices=local_indices,
         )
     }
-
-@api_router.get("/nodes/{nodename}/gpu_status")
-async def gpu_status(
-    nodename: str,
-    start_time_in_s: float | None = None,
-    end_time_in_s: float | None = None,
-    resolution_in_s: int | None = None,
-    local_indices: str | None = None,
-    dbi=Depends(db_ops.get_database),
-):
-    return gpustatus(nodename,
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s,
-            local_indices=local_indices,
-            dbi=Depends(db_ops.get_database))
-
 
 
 @api_router.get("/job/{job_id}")
@@ -219,34 +208,11 @@ async def job_system_status(
     resolution_in_s: int | None = None,
     dbi=Depends(db_ops.get_database),
 ):
-    if end_time_in_s is None:
-        now = utcnow()
-        end_time_in_s = now.timestamp()
-
-    # Default 1h interval
-    if start_time_in_s is None:
-        start_time_in_s = end_time_in_s - 60 * 60.0
-
-    if resolution_in_s is None:
-        resolution_in_s = max(60, int((end_time_in_s - start_time_in_s) / 120))
-
-    if end_time_in_s < start_time_in_s:
-        raise HTTPException(
-            status_code=500,
-            detail=f"ValueError: {end_time_in_s=} cannot be smaller than {start_time_in_s=}",
-        )
-
-    if (end_time_in_s - start_time_in_s) > 3600*24*14:
-        raise HTTPException(
-            status_code=500,
-            detail="ValueError: timeframe cannot exceed 14 days",
-        )
-
-    if resolution_in_s <= 0:
-        raise HTTPException(
-            status_code=500,
-            detail=f"ValueError: {resolution_in_s=} must be >= 1 and <= 24*60*60",
-        )
+    start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
+            start_time_in_s=start_time_in_s,
+            end_time_in_s=end_time_in_s,
+            resolution_in_s=resolution_in_s
+    )
 
     data = {}
     processes = dbi.get_job_status_timeseries_list(

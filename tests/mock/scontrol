@@ -1,0 +1,8 @@
+#!/usr/bin/bash
+
+if [[ $1 =~ listpids ]]; then
+    echo "PID      JOBID    STEPID   LOCALID GLOBALID"
+    echo "1  1 batch - -"
+    echo "2  2 batch - -"
+    echo " No job steps exist on this node."
+fi

@@ -2,6 +2,7 @@ import logging
 import sqlalchemy
 from contextlib import contextmanager
 import datetime as dt
+import os
 
 from pydantic import BaseModel
 from sqlalchemy import MetaData, event, create_engine
@@ -19,8 +20,7 @@ logger.setLevel(logging.INFO)
 class DatabaseSettings(BaseModel):
     user: str | None = None
     password: str | None = None
-    #uri: str = f"sqlite:///{os.environ['HOME']}/.slurm-monitor/slurm-monitor-db.sqlite"
-    uri: str = "timescaledb://slurmuser:test@localhost:7000/ex3-cluster/"
+    uri: str = f"sqlite:///{os.environ['HOME']}/.slurm-monitor/slurm-monitor-db.sqlite"
 
     create_missing: bool = True
 

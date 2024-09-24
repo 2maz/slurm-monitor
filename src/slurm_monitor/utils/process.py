@@ -11,6 +11,7 @@ from pydantic import (
 from pydantic_settings import BaseSettings
 import logging
 from functools import reduce
+from slurm_monitor.utils.slurm import Slurm
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,9 @@ class JobMonitor:
     def get_active_jobs(cls):
         active_jobs: JobList = JobList()
 
-        cmd = "/cm/shared/apps/slurm/current/bin/scontrol listpids"
+        Slurm.ensure_commands()
+
+        cmd = f"{Slurm.SCONTROL} listpids"
         response = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if response.returncode != 0:
             error_msg = response.stderr.decode('UTF-8').strip()
@@ -98,8 +101,8 @@ class JobMonitor:
                             active_jobs.jobs[job_id].append(process_description)
                     except NoSuchProcess as p:
                         pass
-                except:
-                    logger.warn("Line {line} does not match the expected format")
+                except Exception:
+                    logger.warn("Line {line} does not match the expected format - {e}")
                     break
 
         return active_jobs

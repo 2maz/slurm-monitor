@@ -1,10 +1,13 @@
 import pytest
 import asyncio
-
-from slurm_monitor.db.v1.data_publisher import DataCollector, Controller
-
+import datetime as dt
 import os
 import signal
+
+from slurm_monitor.db.v1.data_publisher import DataCollector, Controller, NodeStatus, NodeStatusCollector, main
+from slurm_monitor.utils.slurm import Slurm
+from slurm_monitor.utils.process import JobMonitor
+
 
 @pytest.fixture
 def nodename() -> str:
@@ -26,7 +29,7 @@ def controller(nodename, monkeypatch):
     monkeypatch.setattr(Controller, "__init__", mock_controller__init__)
 
     shutdown_event = asyncio.Event()
-    collector=DataCollector(nodename, sampling_interval_in_s=2)
+    collector = DataCollector(nodename, sampling_interval_in_s=2)
     return Controller(collector=collector,
                 bootstrap_servers="localhost:10000",
                 shutdown_event=shutdown_event,
@@ -41,6 +44,43 @@ def controller(nodename, monkeypatch):
 )
 def test_controller_ignore_message(message, controller):
     controller.handle(message)
+
+@pytest.mark.asyncio
+async def test_collector_collect(controller, mock_slurm_command_hint):
+    Slurm._BIN_HINTS = [ mock_slurm_command_hint ]
+
+    # using the mock scontrol script here
+    active_jobs = JobMonitor.get_active_jobs()
+    assert active_jobs.jobs
+
+    messages = []
+    def publish_fn(sample: NodeStatus):
+        messages.append(sample)
+
+    shutdown_event = asyncio.Event()
+
+    collector = NodeStatusCollector(sampling_interval_in_s=2)
+    collector_task = asyncio.create_task(collector.collect(shutdown_event, publish_fn))
+    future = asyncio.gather(collector_task)
+
+    await asyncio.sleep(4)
+    shutdown_event.set()
+
+    await future
+    assert len(messages) >= 1
+    node_status = messages[0]
+
+    assert node_status is not None
+    assert node_status.node
+    assert node_status.cpus, "CPUs must not be empty"
+    assert node_status.jobs, "Jobs must not be empty"
+
+    # Mocked process for these ids
+    assert node_status.jobs[1]
+    assert node_status.jobs[2]
+
+    assert node_status.timestamp, "Timestamp must not be empty"
+    assert type(node_status.timestamp) == dt.datetime
 
 
 def test_controller_set_sampling_interval(controller, nodename):
@@ -60,3 +100,48 @@ def test_controller_shutdown(controller, mocker):
 
     mocked_os_kill_fn.assert_called_once_with(os.getpid(), signal.SIGINT)
     assert controller.shutdown_event.is_set()
+
+#@pytest.mark.asyncio
+def test_main(mocker, mock_slurm_command_hint):
+    Slurm._BIN_HINTS = [ mock_slurm_command_hint ]
+
+    class MockKafkaProducer:
+        def __init__(self, **kwargs):
+            pass
+
+    class MockKafkaConsumer:
+        def __init__(self, **kwargs):
+            pass
+
+    mock_producer = mocker.patch("slurm_monitor.db.v1.data_publisher.KafkaProducer")
+    mock_producer_instance = mock_producer.return_value
+
+    published_messages = []
+    publisher_topic = "test-publisher-topic"
+
+    def send_side_effect(topic, sample):
+        assert topic == publisher_topic
+        published_messages.append(sample)
+
+
+    mock_producer_instance.send.side_effect = send_side_effect
+
+    mock_consumer = mocker.patch("slurm_monitor.db.v1.data_publisher.KafkaConsumer")
+    mock_consumer_instance = mock_consumer.return_value
+    mock_consumer_instance.poll.return_value = None
+
+
+    try:
+        asyncio.run(asyncio.wait_for(
+            main(
+                host="localhost",
+                port="11111",
+                publisher_topic=publisher_topic,
+                subscriber_topic="test-subscriber-topic"
+            ),
+            timeout=5)
+        )
+    except asyncio.TimeoutError:
+        pass
+
+    assert published_messages

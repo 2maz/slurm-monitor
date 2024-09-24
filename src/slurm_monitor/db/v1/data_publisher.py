@@ -84,6 +84,9 @@ class DataCollector():
                 logger.debug(f"Sleeping for {self.sampling_interval_in_s}")
                 await asyncio.sleep(self.sampling_interval_in_s)
 
+    def run(self):
+        raise NotImplementedError()
+
 class NodeStatusCollector(DataCollector):
     nodename: str
     gpu_type: str | None

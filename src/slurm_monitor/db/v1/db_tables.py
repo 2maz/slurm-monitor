@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     BigInteger,
     Integer,
     String,
@@ -132,55 +133,6 @@ class GPUs(TableBase):
     local_id = Column(Integer)
     memory_total = Column(BigInteger)
 
-class ProcessStatus(TableBase):
-    __tablename__ = "process_status"
-    __table_args__ = ({
-        'timescaledb_hypertable': {
-            'time_column_name': 'timestamp',
-            'chunk_time_interval': '24 hours',
-        }
-    })
-
-    pid = Column(Integer, index=True, primary_key=True)
-    job_id = Column(Integer, ForeignKey("job_status.job_id"), primary_key=True)
-    node = Column(String(255), ForeignKey("nodes.name"), primary_key=True)
-
-    cpu_percent = Column(Float)
-    memory_percent = Column(Float)
-
-    timestamp = Column(DateTime(), default=dt.datetime.now, primary_key=True)
-
-    def get_id(self) -> str:
-        return f"{self.node}-{self.job_id}-{self.pid}"
-
-    @classmethod
-    def merge(cls,
-            samples: list[ProcessStatus],
-            merge_op: Callable[list[int | float]] | None = np.mean) -> ProcessStatus:
-        values = {}
-
-        reference_sample = samples[-1]
-        for sample in samples:
-            assert sample.get_id() == reference_sample.get_id(), \
-                    f"sample id {sample.get_id()} does not match reference_sample {reference_sample.get_id()}"
-
-            for attribute in ["cpu_percent", "memory_percent"]:
-                value = getattr(sample, attribute)
-                if attribute not in values:
-                    values[attribute] = [value]
-                else:
-                    values[attribute].append(value)
-
-        return cls(
-            node=reference_sample.node,
-            job_id=reference_sample.job_id,
-            pid=reference_sample.pid,
-            cpu_percent=merge_op(values["cpu_percent"]),
-            memory_percent=merge_op(values["memory_percent"]),
-            timestamp=reference_sample.timestamp,
-        )
-
-
 class JobStatus(TableBase):
     __tablename__ = "job_status"
 
@@ -193,7 +145,7 @@ class JobStatus(TableBase):
 
     account = Column(String(100))
     accrue_time = Column(BigInteger)
-    admin_comment = Column(String(255))
+    admin_comment = Column(String(255), default="")
     array_job_id = Column(Integer)  # 244843
     array_task_id = Column(Integer, nullable=True)  # 984
     array_max_tasks = Column(Integer)  # 20
@@ -224,7 +176,7 @@ class JobStatus(TableBase):
     # dependency": "",
     derived_exit_code = Column(BigInteger)  # ": 256,
     eligible_time = Column(Integer)  # ": 1720736375,
-    end_time = Column(Integer)  # ": 1720739331,
+
     # excluded_nodes": "",
     exit_code = Column(BigInteger)  # ": 0,
     # features": "",
@@ -294,13 +246,12 @@ class JobStatus(TableBase):
     # ,
     # sockets_per_board": 0,
     # sockets_per_node": null,
-    start_time = Column(Integer)  # 1720736375,
     state_description = Column(String(255))  # "",
     state_reason = Column(String(255))  # "None",
     # standard_error": "/home/.../scripts/logs/%j-stderr.txt",
     # standard_input": "/dev/null",
     # standard_output": "/home/.../scripts/logs/%j-stdout.txt",
-    submit_time = Column(Integer)  # 1720627330,
+
     suspend_time = Column(Integer)  # 0,
     # system_comment": "",
     time_limit = Column(Integer, nullable=True)  # 7200,
@@ -325,6 +276,60 @@ class JobStatus(TableBase):
         mapper = class_mapper(cls)
         mapped_data = {k: v for k, v in data.items() if k in mapper.attrs}
         return cls(**mapped_data)
+
+class ProcessStatus(TableBase):
+    __tablename__ = "process_status"
+
+    pid = Column(Integer, index=True, primary_key=True)
+    job_id = Column(Integer, primary_key=True)
+    job_submit_time = Column(DateTime, index=True, primary_key=True)
+    node = Column(String(255), ForeignKey("nodes.name"), primary_key=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint([job_id, job_submit_time], [JobStatus.job_id, JobStatus.submit_time]),
+        {
+        'timescaledb_hypertable': {
+            'time_column_name': 'timestamp',
+            'chunk_time_interval': '24 hours',
+            }
+        }
+    )
+
+    cpu_percent = Column(Float)
+    memory_percent = Column(Float)
+
+    timestamp = Column(DateTime(), default=dt.datetime.now, primary_key=True)
+
+    def get_id(self) -> str:
+        return f"{self.node}-{self.job_id}-{self.pid}"
+
+    @classmethod
+    def merge(cls,
+            samples: list[ProcessStatus],
+            merge_op: Callable[list[int | float]] | None = np.mean) -> ProcessStatus:
+        values = {}
+
+        reference_sample = samples[-1]
+        for sample in samples:
+            assert sample.get_id() == reference_sample.get_id(), \
+                    f"sample id {sample.get_id()} does not match reference_sample {reference_sample.get_id()}"
+
+            for attribute in ["cpu_percent", "memory_percent"]:
+                value = getattr(sample, attribute)
+                if attribute not in values:
+                    values[attribute] = [value]
+                else:
+                    values[attribute].append(value)
+
+        return cls(
+            node=reference_sample.node,
+            job_id=reference_sample.job_id,
+            pid=reference_sample.pid,
+            cpu_percent=merge_op(values["cpu_percent"]),
+            memory_percent=merge_op(values["memory_percent"]),
+            timestamp=reference_sample.timestamp,
+        )
+
 
 
 class Nodes(TableBase):

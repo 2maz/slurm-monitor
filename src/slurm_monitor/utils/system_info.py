@@ -288,8 +288,6 @@ class SystemInfo:
             arguments = {f"ARG__{x}": getattr(args, x) for x in args.__dict__}
             mlflow.log_params(arguments)
 
-
-
     def get_platform_params(self) -> dict[str, any]:
         if not self.platform_params:
             for i in ["system", "processor", "platform", "machine", "version", "node", "python_version"]:
