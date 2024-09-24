@@ -63,36 +63,43 @@ class JobMonitor:
     def get_active_jobs(cls):
         active_jobs: JobList = JobList()
 
-        cmd = "scontrol listpids"
+        cmd = "/cm/shared/apps/slurm/current/bin/scontrol listpids"
         response = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if response.returncode != 0:
             error_msg = response.stderr.decode('UTF-8').strip()
             if re.match("No job steps", error_msg):
                 return active_jobs
-            raise RuntimeError(f"Calling {cmd} failed - {error_msg}")
+            elif re.match("Unable to connect to slurmstepd", error_msg):
+                pass
+            else:
+                raise RuntimeError(f"Calling {cmd} failed - {error_msg}")
 
         # PID JOBID STEPID LOCALID GLOBALID
         lines = response.stdout.decode("UTF-8").strip().splitlines()
 
         if len(lines) > 0:
             for line in lines[1:]:
-                pid, job_id, _, _, _ = line.split()
-
-                pid = int(pid)
-                job_id = int(job_id)
-
-                process_description = ProcessStats(pid=pid)
                 try:
-                    p = cls.get_process(process_description.pid)
-                    with p.oneshot():
-                        process_description.cpu_percent = p.cpu_percent()
-                        process_description.memory_percent = p.memory_percent()
+                    pid, job_id, _, _, _ = line.split()
 
-                    if job_id not in active_jobs.jobs:
-                        active_jobs.jobs[job_id] = [ process_description ]
-                    else:
-                        active_jobs.jobs[job_id].append(process_description)
-                except NoSuchProcess as p:
-                    pass
+                    pid = int(pid)
+                    job_id = int(job_id)
+
+                    process_description = ProcessStats(pid=pid)
+                    try:
+                        p = cls.get_process(process_description.pid)
+                        with p.oneshot():
+                            process_description.cpu_percent = p.cpu_percent()
+                            process_description.memory_percent = p.memory_percent()
+
+                        if job_id not in active_jobs.jobs:
+                            active_jobs.jobs[job_id] = [ process_description ]
+                        else:
+                            active_jobs.jobs[job_id].append(process_description)
+                    except NoSuchProcess as p:
+                        pass
+                except:
+                    logger.warn("Line {line} does not match the expected format")
+                    break
 
         return active_jobs
