@@ -125,11 +125,12 @@ class MessageHandler:
         return cpu_samples[0].node, timestamp
 
 
-def run(*,
+def main(*,
         host: str, port: int,
         database: SlurmMonitorDB,
         topic: str = KAFKA_NODE_STATUS_TOPIC,
-        retry_timeout_in_s: int = 5):
+        retry_timeout_in_s: int = 5,
+        ):
 
     msg_handler = MessageHandler(database=database)
     while True:
@@ -145,6 +146,9 @@ def run(*,
                                 f"-- last received at {timestamp} from {node}      \r", flush=True, end='')
                     except Exception as e:
                         logger.warning(f"Message processing failed: {e}")
+
+        except TimeoutError:
+            raise
         except Exception as e:
             logger.warning(f"Connection failed - retrying in 5s - {e}")
             time.sleep(retry_timeout_in_s)
@@ -178,4 +182,8 @@ def cli_run():
     database = SlurmMonitorDB(db_settings=app_settings.database)
 
     # Use asyncio.run to start the event loop and run the main coroutine
-    run(host=args.host, port=args.port, database=database, topic=args.topic)
+    main(host=args.host,
+        port=args.port,
+        database=database,
+        topic=args.topic)
+    
