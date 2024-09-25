@@ -4,7 +4,7 @@ import sqlalchemy
 import json
 import re
 import numpy as np
-from typing import ClassVar, Any, Callable
+from typing import ClassVar, Any, Callable, TypeVar
 import datetime as dt
 
 from sqlalchemy import (
@@ -24,6 +24,8 @@ from sqlalchemy.orm import as_declarative, class_mapper
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
+
 
 def Column(*args, **kwargs):
     kwargs.setdefault("nullable", False)
@@ -35,6 +37,9 @@ class TableBase:
     __table__: ClassVar[Any]
     __tablename__: ClassVar[str]
     metadata: ClassVar[Any]
+
+    _primary_key_columns: ClassVar[list[str]] = None
+    _non_primary_key_columns: ClassVar[list[str]] = None
 
     def __init__(self, **kwargs):
         pass
@@ -49,6 +54,54 @@ class TableBase:
 
     def __eq__(self, other):
         return type(self) == type(other) and tuple(self) == tuple(other)
+
+    @classmethod
+    def primary_key_columns(cls):
+        if not cls._primary_key_columns:
+            cls._primary_key_columns = [x.name for x in cls.__table__.columns if x.primary_key]
+        return cls._primary_key_columns
+
+    @classmethod
+    def non_primary_key_columns(cls):
+        if not cls._non_primary_key_columns:
+            cls._non_primary_key_columns = [x.name for x in cls.__table__.columns if not x.primary_key]
+        return cls._non_primary_key_columns
+
+    def get_id(self) -> str:
+        return '-'.join([str(getattr(self, x)) for x in self.primary_key_columns()])
+
+    @classmethod
+    def merge(cls,
+            samples: list[T],
+            merge_op: Callable[list[int | float]] | None = np.mean) -> T:
+        values = {}
+
+        reference_sample = samples[-1]
+        for sample in samples:
+            assert sample.get_id() == reference_sample.get_id(), \
+                    f"sample id {sample.get_id()} does not match reference_sample {reference_sample.get_id()}"
+
+            for attribute in cls.non_primary_key_columns():
+                value = getattr(sample, attribute)
+                if attribute not in values:
+                    values[attribute] = [value]
+                else:
+                    values[attribute].append(value)
+        kwargs = {}
+        for column_name in cls.primary_key_columns():
+            kwargs[column_name] = getattr(reference_sample, column_name)
+
+            for column_name in cls.non_primary_key_columns():
+                try:
+                    kwargs[column_name] = merge_op(values[column_name])
+                except TypeError as e:
+                    column = getattr(cls, column_name)
+                    if column.nullable or column.type.python_type == str:
+                        kwargs[column_name] = getattr(reference_sample, column_name)
+                    else:
+                        raise RuntimeError(f"Merging failed for column: '{column_name}'") from e
+
+        return cls(**kwargs)
 
 # Define a custom column type to process logical ids from text using
 # transform
@@ -300,36 +353,6 @@ class ProcessStatus(TableBase):
 
     timestamp = Column(DateTime(), default=dt.datetime.now, primary_key=True)
 
-    def get_id(self) -> str:
-        return f"{self.node}-{self.job_id}-{self.pid}"
-
-    @classmethod
-    def merge(cls,
-            samples: list[ProcessStatus],
-            merge_op: Callable[list[int | float]] | None = np.mean) -> ProcessStatus:
-        values = {}
-
-        reference_sample = samples[-1]
-        for sample in samples:
-            assert sample.get_id() == reference_sample.get_id(), \
-                    f"sample id {sample.get_id()} does not match reference_sample {reference_sample.get_id()}"
-
-            for attribute in ["cpu_percent", "memory_percent"]:
-                value = getattr(sample, attribute)
-                if attribute not in values:
-                    values[attribute] = [value]
-                else:
-                    values[attribute].append(value)
-
-        return cls(
-            node=reference_sample.node,
-            job_id=reference_sample.job_id,
-            pid=reference_sample.pid,
-            cpu_percent=merge_op(values["cpu_percent"]),
-            memory_percent=merge_op(values["memory_percent"]),
-            timestamp=reference_sample.timestamp,
-        )
-
 
 
 class Nodes(TableBase):
@@ -375,30 +398,3 @@ class GPUStatus(TableBase):
     pstate = Column(String(10), nullable=True)
 
     timestamp = Column(DateTime(), default=dt.datetime.now, primary_key=True)
-
-    def get_id(self):
-        return self.uuid
-
-    @classmethod
-    def merge(cls, samples: list[GPUStatus], merge_op: Callable[list[int | float]] | None = np.mean) -> GPUStatus:
-        values = {}
-
-        reference_sample = samples[-1]
-        for sample in samples:
-            assert sample.uuid == reference_sample.uuid, \
-                    f"sample uuid {sample.uuid} does not match reference_sample {reference_sample.uuid}"
-            for attribute in ["temperature_gpu", "power_draw", "utilization_gpu", "utilization_memory"]:
-                value = getattr(sample, attribute)
-                if attribute not in values:
-                    values[attribute] = [value]
-                else:
-                    values[attribute].append(value)
-
-        return cls(
-            uuid=reference_sample.uuid,
-            temperature_gpu=merge_op(values["temperature_gpu"]),
-            power_draw=merge_op(values["power_draw"]),
-            utilization_gpu=merge_op(values["utilization_gpu"]),
-            utilization_memory=merge_op(values["utilization_memory"]),
-            timestamp=reference_sample.timestamp,
-        )

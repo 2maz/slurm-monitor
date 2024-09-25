@@ -1,5 +1,5 @@
 import pytest
-from slurm_monitor.db.v1.db_tables import GPUs, GPUIdList, GPUStatus
+from slurm_monitor.db.v1.db_tables import GPUs, GPUIdList, GPUStatus, ProcessStatus
 import datetime as dt
 
 
@@ -44,6 +44,7 @@ def test_GPUStatus_merge():
             power_draw=20,
             utilization_gpu=30,
             utilization_memory=40,
+            pstate=1,
             timestamp=now)
 
     status_ab = GPUStatus.merge([status_a, status_b])
@@ -53,3 +54,40 @@ def test_GPUStatus_merge():
     assert status_ab.power_draw == 15
     assert status_ab.utilization_gpu == 25
     assert status_ab.utilization_memory == 35
+    assert status_ab.pstate == 1
+
+def test_ProcessStatus_merge():
+
+    now = dt.datetime.utcnow()
+
+    status_a = ProcessStatus(
+            pid=1,
+            job_id=1,
+            job_submit_time=now,
+            node="node-1",
+            cpu_percent=100,
+            memory_percent=50,
+            timestamp=now
+    )
+
+    status_b = ProcessStatus(
+            pid=1,
+            job_id=1,
+            job_submit_time=now,
+            node="node-1",
+            cpu_percent=50,
+            memory_percent=20,
+            timestamp=now
+    )
+
+
+    status_ab = ProcessStatus.merge([status_a, status_b])
+
+    assert status_ab.pid == 1
+    assert status_ab.job_id == 1
+    assert status_ab.job_submit_time == now
+    assert status_ab.node == "node-1"
+    assert status_ab.timestamp == now
+
+    assert status_ab.cpu_percent == 75
+    assert status_ab.memory_percent == 35
