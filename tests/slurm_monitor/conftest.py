@@ -119,4 +119,3 @@ def test_db(test_db_uri, number_of_nodes, number_of_gpus, number_of_samples) -> 
             samples.reverse()
             db.insert(samples)
     return db
-

@@ -1,5 +1,4 @@
 import pytest
-import os
 from slurm_monitor.utils.slurm import Slurm
 
 def test_ensure_commands(mock_slurm_command_hint):

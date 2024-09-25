@@ -25,10 +25,12 @@ class Command:
 
         if response.returncode == 0:
             return response.stdout.decode("utf-8")
-        
-        raise RuntimeError(f"Command.run: '{command}' failed with returncode: {response.returncode} - {response.stderr}")
+
+        raise RuntimeError(
+                f"Command.run: '{command}' failed with returncode: "
+                f"{response.returncode} - {response.stderr}"
+                )
 
     @classmethod
     def get_user(cls) -> str:
         return cls.run("whoami")
-

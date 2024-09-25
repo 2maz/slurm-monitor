@@ -1,6 +1,5 @@
 from argparse import ArgumentParser
 from pathlib import Path
-import sys
 import logging
 from tqdm import tqdm
 
@@ -10,7 +9,7 @@ import slurm_monitor.db.v1 as v1
 logger = logging.getLogger(__name__)
 
 def migrate(
-        v0_settings: v0.db.DatabaseSettings, 
+        v0_settings: v0.db.DatabaseSettings,
         v1_settings: v1.db.DatabaseSettings):
 
     v0_db = None
@@ -20,7 +19,7 @@ def migrate(
         raise RuntimeError(f"Failed to open db: {v0_settings.uri}") from e
 
     v1_db = None
-    try: 
+    try:
         v1_db = v1.db.SlurmMonitorDB(v1_settings)
     except Exception as e:
         raise RuntimeError(f"Failed to open db: {v1_settings.uri}") from e
@@ -101,12 +100,8 @@ def cli_run():
 
     from_db_uri = ensure_uri(args.from_db_uri)
     to_db_uri = ensure_uri(args.to_db_uri)
-    
+
     v0_settings = v0.db.DatabaseSettings(uri=from_db_uri)
     v1_settings = v1.db.DatabaseSettings(uri=to_db_uri)
 
     migrate(v0_settings, v1_settings)
-    
-
-
-

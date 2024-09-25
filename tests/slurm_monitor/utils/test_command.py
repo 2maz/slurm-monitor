@@ -1,5 +1,4 @@
 import pytest
-import shutil
 from pathlib import Path
 from slurm_monitor.utils.command import Command
 
@@ -11,13 +10,8 @@ def test_find(mock_slurm_command_hint):
         Command.find(command="no-scontrol", hints=[ mock_slurm_command_hint ])
 
 def test_user():
-    assert Command.get_user() is not None 
+    assert Command.get_user() is not None
 
 def test_run():
     with pytest.raises(RuntimeError):
         Command.run("not-a-real-command")
-
-
-
-
-

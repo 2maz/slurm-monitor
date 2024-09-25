@@ -1,5 +1,4 @@
 from typing import ClassVar
-import subprocess
 import logging
 import json
 

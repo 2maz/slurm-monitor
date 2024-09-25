@@ -5,7 +5,6 @@ response_file_prefix=$SCRIPT_DIR/slurmrestd.response
 
 read input
 
-if [[ $input =~ /nodes ]]; then 
+if [[ $input =~ /nodes ]]; then
     echo $(< $response_file_prefix.nodes)
 fi
-

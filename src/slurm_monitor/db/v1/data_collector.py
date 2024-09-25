@@ -8,7 +8,7 @@ from typing import Generic, TypeVar
 import logging
 
 from slurm_monitor.utils import utcnow
-from slurm_monitor.slurm import Slurm
+from slurm_monitor.utils.slurm import Slurm
 
 from .db import SlurmMonitorDB, Database
 from .db_tables import JobStatus
