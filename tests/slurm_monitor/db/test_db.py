@@ -1,4 +1,4 @@
-from slurm_monitor.db.v1.db_tables import GPUStatus
+from slurm_monitor.db.v1.db_tables import GPUStatus, ProcessStatus, TableBase
 
 def test_gpu_infos(test_db, number_of_nodes, number_of_gpus):
     for i in range(0, number_of_nodes):
@@ -20,3 +20,12 @@ def test_dataframe(test_db, number_of_gpus, number_of_samples):
     uuids = test_db.get_gpu_uuids(node="node-1")
     df = test_db._fetch_dataframe(GPUStatus, GPUStatus.uuid.in_(uuids))
     assert len(df) == number_of_gpus*number_of_samples
+
+
+def test_apply_resolution_GPUStatus(test_db):
+    data = test_db.fetch_all(GPUStatus)
+    TableBase.apply_resolution(data, resolution_in_s=100)
+
+def test_apply_resolution_ProcessStatus(test_db):
+    data = test_db.fetch_all(ProcessStatus)
+    TableBase.apply_resolution(data, resolution_in_s=100)

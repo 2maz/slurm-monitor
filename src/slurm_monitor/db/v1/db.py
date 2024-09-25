@@ -11,7 +11,6 @@ from sqlalchemy.engine.url import URL, make_url
 
 from .db_tables import CPUStatus, GPUs, GPUStatus, JobStatus, Nodes, ProcessStatus, TableBase
 import pandas as pd
-from typing import TypeVar
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -166,56 +165,6 @@ class SlurmMonitorDB(Database):
     CPUStatus = CPUStatus
     ProcessStatus = ProcessStatus
 
-    T = TypeVar('T')
-    # T needs to comply to merge and get_id
-    def apply_resolution(
-            self, data: list[T], resolution_in_s: int,
-    ) -> list[T]:
-        smoothed_data = []
-        samples_in_window = {}
-
-        base_time = None
-        window_start_time = None
-        window_index = 0
-
-        if not data:
-            return data
-
-        # requiring ordered list (oldest first)
-        if data[0].timestamp > data[-1].timestamp:
-            data.reverse()
-
-        for sample in data:
-            sample_timestamp = sample.timestamp
-            if type(sample.timestamp) == str:
-                sample_timestamp = dt.datetime.fromisoformat(sample.timestamp)
-
-            if not base_time:
-                base_time = sample_timestamp
-                window_start_time = base_time
-                window_index = 0
-
-            if (
-                sample_timestamp - window_start_time
-            ).total_seconds() < resolution_in_s:
-                if sample.get_id() not in samples_in_window:
-                    samples_in_window[sample.get_id()] = [sample]
-                else:
-                    samples_in_window[sample.get_id()].append(sample)
-            else:
-                smoothed_data.append(sample.merge(samples_in_window[sample.get_id()]))
-                window_index += 1
-
-                samples_in_window[sample.get_id()] = [sample]
-                window_start_time = base_time + dt.timedelta(seconds=window_index*resolution_in_s)
-
-
-        for _, values in samples_in_window.items():
-            if values:
-                smoothed_data.append(sample.merge(values))
-
-        return smoothed_data
-
     def get_gpu_uuids(self, node: str) -> list[str]:
         return self.fetch_all(GPUs.uuid, GPUs.node == node)
 
@@ -261,7 +210,7 @@ class SlurmMonitorDB(Database):
 
         data = self.fetch_all(GPUStatus, where=where)
         if resolution_in_s is not None:
-            return self.apply_resolution(data=data, resolution_in_s=resolution_in_s)
+            return TableBase.apply_resolution(data=data, resolution_in_s=resolution_in_s)
         else:
             return data
 
@@ -346,7 +295,7 @@ class SlurmMonitorDB(Database):
             process_status_timeseries = self.fetch_all(ProcessStatus, where=where & (ProcessStatus.pid == pid))
 
             if resolution_in_s is not None:
-                process_status_timeseries = self.apply_resolution(
+                process_status_timeseries = TableBase.apply_resolution(
                         data=process_status_timeseries,
                         resolution_in_s=resolution_in_s
                 )

@@ -67,8 +67,11 @@ class TableBase:
             cls._non_primary_key_columns = [x.name for x in cls.__table__.columns if not x.primary_key]
         return cls._non_primary_key_columns
 
-    def get_id(self) -> str:
-        return '-'.join([str(getattr(self, x)) for x in self.primary_key_columns()])
+    def get_timeseries_id(self) -> str:
+        """
+        Get the id for the timeseries - so excluding the timestamp field
+        """
+        return '.'.join([str(getattr(self, x)) for x in self.primary_key_columns() if x != "timestamp"])
 
     @classmethod
     def merge(cls,
@@ -77,9 +80,11 @@ class TableBase:
         values = {}
 
         reference_sample = samples[-1]
+        reference_sample_timeseries_id = reference_sample.get_timeseries_id()
         for sample in samples:
-            assert sample.get_id() == reference_sample.get_id(), \
-                    f"sample id {sample.get_id()} does not match reference_sample {reference_sample.get_id()}"
+            timeseries_id = sample.get_timeseries_id()
+            assert timeseries_id == reference_sample_timeseries_id, \
+                    f"sample id {timeseries_id} does not match reference_sample {reference_sample_timeseries_id}"
 
             for attribute in cls.non_primary_key_columns():
                 value = getattr(sample, attribute)
@@ -88,7 +93,11 @@ class TableBase:
                 else:
                     values[attribute].append(value)
         kwargs = {}
-        for column_name in cls.primary_key_columns():
+
+        static_columns = ["timestamp"]
+        static_columns.extend(cls.primary_key_columns())
+
+        for column_name in static_columns:
             kwargs[column_name] = getattr(reference_sample, column_name)
 
             for column_name in cls.non_primary_key_columns():
@@ -102,6 +111,64 @@ class TableBase:
                         raise RuntimeError(f"Merging failed for column: '{column_name}'") from e
 
         return cls(**kwargs)
+
+    @classmethod
+    def apply_resolution(
+            cls, data: list[TableBase], resolution_in_s: int,
+    ) -> list[TableBase]:
+        smoothed_data = []
+        samples_in_window = {}
+
+        base_time = None
+        window_start_time = None
+        window_index = 0
+
+        if not data:
+            return data
+
+        if not hasattr(data[0], "timestamp"):
+            raise ValueError(
+                    "TableBase.apply_resolution can only be applied to "
+                    "types with a 'timestamp' column"
+            )
+
+        # requiring ordered list (oldest first)
+        if data[0].timestamp > data[-1].timestamp:
+            data.reverse()
+
+        for sample in data:
+            timeseries_id = sample.get_timeseries_id()
+
+            sample_timestamp = sample.timestamp
+            if type(sample.timestamp) == str:
+                sample_timestamp = dt.datetime.fromisoformat(sample.timestamp)
+
+            if not base_time:
+                base_time = sample_timestamp
+                window_start_time = base_time
+                window_index = 0
+
+            if (
+                sample_timestamp - window_start_time
+            ).total_seconds() < resolution_in_s:
+                if timeseries_id not in samples_in_window:
+                    samples_in_window[timeseries_id] = [sample]
+                else:
+                    samples_in_window[timeseries_id].append(sample)
+            else:
+                smoothed_data.append(sample.merge(samples_in_window[timeseries_id]))
+                window_index += 1
+
+                samples_in_window[timeseries_id] = [sample]
+                window_start_time = base_time + dt.timedelta(seconds=window_index*resolution_in_s)
+
+
+        for _, values in samples_in_window.items():
+            if values:
+                smoothed_data.append(sample.merge(values))
+
+        return smoothed_data
+
 
 # Define a custom column type to process logical ids from text using
 # transform
