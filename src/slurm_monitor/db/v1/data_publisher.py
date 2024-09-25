@@ -3,7 +3,6 @@ import psutil
 import asyncio
 from kafka import KafkaConsumer, KafkaProducer
 
-
 from argparse import ArgumentParser
 import subprocess
 import datetime as dt
@@ -14,15 +13,15 @@ import os
 import signal
 import socket
 import json
-
+from pydantic import BaseModel
+from pydantic_settings import BaseSettings
 import logging
 import re
 
 from slurm_monitor.utils import utcnow
 from slurm_monitor.utils.process import ProcessStats, JobMonitor
+from slurm_monitor.utils.command import Command
 
-from pydantic import BaseModel
-from pydantic_settings import BaseSettings
 
 logger = logging.getLogger(__name__)
 
@@ -130,9 +129,7 @@ class NodeStatusCollector(DataCollector):
 
     def get_gpu_info(self) -> str:
         msg = f"{self.query_cmd} {self.query_argument}={','.join(self.query_properties)}"
-        return subprocess.run(msg, shell=True, stdout=subprocess.PIPE).stdout.decode(
-            "utf-8"
-        )
+        return Command.run(msg)
 
     @property
     @abstractmethod
@@ -175,12 +172,8 @@ class NodeStatusCollector(DataCollector):
         return samples
 
     def get_local_id_mapping(self) -> dict[str, int]:
-        msg = f"{self.query_cmd} -L"
-        response = subprocess.run(
-            msg, shell=True, stdout=subprocess.PIPE
-        ).stdout.decode("utf-8")
-
         mapping = {}
+        response = Command.run("{self.query_cmd} -L")
         for line in response.strip().split("\n"):
             # example: GPU 0: Tesla V100-SXM3-32GB (UUID: GPU-ad466f2f-575d-d949-35e0-9a7d912d974e)
             m = re.match(r"GPU ([0-9]+): [^(]+ \(UUID: (.*)\)", line)
@@ -318,10 +311,7 @@ class ROCMInfoCollector(NodeStatusCollector):
         ]
 
     def get_gpu_info(self) -> str:
-        msg = f"{self.query_cmd} {self.query_argument}"
-        return subprocess.run(msg, shell=True, stdout=subprocess.PIPE).stdout.decode(
-            "utf-8"
-        )
+        return Command.run(f"{self.query_cmd} {self.query_argument}")
 
     def parse_response(self, response: str) -> dict[str]:
         gpus = []
@@ -361,10 +351,7 @@ class ROCMInfoCollector(NodeStatusCollector):
         return samples
 
     def get_local_id_mapping(self) -> dict[str, int]:
-        msg = f"{self.query_cmd} --showuniqueid --csv"
-        response = subprocess.run(
-            msg, shell=True, stdout=subprocess.PIPE
-        ).stdout.decode("utf-8")
+        response = Command.run(f"{self.query_cmd} --showuniqueid --csv")
         # Example:
         #   device,Unique ID
         #   card0,0x18f68e602b8a790f
@@ -379,18 +366,18 @@ class ROCMInfoCollector(NodeStatusCollector):
 
         return mapping
 
-def has_command(command: str):
+def check_command(command: str):
     p = subprocess.run(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if p.returncode == 0:
         return True
     return False
 
 def get_status_collector() -> NodeStatusCollector:
-    if has_command(command="nvidia-smi -L"):
+    if check_command(command="nvidia-smi -L"):
         return NvidiaInfoCollector()
-    elif has_command(command="rocm-smi -a"):
+    elif check_command(command="rocm-smi -a"):
         return ROCMInfoCollector()
-    elif has_command(command="hl-smi"):
+    elif check_command(command="hl-smi"):
         return HabanaInfoCollector()
     else:
         return NodeStatusCollector()
