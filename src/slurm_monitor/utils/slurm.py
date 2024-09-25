@@ -12,7 +12,7 @@ class Slurm:
     SLURMRESTD = "slurmrestd"
     SCONTROL = "scontrol"
 
-    _BIN_HINTS: ClassVar[list[str]] = ["/cm/shared/apps/slurm/current/sbin/"]
+    _BIN_HINTS: ClassVar[list[str]] = ["/cm/shared/apps/slurm/current/sbin/", "/cm/shared/apps/slurm/current/bin/"]
     _ensured_commands: ClassVar[list[str]] = []
 
     @classmethod
