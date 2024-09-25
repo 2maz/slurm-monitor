@@ -4,17 +4,20 @@ import shutil
 
 class Command:
     @classmethod
-    def find(cls, *, command, hints: list[str] | None) -> str:
+    def find(cls, *, command, hints: list[str] | None = None, do_throw = True ) -> str | None:
         search_paths = [ Path(command) ]
-        for x in hints:
-            search_paths.append(Path(x) / command)
+        if hints:
+            for x in hints:
+                search_paths.append(Path(x) / command)
 
         for search_path in search_paths:
             path = shutil.which(cmd=search_path)
             if path:
                 return str(path.resolve()).strip()
+        if do_throw:
+            raise RuntimeError(f"Command: could not find '{command}' on this system")
 
-        raise RuntimeError(f"Command: could not find '{command}' on this system")
+        return None
 
     @classmethod
     def run(cls, command: str) -> str:
