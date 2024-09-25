@@ -99,10 +99,11 @@ class JobMonitor:
                             active_jobs.jobs[job_id] = [ process_description ]
                         else:
                             active_jobs.jobs[job_id].append(process_description)
-                    except NoSuchProcess as p:
+                    except NoSuchProcess as e:
+                        logger.debug(f"JobMonitor.get_active_jobs: no process with {pid=}")
                         pass
-                except Exception:
-                    logger.warn("Line {line} does not match the expected format - {e}")
+                except Exception as e:
+                    logger.warning(f"Line {line} does not match the expected format - {e}")
                     break
 
         return active_jobs
