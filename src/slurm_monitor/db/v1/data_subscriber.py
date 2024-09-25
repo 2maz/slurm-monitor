@@ -92,11 +92,22 @@ class MessageHandler:
 
         if "jobs" in sample:
             for job_id, processes in sample["jobs"].items():
+                job = None
+                jobs = self.database.fetch_all(JobStatus, JobStatus.job_id == job_id)
+                if not jobs:
+                    logger.warning(f"Slurm Job {job_id} is not registered yet -- skipping recording")
+                    continue
+                elif len(jobs) > 1:
+                    sorted(jobs, lambda x: x.submit_time, reverse=True)
+
+                job = jobs[0]
+
                 processes_status = []
                 for process in processes:
                     status = ProcessStatus(
                             node=nodename,
-                            job_id=job_id,
+                            job_id=job.job_id,
+                            job_submit_time=job.submit_time,
                             pid=process['pid'],
                             cpu_percent=process['cpu_percent'],
                             memory_percent=process['memory_percent'],
@@ -104,10 +115,6 @@ class MessageHandler:
                     )
                     processes_status.append(status)
 
-                jobs = self.database.fetch_all(JobStatus, JobStatus.job_id == job_id)
-                if not jobs:
-                    logger.warning(f"Slurm Job {job_id} is not registered yet -- skipping recording")
-                else:
                     self.database.insert(processes_status)
 
         if gpus:
