@@ -13,13 +13,19 @@ class Slurm:
     SCONTROL = "scontrol"
 
     _BIN_HINTS: ClassVar[list[str]] = ["/cm/shared/apps/slurm/current/sbin/"]
-    _ensured_commands: ClassVar[bool] = False
+    _ensured_commands: ClassVar[list[str]] = []
 
     @classmethod
     def ensure_commands(cls):
-        if not cls._ensured_commands:
-            cls.SLURMRESTD = Command.find(command="slurmrestd", hints=cls._BIN_HINTS)
-            cls.SCONTROL = Command.find(command="scontrol", hints=cls._BIN_HINTS)
+        for cmd in ["slurmrestd","scontrol"]:
+            cls.ensure(cmd)
+
+    @classmethod
+    def ensure(cls, cmd: str):
+        if cmd not in cls._ensured_commands:
+            setattr(cls, cmd.upper(), Command.find(command=cmd, hints=cls._BIN_HINTS))
+            cls._ensured_commands.extend(cmd)
+        return getattr(cls, cmd.upper())
 
     @classmethod
     def get_slurmrestd(cls, prefix: str):

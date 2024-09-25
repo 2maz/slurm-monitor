@@ -64,9 +64,9 @@ class JobMonitor:
     def get_active_jobs(cls):
         active_jobs: JobList = JobList()
 
-        Slurm.ensure_commands()
+        scontrol = Slurm.ensure("scontrol")
 
-        cmd = f"{Slurm.SCONTROL} listpids"
+        cmd = f"{scontrol} listpids"
         response = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if response.returncode != 0:
             error_msg = response.stderr.decode('UTF-8').strip()

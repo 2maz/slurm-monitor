@@ -13,7 +13,7 @@ class Command:
         for search_path in search_paths:
             path = shutil.which(cmd=search_path)
             if path:
-                return str(path.resolve()).strip()
+                return path
         if do_throw:
             raise RuntimeError(f"Command: could not find '{command}' on this system")
 
