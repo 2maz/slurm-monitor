@@ -18,6 +18,8 @@ def test_gpu_status(test_db, number_of_nodes, number_of_gpus, number_of_samples)
 
 def test_dataframe(test_db, number_of_gpus, number_of_samples):
     uuids = test_db.get_gpu_uuids(node="node-1")
+    assert len(uuids) == number_of_gpus
+
     df = test_db._fetch_dataframe(GPUStatus, GPUStatus.uuid.in_(uuids))
     assert len(df) == number_of_gpus*number_of_samples
 

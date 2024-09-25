@@ -304,6 +304,10 @@ class SlurmMonitorDB(Database):
 
         return job_timeseries
 
+    def clear(self):
+        with self.make_writeable_session() as session:
+            for table in reversed(self._metadata.sorted_tables):
+                session.query(table).delete()
 
 
 if __name__ == "__main__":

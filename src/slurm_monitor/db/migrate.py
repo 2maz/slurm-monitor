@@ -24,7 +24,7 @@ def migrate(
     except Exception as e:
         raise RuntimeError(f"Failed to open db: {v1_settings.uri}") from e
 
-    
+
     logger.info("Loading Nodes")
     v0_nodes = v0_db.fetch_all(v0.db.Nodes)
     logger.info("Loading JobStatus")
@@ -35,7 +35,6 @@ def migrate(
     #for job in tqdm(v0_jobs, desc="migrating jobs"):
     #    v1_db.insert_or_update(v1.db_tables.JobStatus(**dict(job)))
 
-    gpus = []
     for node in tqdm(v0_nodes, desc="migrating nodes"):
         uuids = v0_db.get_gpu_uuids(node.name)
         v1_db.insert_or_update(v1_db.Nodes(

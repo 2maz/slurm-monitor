@@ -66,6 +66,7 @@ dev = [
     "sphinx-autoapi",
     "tox"
 ]
+
 test = [
     "coverage",
     "httpx",
@@ -74,6 +75,7 @@ test = [
     "pytest-cov",
     "pytest-mock",
     "pydot",
+    "tox"
 ]
 
 [project.scripts]

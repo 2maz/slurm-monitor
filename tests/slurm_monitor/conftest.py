@@ -5,6 +5,9 @@ import datetime as dt
 from pathlib import Path
 from slurm_monitor.utils import utcnow
 
+def pytest_addoption(parser):
+    parser.addoption("--db-uri", help="Test database ", default=None)
+
 @pytest.fixture(scope='module')
 def monkeypatch_module():
     with pytest.MonkeyPatch.context() as mp:
@@ -27,14 +30,20 @@ def number_of_samples() -> int:
     return 50
 
 @pytest.fixture(scope="module")
-def test_db_uri(tmp_path_factory):
-    path = tmp_path_factory.mktemp("data") / "slurm-monitor.test.sqlite"
-    return f"sqlite:///{path}"
+def test_db_uri(tmp_path_factory, pytestconfig):
+    #print("test_db_uri: fixture start")
+    db_uri = pytestconfig.getoption("db_uri")
+    if not db_uri:
+        path = tmp_path_factory.mktemp("data") / "slurm-monitor.test.sqlite"
+        return f"sqlite:///{path}"
+    return db_uri
 
 @pytest.fixture(scope="module")
 def test_db(test_db_uri, number_of_nodes, number_of_gpus, number_of_samples) -> SlurmMonitorDB:
     db_settings = DatabaseSettings(uri=test_db_uri)
     db = SlurmMonitorDB(db_settings)
+
+    db.clear()
 
 
     for i in range(0, number_of_nodes):
