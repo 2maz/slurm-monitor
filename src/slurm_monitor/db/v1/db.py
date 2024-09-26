@@ -197,17 +197,16 @@ class SlurmMonitorDB(Database):
 
         if start_time_in_s is not None:
             start_time = dt.datetime.utcfromtimestamp(start_time_in_s)
-            logger.info(f"SlurmMonitorDB.get_gpu_status: {start_time=}")
             where &= GPUStatus.timestamp >= start_time
 
         if end_time_in_s is not None:
             end_time = dt.datetime.utcfromtimestamp(end_time_in_s)
-            logger.info(f"SlurmMonitorDB.get_gpu_status: {end_time=}")
             where &= GPUStatus.timestamp < end_time
 
         if uuid is not None:
             where &= GPUStatus.uuid == uuid
 
+        logger.info(f"SlurmMonitorDB.get_gpu_status: {node=} {uuid=} {start_time=} {end_time=} {resolution_in_s=}")
         data = self.fetch_all(GPUStatus, where=where)
         if resolution_in_s is not None:
             return TableBase.apply_resolution(data=data, resolution_in_s=resolution_in_s)
