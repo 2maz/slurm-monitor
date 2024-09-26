@@ -229,22 +229,22 @@ class SlurmMonitorDB(Database):
 
         for node in nodes:
             uuids = self.get_gpu_uuids(node)
-            for idx, uuid in enumerate(uuids):
-                if local_indices is not None:
-                    if idx not in local_indices:
-                        continue
+            if local_indices is None:
+                local_indices = range(0, len(uuids))
 
+            for local_id in local_indices:
+                result = self.fetch_all(GPUs.uuid, (GPUs.local_id == local_id) & (GPUs.node == node))
+                if not result:
+                    raise RuntimeError("Failed to retrieve uuid for GPU {local_id=} on {node=}")
+
+                uuid = result[0]
                 node_data = self.get_gpu_status(
                     uuid=uuid,
                     start_time_in_s=start_time_in_s,
                     end_time_in_s=end_time_in_s,
                     resolution_in_s=resolution_in_s,
                 )
-                result = self.fetch_all(GPUs.local_id, GPUs.uuid == uuid)
-                if not result:
-                    raise RuntimeError("Failed to retrieve local_id for GPU {uuid=}")
 
-                local_id = result[0]
                 gpu_status_series = {
                     "label": f"{node}-gpu-{local_id}",
                     "data": node_data,

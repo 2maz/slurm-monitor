@@ -394,7 +394,14 @@ class JobStatus(TableBase):
     @classmethod
     def from_json(cls, data) -> JobStatus:
         mapper = class_mapper(cls)
-        mapped_data = {k: v for k, v in data.items() if k in mapper.attrs}
+        mapped_data = {}
+        for k, v in data.items():
+            if k in mapper.column_attrs:
+                if type(v) == int and type(cls.__table__.columns[k].type) == DateTime:
+                    mapped_data[k] = dt.datetime.utcfromtimestamp(v)
+                else:
+                    mapped_data[k] = v
+
         return cls(**mapped_data)
 
 class ProcessStatus(TableBase):
