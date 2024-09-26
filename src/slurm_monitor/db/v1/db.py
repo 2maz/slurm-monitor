@@ -5,12 +5,13 @@ import datetime as dt
 import os
 
 from pydantic import BaseModel
-from sqlalchemy import MetaData, event, create_engine
+from sqlalchemy import MetaData, event, create_engine, func, select
 from sqlalchemy.orm import DeclarativeMeta, sessionmaker
-from sqlalchemy.engine.url import URL, make_url
+from sqlalchemy.engine.url import URL, make_url 
 
 from .db_tables import CPUStatus, GPUs, GPUStatus, JobStatus, Nodes, ProcessStatus, TableBase
 import pandas as pd
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -135,7 +136,7 @@ class Database:
             return pd.DataFrame([dict(x) for x in query.all()])
 
     def fetch_all(self, db_cls, where=None):
-        return self._fetch(db_cls, where=where, _reduce=lambda q: list(q.all()))
+        return self._fetch(db_cls, where=where)
 
     def fetch_first(self, db_cls, where=None, order_by=None):
         with self.make_session() as session:
@@ -268,6 +269,7 @@ class SlurmMonitorDB(Database):
         start_time_in_s: float | None = None,
         end_time_in_s: float | None = None,
         resolution_in_s: int | None = None,
+        detailed: bool = False
     ) -> list[dict[str, any]]:
         job_timeseries = []
         logger.info(f"{job_id=} {start_time_in_s=} {end_time_in_s=} {resolution_in_s=}")
@@ -283,25 +285,66 @@ class SlurmMonitorDB(Database):
             logger.info(f"SlurmMonitorDB.get_job_status_timeseries: {end_time=}")
             where &= ProcessStatus.timestamp < end_time
 
-
+        nodes = {}
         with self.make_session() as session:
-            pids = session.query(ProcessStatus.pid).filter(where).distinct().all()
-            if pids:
-                pids = [x[0] for x in pids]
+            result = session.query(ProcessStatus.pid, ProcessStatus.node).filter(where).distinct().all()
+            if result:
+                nodes = { x[1] : [] for x in result }
+                [ nodes[x[1]].append(x[0]) for x in result ]
 
-        job_timeseries = {}
-        for pid in pids:
-            process_status_timeseries = self.fetch_all(ProcessStatus, where=where & (ProcessStatus.pid == pid))
 
-            if resolution_in_s is not None:
-                process_status_timeseries = TableBase.apply_resolution(
-                        data=process_status_timeseries,
-                        resolution_in_s=resolution_in_s
+
+        timeseries_per_node = {}
+        for node, pids in nodes.items():
+            timeseries_per_process = {}
+            if detailed:
+                for pid in tqdm(pids):
+                    process_status_timeseries = self.fetch_all(ProcessStatus, where=where & (ProcessStatus.pid == pid) & (ProcessStatus.node == node))
+
+                    if resolution_in_s is not None:
+                        process_status_timeseries = TableBase.apply_resolution(
+                                data=process_status_timeseries,
+                                resolution_in_s=resolution_in_s
+                        )
+
+                    timeseries_per_process[pid] = process_status_timeseries
+
+            # accumulated timeseries
+            with self.make_session() as session:
+                query = (
+                         select(ProcessStatus.node,
+                                ProcessStatus.timestamp,
+                                func.sum(ProcessStatus.cpu_percent).label('cpu_sum'),
+                                func.sum(ProcessStatus.memory_percent).label('memory_sum')
+                         )
+                         .where(where & (ProcessStatus.node == node))
+                         .group_by(
+                             ProcessStatus.node,
+                             ProcessStatus.job_id,
+                             ProcessStatus.timestamp
+                         )
+                         .order_by(ProcessStatus.timestamp.desc())
                 )
 
-            job_timeseries[pid] = process_status_timeseries
+                accumulated_timeseries = [ProcessStatus(
+                    job_id=job_id,
+                    pid=0, # dummy
+                    node=x[0],
+                    timestamp=x[1],
+                    cpu_percent=x[2],
+                    memory_percent=x[3]
+                    )
+                    for x in session.execute(query).all()
+                ]
 
-        return job_timeseries
+                if resolution_in_s is not None:
+                    accumulated_timeseries = TableBase.apply_resolution(
+                            data=accumulated_timeseries,
+                            resolution_in_s=resolution_in_s
+                    )
+
+            timeseries_per_node[node] = { "pids": pids, "accumulated": accumulated_timeseries, "timeseries": timeseries_per_process }
+        return timeseries_per_node
 
     def clear(self):
         with self.make_writeable_session() as session:

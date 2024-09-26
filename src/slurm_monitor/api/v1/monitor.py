@@ -206,6 +206,7 @@ async def job_system_status(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
+    detailed: bool = False,
     dbi=Depends(db_ops.get_database),
 ):
     start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
@@ -215,11 +216,12 @@ async def job_system_status(
     )
 
     data = {}
-    processes = dbi.get_job_status_timeseries_list(
+    timeseries_per_node = dbi.get_job_status_timeseries_list(
             job_id=job_id,
             start_time_in_s=start_time_in_s,
             end_time_in_s=end_time_in_s,
             resolution_in_s=resolution_in_s,
+            detailed=detailed
     )
-    data["processes"] = processes
+    data["nodes"] = timeseries_per_node
     return data
