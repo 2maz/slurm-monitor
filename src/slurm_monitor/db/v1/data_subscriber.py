@@ -122,7 +122,7 @@ class MessageHandler:
                     logger.warning(f"Slurm Job {job_id} is not registered yet -- skipping recording")
                     continue
                 elif len(jobs) > 1:
-                    sorted(jobs, lambda x: x.submit_time, reverse=True)
+                    sorted(jobs, key=lambda x: x.submit_time, reverse=True)
 
                 job = jobs[0]
 
