@@ -22,6 +22,8 @@ from .db_tables import (
 import pandas as pd
 from tqdm import tqdm
 
+from slurm_monitor.utils import utcnow
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -304,7 +306,7 @@ class SlurmMonitorDB(Database):
                 [ nodes[x[1]].append(x[0]) for x in result ]
 
 
-
+        now = utcnow() 
         timeseries_per_node = {}
         for node, pids in nodes.items():
             timeseries_per_process = {}
@@ -358,10 +360,22 @@ class SlurmMonitorDB(Database):
                             resolution_in_s=resolution_in_s
                     )
 
+            active_time_window = now - dt.timedelta(seconds=15*60)
+            active_pids = session.query(ProcessStatus.pid).filter(
+                    (ProcessStatus.node == node) &
+                    (ProcessStatus.job_id == job_id) &
+                    (ProcessStatus.timestamp > active_time_window)
+                    ).distinct().all()
+
+            if active_pids:
+                active_pids = [x[0] for x in active_pids]
+
             timeseries_per_node[node] = {
                     "pids": pids,
+                    "active_pids": active_pids,
                     "accumulated": accumulated_timeseries,
-                    "timeseries": timeseries_per_process
+                    "timeseries": timeseries_per_process,
+                    "timestamp": now
             }
         return timeseries_per_node
 
