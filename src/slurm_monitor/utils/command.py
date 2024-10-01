@@ -27,7 +27,7 @@ class Command:
                 stderr=subprocess.PIPE)
 
         if response.returncode == 0:
-            return response.stdout.decode("utf-8")
+            return response.stdout.decode("utf-8").strip()
 
         raise RuntimeError(
                 f"Command.run: '{command}' failed with returncode: "
@@ -36,4 +36,4 @@ class Command:
 
     @classmethod
     def get_user(cls) -> str:
-        return cls.run("whoami")
+        return cls.run("whoami").strip()
