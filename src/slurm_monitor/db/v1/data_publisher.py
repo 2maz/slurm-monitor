@@ -284,6 +284,103 @@ class HabanaInfoCollector(NodeStatusCollector):
 
         return samples
 
+class XPUInfoCollector(NodeStatusCollector):
+    devices: dict[str,any]
+
+    def __init__(self, sampling_interval_in_s: int | None = None):
+        super().__init__(gpu_type="xpu", sampling_interval_in_s=sampling_interval_in_s)
+
+        self.discover()
+
+    def discover(self):
+        devices_json = Command.run("xpu-smi discovery -j")
+        devices_data = json.loads(devices_json)
+        self.devices = {}
+
+        if "device_list" in devices_data:
+            # mapping local id to the device data, e.g.,
+            # {
+            #     "device_function_type": "physical",
+            #     "device_id": 0,
+            #     "device_name": "Intel(R) Data Center GPU Max 1100",
+            #     "device_type": "GPU",
+            #     "drm_device": "/dev/dri/card1",
+            #     "pci_bdf_address": "0000:29:00.0",
+            #     "pci_device_id": "0xbda",
+            #     "uuid": "00000000-0000-0029-0000-002f0bda8086",
+            #     "vendor_name": "Intel(R) Corporation"
+            # },
+            for device_data in devices_data["device_list"]:
+                device_id = device_data['device_id']
+
+                device_json = Command.run(f"xpu-smi discovery -d {device_id} -j")
+                self.devices[device_id] = json.loads(device_json)
+
+    @property
+    def query_cmd(self):
+        return "xpu-smi dump"
+
+    def get_gpu_info(self) -> str:
+        return Command.run(f"{self.query_cmd} {self.query_argument}")
+
+    @property
+    def query_argument(self):
+        return "-i1 -n1 -d'-1' -m 0,1,2,3,4,5,18"
+
+    @property
+    def query_properties(self):
+        return [
+            "Timestamp",
+            "DeviceId",
+            "GPU Utilization (%)",
+            "GPU Power (W)",
+            "GPU Frequency (MHz)",
+            "GPU Core Temperature (Celsius Degree)",
+            "GPU Memory Temperature (Celsius Degree)",
+            "GPU Memory Utilization (%)",
+            "GPU Memory Used (MiB)"
+        ]
+
+    def parse_response(self, response: str) -> dict[str]:
+        gpus = []
+        for line in response.strip().splitlines()[1:]:
+            gpu_data = {}
+            for idx, field in enumerate(line.split(',')):
+                value = field.strip()
+                try:
+                    gpu_data[self.query_properties[idx]] = value
+                except IndexError:
+                    logger.warning(f"Index {idx} for {field} does not exist")
+                    raise
+            gpus.append(gpu_data)
+        return gpus
+
+    def transform(self, data) -> list[GPUStatus]:
+        samples = []
+        timestamp = utcnow()
+        for idx, value in enumerate(data[self.nodename]["gpus"]):
+            device_data = self.devices[idx]
+            try:
+                core_temperature = float(value["GPU Core Temperature (Celsius Degree)"])
+            except ValueError:
+                core_temperature = 0
+
+            sample = GPUStatus(
+                model=device_data["device_name"],
+                uuid=device_data["uuid"],
+                local_id=idx,
+                node=self.nodename,
+                power_draw=float(value["GPU Power (W)"]),
+                temperature_gpu=float(core_temperature),
+                utilization_memory=float(value["GPU Memory Utilization (%)"]),
+                utilization_gpu=float(value["GPU Utilization (%)"]),
+                memory_total=float(device_data["memory_physical_size_byte"])/(1024.0**2), # MB
+                timestamp=timestamp,
+            )
+            samples.append(sample)
+
+        return samples
+
 
 class ROCMInfoCollector(NodeStatusCollector):
     def __init__(self, sampling_interval_in_s: int | None = None):
@@ -383,12 +480,19 @@ def check_command(command: str):
 def get_status_collector() -> NodeStatusCollector:
     if check_command(command="nvidia-smi -L"):
         return NvidiaInfoCollector()
-    elif check_command(command="rocm-smi -a"):
-        return ROCMInfoCollector()
-    elif check_command(command="hl-smi"):
+
+    if check_command(command="rocm-smi -a"):
+        response = Command.run("rocm-smi -i --csv")
+        if response:
+            return ROCMInfoCollector()
+
+    if check_command(command="hl-smi"):
         return HabanaInfoCollector()
-    else:
-        return NodeStatusCollector()
+
+    if check_command(command="xpu-smi"):
+        return XPUInfoCollector()
+
+    return NodeStatusCollector()
 
 
 class Controller:
