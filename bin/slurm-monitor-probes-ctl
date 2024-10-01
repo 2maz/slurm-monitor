@@ -18,6 +18,10 @@ if [ ! -d $BASE_DIR ]; then
     mkdir -p $BASE_DIR
 fi
 
+if [ ! -d $LOG_DIR ]; then
+    mkdir -p $LOG_DIR
+fi
+
 # Default assumes probe is triggered from the receiving node
 TARGET_HOST=$(hostname)
 RUNUSER=$USER
