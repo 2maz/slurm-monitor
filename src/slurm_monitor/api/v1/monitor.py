@@ -47,7 +47,7 @@ def _get_nodeinfo(nodelist: list[str] | None, dbi):
     if not nodelist:
         nodelist = Slurm.get_node_names()
 
-    gpu_nodelist = [x.name for x in dbi.get_nodes()]
+    gpu_nodelist = dbi.get_gpu_nodes()
 
     nodeinfo = {}
     for nodename in tqdm(nodelist):
@@ -153,7 +153,7 @@ async def nodes_info(nodes: list[str] | None = None, dbi=Depends(db_ops.get_data
 
 @api_router.get("/nodes/refresh_info", response_model=None)
 async def nodes_refreshinfo():
-    load_node_infos()
+    load_node_infos(refresh=True)
     return {'nodes': NODE_INFOS}
 
 

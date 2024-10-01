@@ -181,8 +181,8 @@ class SlurmMonitorDB(Database):
     def get_gpu_uuids(self, node: str) -> list[str]:
         return self.fetch_all(GPUs.uuid, GPUs.node == node)
 
-    def get_nodes(self) -> list[Nodes]:
-        return self.fetch_all(Nodes)
+    def get_gpu_nodes(self) -> list[str]:
+        return list(set(self.fetch_all(GPUs.node)))
 
     def get_gpu_infos(self, node: str) -> dict[str, any]:
         try:
@@ -306,7 +306,7 @@ class SlurmMonitorDB(Database):
                 [ nodes[x[1]].append(x[0]) for x in result ]
 
 
-        now = utcnow() 
+        now = utcnow()
         timeseries_per_node = {}
         for node, pids in nodes.items():
             timeseries_per_process = {}
