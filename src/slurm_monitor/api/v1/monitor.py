@@ -35,7 +35,7 @@ def _get_cpu_infos(node: str, user: str = Command.get_user()):
     msg = f"ssh -oBatchMode=yes -l {user} {node} lscpu | sed -rn '/Model name/ s/.*:\s*(.*)/\\1/p'"
     cpus = {}
     try:
-        cpus["model_name"] = Command.run(msg)
+        cpus["model"] = Command.run(msg)
     except Exception as e:
         cpus["error"] = e
         logger.warn(e)
