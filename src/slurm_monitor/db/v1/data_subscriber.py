@@ -6,7 +6,15 @@ import json
 import datetime as dt
 
 from slurm_monitor.db.v1.db import SlurmMonitorDB
-from slurm_monitor.db.v1.db_tables import CPUStatus, GPUs, GPUStatus, JobStatus, Nodes, ProcessStatus
+from slurm_monitor.db.v1.db_tables import (
+        CPUStatus,
+        GPUs,
+        GPUStatus,
+        JobStatus,
+        MemoryStatus,
+        Nodes,
+        ProcessStatus
+)
 from slurm_monitor.db.v1.data_publisher import KAFKA_NODE_STATUS_TOPIC
 from slurm_monitor.app_settings import AppSettings
 
@@ -41,6 +49,7 @@ class MessageHandler:
             timestamp = dt.datetime.fromisoformat(sample['timestamp'])
 
         cpu_samples = []
+        cpu_model = ""
         for x in sample["cpus"]:
             if timestamp is None and "timestamp" in x:
                 timestamp = dt.datetime.fromisoformat(x["timestamp"])
@@ -53,11 +62,24 @@ class MessageHandler:
                         timestamp=timestamp,
                     )
             )
+            if 'cpu_model' in x:
+                cpu_model = x['cpu_model']
+
+        memory_status = None
+        if x:= sample["memory"]:
+            if timestamp is None and "timestamp" in x:
+                timestamp = dt.datetime.fromisoformat(x["timestamp"])
+
+            memory_status = MemoryStatus(
+                node=nodename,
+                timestamp=timestamp,
+                **x,
+            )
 
         if nodename not in self.nodes:
             nodes_update[nodename] = Nodes(name=nodename,
                     cpu_count=len(cpu_samples),
-                    cpu_model=""
+                    cpu_model=cpu_model
             )
 
         if nodes_update:
@@ -65,6 +87,8 @@ class MessageHandler:
             self.nodes |= nodes_update
 
         self.database.insert(cpu_samples)
+        if memory_status:
+            self.database.insert(memory_status)
 
 
         gpus = {}
@@ -186,4 +210,3 @@ def cli_run():
         port=args.port,
         database=database,
         topic=args.topic)
-    

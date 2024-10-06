@@ -7,7 +7,7 @@ from argparse import ArgumentParser
 import subprocess
 import datetime as dt
 from abc import abstractmethod
-from typing import TypeVar
+from typing import TypeVar, Callable
 
 import os
 import signal
@@ -21,7 +21,7 @@ import re
 from slurm_monitor.utils import utcnow
 from slurm_monitor.utils.process import ProcessStats, JobMonitor
 from slurm_monitor.utils.command import Command
-
+from slurm_monitor.utils.system_info import SystemInfo
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,21 @@ T = TypeVar("T")
 
 class CPUStatus(BaseModel):
     local_id: int
+    cpu_model: str
     cpu_percent: float
+
+class MemoryStatus(BaseModel):
+    total: int
+    available: int
+    percent: float
+    used: int
+    free: int
+    active: int
+    inactive: int
+    buffers: int
+    cached: int
+    shared: int
+    slab: int
 
 # from .db_tables import GPUs, GPUStatus
 class GPUStatus(BaseModel):
@@ -55,13 +69,12 @@ class NodeStatus(BaseSettings):
     node: str
     cpus: list[CPUStatus]
     gpus: list[GPUStatus]
+    memory: MemoryStatus
     jobs: dict[int, list[ProcessStats]]
 
     timestamp: dt.datetime
 
 class DataCollector():
-    _stop: bool = False
-
     sampling_interval_in_s: int
     name: str
 
@@ -69,25 +82,38 @@ class DataCollector():
         self.name = name
         self.sampling_interval_in_s = sampling_interval_in_s
 
-    async def collect(self, shutdown_event: asyncio.Event, publish_fn):
-        while not shutdown_event.is_set() and not self._stop:
+    async def collect(self,
+            shutdown_event: asyncio.Event,
+            publish_fn: Callable[[NodeStatus], bool],
+            max_samples: int | None = None
+        ):
+        samples_collected = 0
+        while not shutdown_event.is_set():
             try:
-                sample: NodeStatus = self.run()
+                sample: NodeStatus = self.get_node_status()
                 if publish_fn:
                     publish_fn(sample)
 
+                if max_samples is not None:
+                    samples_collected += 1
+                    if samples_collected >= max_samples:
+                        logger.warning(f"Max number of samples collected ({max_samples}). Stopping")
+                        shutdown_event.set()
+
+
             except Exception as e:
-                self._stop = True
+                shutdown_event.set()
                 logger.warning(f"{e.__class__} {e}")
             finally:
                 logger.debug(f"Sleeping for {self.sampling_interval_in_s}")
                 await asyncio.sleep(self.sampling_interval_in_s)
 
-    def run(self):
+    def get_node_status(self) -> NodeStatus:
         raise NotImplementedError()
 
 class NodeStatusCollector(DataCollector):
-    nodename: str
+    system_info: SystemInfo
+
     gpu_type: str | None
 
     def __init__(self, gpu_type: str | None = None, sampling_interval_in_s: int | None = None):
@@ -97,16 +123,18 @@ class NodeStatusCollector(DataCollector):
         super().__init__(name=f"collector-{platform.node()}", sampling_interval_in_s=sampling_interval_in_s)
 
         self.nodename = platform.node()
-        self.local_id_mapping = {}
         self.gpu_type = gpu_type
+
+        self.system_info = SystemInfo()
 
     def has_gpus(self) -> bool:
         return self.gpu_type is not None
 
-    def run(self) -> NodeStatus:
+    def get_node_status(self) -> NodeStatus:
         gpu_status = []
         if self.has_gpus():
-            response = self.get_gpu_info()
+            # TODO: compact again
+            response = self.get_gpu_status()
             if response == "" or response is None:
                 raise ValueError("NodeStatusCollector: No value response")
 
@@ -115,19 +143,25 @@ class NodeStatusCollector(DataCollector):
 
         timestamp = utcnow()
         cpu_status = [
-                CPUStatus(cpu_percent=percent, local_id=idx)
+                CPUStatus(
+                    cpu_model=self.system_info.cpu_info.get_cpu_model(),
+                    cpu_percent=percent,
+                    local_id=idx)
                 for idx, percent in enumerate(psutil.cpu_percent(percpu=True))
         ]
+
+        memory_status = MemoryStatus(**psutil.virtual_memory()._asdict())
 
         job_status = JobMonitor.get_active_jobs()
         return NodeStatus(
                 node=platform.node(),
                 gpus=gpu_status,
                 cpus=cpu_status,
+                memory=memory_status,
                 jobs=job_status.jobs,
                 timestamp=timestamp)
 
-    def get_gpu_info(self) -> str:
+    def get_gpu_status(self) -> str:
         msg = f"{self.query_cmd} {self.query_argument}={','.join(self.query_properties)}"
         return Command.run(msg)
 
@@ -170,17 +204,6 @@ class NodeStatusCollector(DataCollector):
             )
             samples.append(sample)
         return samples
-
-    def get_local_id_mapping(self) -> dict[str, int]:
-        mapping = {}
-        response = Command.run("{self.query_cmd} -L")
-        for line in response.strip().split("\n"):
-            # example: GPU 0: Tesla V100-SXM3-32GB (UUID: GPU-ad466f2f-575d-d949-35e0-9a7d912d974e)
-            m = re.match(r"GPU ([0-9]+): [^(]+ \(UUID: (.*)\)", line)
-            uuid = m.group(2)
-            local_id = int(m.group(1))
-            mapping[uuid] = local_id
-        return mapping
 
 
 class NvidiaInfoCollector(NodeStatusCollector):
@@ -310,7 +333,7 @@ class ROCMInfoCollector(NodeStatusCollector):
             "Card SKU"
         ]
 
-    def get_gpu_info(self) -> str:
+    def get_gpu_status(self) -> str:
         return Command.run(f"{self.query_cmd} {self.query_argument}")
 
     def parse_response(self, response: str) -> dict[str]:
@@ -350,21 +373,6 @@ class ROCMInfoCollector(NodeStatusCollector):
             samples.append(sample)
         return samples
 
-    def get_local_id_mapping(self) -> dict[str, int]:
-        response = Command.run(f"{self.query_cmd} --showuniqueid --csv")
-        # Example:
-        #   device,Unique ID
-        #   card0,0x18f68e602b8a790f
-        #   card1,0x95a1ca7691e7c391
-
-        mapping = {}
-        for line in response.strip().split("\n")[1:]:
-            m = re.match(r"card([0-9]+),(.*)", line)
-            local_id = m.group(1)
-            uuid = m.group(2)
-            mapping[uuid] = local_id
-
-        return mapping
 
 def check_command(command: str):
     p = subprocess.run(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -444,7 +452,8 @@ class Controller:
 # Main function to run the app and scheduler
 async def main(*, host: str, port: int,
         publisher_topic: str = KAFKA_NODE_STATUS_TOPIC,
-        subscriber_topic: str = KAFKA_PROBE_CONTROL_TOPIC):
+        subscriber_topic: str = KAFKA_PROBE_CONTROL_TOPIC,
+        max_samples: int | None = None):
     shutdown_event = asyncio.Event()
 
     broker = f"{host}:{port}"
@@ -466,7 +475,7 @@ async def main(*, host: str, port: int,
             return False
 
     # Schedule the periodic publisher
-    collector_task = asyncio.create_task(status_collector.collect(shutdown_event, publish_fn))
+    collector_task = asyncio.create_task(status_collector.collect(shutdown_event, publish_fn, max_samples))
     controller = Controller(status_collector,
             bootstrap_servers=broker,
             shutdown_event=shutdown_event,
@@ -486,9 +495,11 @@ async def main(*, host: str, port: int,
 
 def cli_run():
     parser = ArgumentParser()
-    parser.add_argument("--host", type=str, default=None, required=True)
-    parser.add_argument("--port", type=int, default=10092)
-    parser.add_argument("--log-level", type=str, default="INFO")
+    parser.add_argument("--host", type=str, default=None, required=True, help="Kafka broker's hostname")
+    parser.add_argument("--port", type=int, default=10092, help="Port on which the kafka broker is listening")
+    parser.add_argument("--log-level", type=str, default="INFO", help="Log level to set")
+    parser.add_argument("--number", "-n", type=int, default=None,
+            help="Number of collected samples after which the probe is stopped")
 
     parser.add_argument("--publisher-topic",
             type=str,
@@ -507,12 +518,13 @@ def cli_run():
             format='%(asctime)s %(levelname)-8s %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
     )
-    logger.setLevel(logging.getLevelName(args.log_level))
+    logger.setLevel(logging.getLevelName(args.log_level.upper()))
 
     # Use asyncio.run to start the event loop and run the main coroutine
     asyncio.run(main(host=args.host, port=args.port,
         publisher_topic=args.publisher_topic,
-        subscriber_topic=args.subscriber_topic
+        subscriber_topic=args.subscriber_topic,
+        max_samples=args.number
         ))
 
 

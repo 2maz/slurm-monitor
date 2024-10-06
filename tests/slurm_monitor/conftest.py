@@ -1,6 +1,12 @@
 import pytest
 from slurm_monitor.db.v1.db import SlurmMonitorDB, DatabaseSettings
-from slurm_monitor.db.v1.db_tables import GPUs, GPUStatus, JobStatus, Nodes, ProcessStatus
+from slurm_monitor.db.v1.db_tables import (
+        GPUs,
+        GPUStatus,
+        JobStatus,
+        Nodes,
+        ProcessStatus
+)
 import datetime as dt
 from pathlib import Path
 from slurm_monitor.utils import utcnow
@@ -31,7 +37,6 @@ def number_of_samples() -> int:
 
 @pytest.fixture(scope="module")
 def test_db_uri(tmp_path_factory, pytestconfig):
-    #print("test_db_uri: fixture start")
     db_uri = pytestconfig.getoption("db_uri")
     if not db_uri:
         path = tmp_path_factory.mktemp("data") / "slurm-monitor.test.sqlite"
@@ -45,11 +50,9 @@ def test_db(test_db_uri, number_of_nodes, number_of_gpus, number_of_samples) -> 
 
     db.clear()
 
-
     for i in range(0, number_of_nodes):
         nodename = f"node-{i}"
-        db.insert_or_update(Nodes(name=nodename, cpu_count=128))
-
+        db.insert_or_update(Nodes(name=nodename, cpu_count=128, cpu_model='Intel Xeon', memory_total=256*1024**2))
 
         for g in range(0, number_of_gpus):
             start_time = dt.datetime.now() - dt.timedelta(seconds=number_of_samples)

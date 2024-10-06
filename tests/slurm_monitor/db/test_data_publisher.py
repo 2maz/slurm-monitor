@@ -94,7 +94,7 @@ def test_NodeStatusCollector(
 
     response = '\n'.join(response)
 
-    def mock_get_gpu_info() -> str:
+    def mock_get_gpu_status() -> str:
         return response
 
 
@@ -102,8 +102,8 @@ def test_NodeStatusCollector(
     collector = cls(sampling_interval_in_s=sampling_interval_in_s)
     assert collector.sampling_interval_in_s == sampling_interval_in_s
 
-    monkeypatch.setattr(collector, "get_gpu_info", mock_get_gpu_info)
-    node_status = collector.run()
+    monkeypatch.setattr(collector, "get_gpu_status", mock_get_gpu_status)
+    node_status = collector.get_node_status()
 
     assert len(node_status.gpus) == gpu_count
 
@@ -168,6 +168,42 @@ async def test_collector_collect(controller, mock_slurm_command_hint):
     assert node_status.node
     assert node_status.cpus, "CPUs must not be empty"
     assert node_status.jobs, "Jobs must not be empty"
+    assert node_status.memory, "Memory must not be empty"
+
+    # Mocked process for these ids
+    assert node_status.jobs[1]
+    assert node_status.jobs[2]
+
+    assert node_status.timestamp, "Timestamp must not be empty"
+    assert type(node_status.timestamp) == dt.datetime
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_collector_collect_max_samples(controller, mock_slurm_command_hint):
+    Slurm._BIN_HINTS = [ mock_slurm_command_hint ]
+
+    # using the mock scontrol script here
+    active_jobs = JobMonitor.get_active_jobs()
+    assert active_jobs.jobs
+
+    messages = []
+    def publish_fn(sample: NodeStatus):
+        messages.append(sample)
+
+    shutdown_event = asyncio.Event()
+
+    collector = NodeStatusCollector(sampling_interval_in_s=2)
+    collector_task = asyncio.create_task(collector.collect(shutdown_event, publish_fn, max_samples=1))
+    future = asyncio.gather(collector_task)
+
+    await future
+    assert len(messages) == 1
+    node_status = messages[0]
+
+    assert node_status is not None
+    assert node_status.node
+    assert node_status.cpus, "CPUs must not be empty"
+    assert node_status.jobs, "Jobs must not be empty"
+    assert node_status.memory, "Memory must not be empty"
 
     # Mocked process for these ids
     assert node_status.jobs[1]

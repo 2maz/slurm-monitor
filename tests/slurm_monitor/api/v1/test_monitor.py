@@ -47,7 +47,9 @@ async def test_job_system_status(client, test_db):
     assert response.status_code == 200
 
     json_data = response.json()
-    assert "processes" in json_data
+    assert "nodes" in json_data
+    assert "node-1" in json_data["nodes"]
+    assert "accumulated" in json_data["nodes"]["node-1"]
 
 @pytest.mark.asyncio
 async def test_job_info(client, test_db):
@@ -66,6 +68,15 @@ async def test_nodes_gpu_status(client, test_db):
 
     json_data = response.json()
     assert "gpu_status" in json_data
+
+@pytest.mark.asyncio
+async def test_nodes_gpu_status_with_args(client, test_db):
+    response = client.get("/api/v1/monitor/nodes/node-0/gpu_status")
+    assert response.status_code == 200
+
+    json_data = response.json()
+    assert "gpu_status" in json_data
+
 
 
 @pytest.mark.asyncio
