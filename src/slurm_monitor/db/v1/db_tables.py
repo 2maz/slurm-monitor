@@ -243,6 +243,7 @@ class GPUIdList(types.TypeDecorator):
             logger.error(f"Processing result value failed: {value} -- {e}")
             raise
 
+
 class GPUs(TableBase):
     __tablename__ = "gpus"
 
@@ -436,6 +437,7 @@ class Nodes(TableBase):
 
     cpu_count = Column(Integer)
     cpu_model = Column(String(255), nullable=True)
+    memory_total = Column(BigInteger, default=0)
 
 class CPUStatus(TableBase):
     __tablename__ = "cpu_status"
@@ -451,6 +453,32 @@ class CPUStatus(TableBase):
     cpu_percent = Column(Float)
 
     timestamp = Column(DateTime(), default=dt.datetime.now, primary_key=True)
+
+class MemoryStatus(TableBase):
+    __tablename__ = "memory_status"
+    __table_args__ = ({
+        'timescaledb_hypertable': {
+            'time_column_name': 'timestamp',
+            'chunk_time_interval': '24 hours',
+        }
+    })
+
+    node = Column(String(255), ForeignKey("nodes.name"), primary_key=True)
+
+    total = Column(BigInteger)
+    available = Column(BigInteger)
+    percent = Column(Float)
+    used = Column(BigInteger)
+    free = Column(BigInteger)
+    active = Column(BigInteger)
+    inactive = Column(BigInteger)
+    buffers = Column(BigInteger)
+    cached = Column(BigInteger)
+    shared = Column(BigInteger)
+    slab = Column(BigInteger)
+
+    timestamp = Column(DateTime(), default=dt.datetime.now, primary_key=True)
+
 
 class GPUStatus(TableBase):
     __tablename__ = "gpu_status"

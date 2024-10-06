@@ -7,9 +7,18 @@ import os
 from pydantic import BaseModel
 from sqlalchemy import MetaData, event, create_engine, func, select
 from sqlalchemy.orm import DeclarativeMeta, sessionmaker
-from sqlalchemy.engine.url import URL, make_url 
+from sqlalchemy.engine.url import URL, make_url
 
-from .db_tables import CPUStatus, GPUs, GPUStatus, JobStatus, Nodes, ProcessStatus, TableBase
+from .db_tables import (
+        CPUStatus,
+        GPUs,
+        GPUStatus,
+        JobStatus,
+        Nodes,
+        MemoryStatus,
+        ProcessStatus,
+        TableBase
+)
 import pandas as pd
 from tqdm import tqdm
 
@@ -164,6 +173,7 @@ class SlurmMonitorDB(Database):
     JobStatus = JobStatus
     GPUStatus = GPUStatus
     CPUStatus = CPUStatus
+    MemoryStatus = MemoryStatus
     ProcessStatus = ProcessStatus
 
     def get_gpu_uuids(self, node: str) -> list[str]:
