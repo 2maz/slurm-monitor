@@ -320,7 +320,7 @@ class XPUInfoCollector(NodeStatusCollector):
     def query_cmd(self):
         return "xpu-smi dump"
 
-    def get_gpu_info(self) -> str:
+    def get_gpu_status(self) -> str:
         return Command.run(f"{self.query_cmd} {self.query_argument}")
 
     @property
@@ -562,6 +562,7 @@ async def main(*, host: str, port: int,
 
     broker = f"{host}:{port}"
     status_collector = get_status_collector()
+    logger.info(f"Running status collector {type(status_collector)}")
 
     node_status_producer = KafkaProducer(
             value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8'),
