@@ -79,7 +79,8 @@ class MessageHandler:
         if nodename not in self.nodes:
             nodes_update[nodename] = Nodes(name=nodename,
                     cpu_count=len(cpu_samples),
-                    cpu_model=cpu_model
+                    cpu_model=cpu_model,
+                    memory_total=memory_status.total,
             )
 
         if nodes_update:
