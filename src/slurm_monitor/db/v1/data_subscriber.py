@@ -66,7 +66,9 @@ class MessageHandler:
                 cpu_model = x['cpu_model']
 
         memory_status = None
-        if x:= sample["memory"]:
+        memory_total = 0
+        if "memory" in sample:
+            x = sample["memory"]
             if timestamp is None and "timestamp" in x:
                 timestamp = dt.datetime.fromisoformat(x["timestamp"])
 
@@ -75,12 +77,15 @@ class MessageHandler:
                 timestamp=timestamp,
                 **x,
             )
+            memory_total = memory_status.total
+        else:
+            logger.warning(f"No memory status received from {nodename} {' '*80}")
 
         if nodename not in self.nodes:
             nodes_update[nodename] = Nodes(name=nodename,
                     cpu_count=len(cpu_samples),
                     cpu_model=cpu_model,
-                    memory_total=memory_status.total,
+                    memory_total=memory_total
             )
 
         if nodes_update:
