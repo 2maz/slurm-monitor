@@ -19,7 +19,6 @@ api_router = APIRouter(
 )
 
 NODE_INFOS = {}
-NODE_INFOS_FILENAME="/tmp/slurm-monitor/nodeinfo.yaml"
 
 def _get_slurmrestd(prefix: str):
     try:
@@ -31,21 +30,9 @@ def _get_slurmrestd(prefix: str):
                 detail="The slurmrestd service seems to be down. SLURM or the server might be under maintenance"
         )
 
-def _get_cpu_infos(node: str, user: str = Command.get_user()):
-    msg = f"ssh -oBatchMode=yes -l {user} {node} lscpu | sed -rn '/Model name/ s/.*:\s*(.*)/\\1/p'"
-    cpus = {}
-    try:
-        cpus["model"] = Command.run(msg)
-    except Exception as e:
-        cpus["error"] = e
-        logger.warn(e)
-
-    return { "cpus": cpus }
-
-
 def _get_nodeinfo(nodelist: list[str] | None, dbi):
     if not nodelist:
-        nodelist = Slurm.get_node_names()
+        nodelist = dbi.get_nodes()
 
     gpu_nodelist = dbi.get_gpu_nodes()
 
@@ -59,7 +46,7 @@ def _get_nodeinfo(nodelist: list[str] | None, dbi):
                 logger.warn(f"Internal error: Retrieving GPU info for {nodename} failed -- {e}")
 
         try:
-            nodeinfo[nodename].update( _get_cpu_infos(nodename) )
+            nodeinfo[nodename].update(dbi.get_cpu_infos(nodename) )
         except Exception as e:
             logger.warn(f"Internal error: Retrieving CPU info for {nodename} failed -- {e}")
     return nodeinfo
@@ -97,20 +84,10 @@ def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None
 
     return start_time_in_s, end_time_in_s, resolution_in_s
 
-def load_node_infos(refresh: bool = False, filename: Path | str  = NODE_INFOS_FILENAME) -> dict[str, any]:
+def load_node_infos() -> dict[str, any]:
     global NODE_INFOS
-    node_info_path = Path(filename)
-    if not refresh and node_info_path.exists():
-        with open(node_info_path, "r") as f:
-            NODE_INFOS = yaml.safe_load(f)
-    else:
-        dbi = db_ops.get_database()
-        NODE_INFOS = _get_nodeinfo(None, dbi)
-
-        node_info_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(node_info_path, "w") as f:
-            yaml.dump(NODE_INFOS, f)
-
+    dbi = db_ops.get_database()
+    NODE_INFOS = _get_nodeinfo(None, dbi)
     return NODE_INFOS
 
 @api_router.get("/jobs", response_model=None)
@@ -133,7 +110,12 @@ async def nodes():
 
 @api_router.get("/nodes/{nodename}/info", response_model=None)
 @cache(expire=3600*24)
-async def node_gpuinfo(nodename: str, dbi = Depends(db_ops.get_database)):
+async def nodes_info(nodename: str, dbi = Depends(db_ops.get_database)):
+    global NODE_INFOS
+
+    if not NODE_INFOS:
+        load_node_infos()
+
     return NODE_INFOS[nodename]
 
 
@@ -149,11 +131,16 @@ async def partitions():
 @api_router.get("/nodes/info", response_model=None)
 @cache(expire=3600*24)
 async def nodes_info(nodes: list[str] | None = None, dbi=Depends(db_ops.get_database)):
+    global NODE_INFOS
+
+    if not NODE_INFOS:
+        load_node_infos()
+
     return {'nodes': NODE_INFOS}
 
 @api_router.get("/nodes/refresh_info", response_model=None)
 async def nodes_refreshinfo():
-    load_node_infos(refresh=True)
+    load_node_infos()
     return {'nodes': NODE_INFOS}
 
 

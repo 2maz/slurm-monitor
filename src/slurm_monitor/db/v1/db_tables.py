@@ -337,7 +337,7 @@ class JobStatus(TableBase):
     # tasks_per_node": 0,
     # tasks_per_socket": null,
     # tasks_per_board": 0,
-    cpus = Column(Integer)  # 1
+    cpus = Column(Integer, default=0)  # 1
     node_count = Column(Integer)  # 1
     tasks = Column(Integer)  # 1,
     # het_job_id": 0,

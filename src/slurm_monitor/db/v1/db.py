@@ -178,11 +178,26 @@ class SlurmMonitorDB(Database):
     MemoryStatus = MemoryStatus
     ProcessStatus = ProcessStatus
 
+    def get_nodes(self) -> list[str]:
+        return list(set(self.fetch_all(Nodes.name)))
+
     def get_gpu_uuids(self, node: str) -> list[str]:
         return self.fetch_all(GPUs.uuid, GPUs.node == node)
 
     def get_gpu_nodes(self) -> list[str]:
         return list(set(self.fetch_all(GPUs.node)))
+
+    def get_cpu_infos(self, node: str) -> dict[str, any]:
+        try:
+            cpu_infos = self.fetch_all([Nodes.cpu_count, Nodes.cpu_model], Nodes.name == node)
+            if cpu_infos:
+                count, model = cpu_infos[0]
+                return { 'cpus': { 'model': model, 'count': count } }
+        except Exception as e:
+            logger.warn(e)
+            raise
+
+        return {"cpus": {}}
 
     def get_gpu_infos(self, node: str) -> dict[str, any]:
         try:

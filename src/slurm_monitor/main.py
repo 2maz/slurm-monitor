@@ -44,10 +44,6 @@ async def lifespan(app: FastAPI):
 
     # First make sure that this runs on a slurm system
     Slurm.ensure_commands()
-    logger.info("Querying system info for nodes")
-    monitor.load_node_infos()
-    logger.info("Done")
-
     logger.info("Startup of jobs collector")
     jobs_pool = start_jobs_collection(database)
 
