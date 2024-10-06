@@ -37,17 +37,17 @@ async def lifespan(app: FastAPI):
     logger.setLevel(logging.DEBUG)  # output of exception handlers above
     logger.info("Setting up cache ...")
     FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
-    logger.info("Connecting ...")
+
+    logger.info("Setting up database ...")
+    app_settings = AppSettings.initialize()
+    database = SlurmMonitorDB(app_settings.database)
 
     # First make sure that this runs on a slurm system
     Slurm.ensure_commands()
-
     logger.info("Querying system info for nodes")
     monitor.load_node_infos()
     logger.info("Done")
 
-    app_settings = AppSettings.initialize()
-    database = SlurmMonitorDB(app_settings.database)
     logger.info("Startup of jobs collector")
     jobs_pool = start_jobs_collection(database)
 
