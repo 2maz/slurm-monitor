@@ -5,10 +5,13 @@ import shutil
 class Command:
     @classmethod
     def find(cls, *, command, hints: list[str] | None = None, do_throw = True ) -> str | None:
-        search_paths = [ Path(command) ]
+        search_paths = []
         if hints:
             for x in hints:
                 search_paths.append(Path(x) / command)
+
+        # default
+        search_paths.append(Path(command))
 
         for search_path in search_paths:
             path = shutil.which(cmd=search_path)
