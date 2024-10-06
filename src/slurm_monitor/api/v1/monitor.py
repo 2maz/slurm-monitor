@@ -34,7 +34,7 @@ def _get_nodeinfo(nodelist: list[str] | None, dbi):
     gpu_nodelist = dbi.get_gpu_nodes()
 
     nodeinfo = {}
-    for nodename in tqdm(nodelist):
+    for nodename in tqdm(sorted(nodelist)):
         nodeinfo[nodename] = {}
         if nodename in gpu_nodelist:
             try:
