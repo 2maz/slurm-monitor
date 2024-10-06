@@ -18,7 +18,7 @@ from pydantic_settings import BaseSettings
 import logging
 import re
 
-from slurm_monitor.utils import utcnow
+from slurm_monitor.utils import utcnow, ensure_float
 from slurm_monitor.utils.process import ProcessStats, JobMonitor
 from slurm_monitor.utils.command import Command
 from slurm_monitor.utils.system_info import SystemInfo
@@ -354,24 +354,20 @@ class XPUInfoCollector(NodeStatusCollector):
                     raise
             gpus.append(gpu_data)
         return gpus
+    
 
     def transform(self, data) -> list[GPUStatus]:
         samples = []
         timestamp = utcnow()
         for idx, value in enumerate(data[self.nodename]["gpus"]):
             device_data = self.devices[idx]
-            try:
-                core_temperature = float(value["GPU Core Temperature (Celsius Degree)"])
-            except ValueError:
-                core_temperature = 0
-
             sample = GPUStatus(
                 model=device_data["device_name"],
                 uuid=device_data["uuid"],
                 local_id=idx,
                 node=self.nodename,
                 power_draw=float(value["GPU Power (W)"]),
-                temperature_gpu=float(core_temperature),
+                temperature_gpu=ensure_float(value, "GPU Core Temperature (Celsius Degree)", 0),
                 utilization_memory=float(value["GPU Memory Utilization (%)"]),
                 utilization_gpu=float(value["GPU Utilization (%)"]),
                 memory_total=float(device_data["memory_physical_size_byte"])/(1024.0**2), # MB
