@@ -17,7 +17,6 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.api.v1.router import app as api_v1_app
-import slurm_monitor.api.v1.monitor as monitor
 from slurm_monitor.db.v1.data_collector import start_jobs_collection
 from slurm_monitor.db.v1.db import SlurmMonitorDB
 

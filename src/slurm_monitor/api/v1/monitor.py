@@ -1,14 +1,11 @@
 # from slurm_monitor.backend.worker import celery_app
 from fastapi import APIRouter, Depends, HTTPException
 from logging import getLogger, Logger
-import yaml
 from slurm_monitor.utils import utcnow
 import slurm_monitor.db_operations as db_ops
 from fastapi_cache.decorator import cache
-from pathlib import Path
 from tqdm import tqdm
 
-from slurm_monitor.utils.command import Command
 from slurm_monitor.utils.slurm import Slurm
 
 logger: Logger = getLogger(__name__)
@@ -110,7 +107,7 @@ async def nodes():
 
 @api_router.get("/nodes/{nodename}/info", response_model=None)
 @cache(expire=3600*24)
-async def nodes_info(nodename: str, dbi = Depends(db_ops.get_database)):
+async def nodes_nodename_info(nodename: str, dbi = Depends(db_ops.get_database)):
     global NODE_INFOS
 
     if not NODE_INFOS:
