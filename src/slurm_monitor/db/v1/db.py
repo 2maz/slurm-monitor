@@ -206,10 +206,12 @@ class SlurmMonitorDB(Database):
             uuids = self.fetch_all(GPUs.uuid, GPUs.node == node)
             where &= GPUStatus.uuid.in_(uuids)
 
+        start_time = None
         if start_time_in_s is not None:
             start_time = dt.datetime.utcfromtimestamp(start_time_in_s)
             where &= GPUStatus.timestamp >= start_time
 
+        end_time = None
         if end_time_in_s is not None:
             end_time = dt.datetime.utcfromtimestamp(end_time_in_s)
             where &= GPUStatus.timestamp < end_time
@@ -281,7 +283,6 @@ class SlurmMonitorDB(Database):
         resolution_in_s: int | None = None,
         detailed: bool = False
     ) -> list[dict[str, any]]:
-        job_timeseries = []
         logger.info(f"{job_id=} {start_time_in_s=} {end_time_in_s=} {resolution_in_s=}")
 
         where = (ProcessStatus.job_id == job_id)
@@ -309,7 +310,11 @@ class SlurmMonitorDB(Database):
             timeseries_per_process = {}
             if detailed:
                 for pid in tqdm(pids):
-                    process_status_timeseries = self.fetch_all(ProcessStatus, where=where & (ProcessStatus.pid == pid) & (ProcessStatus.node == node))
+                    process_status_timeseries = self.fetch_all(ProcessStatus,
+                            where=where
+                            & (ProcessStatus.pid == pid)
+                            & (ProcessStatus.node == node)
+                    )
 
                     if resolution_in_s is not None:
                         process_status_timeseries = TableBase.apply_resolution(
@@ -353,7 +358,11 @@ class SlurmMonitorDB(Database):
                             resolution_in_s=resolution_in_s
                     )
 
-            timeseries_per_node[node] = { "pids": pids, "accumulated": accumulated_timeseries, "timeseries": timeseries_per_process }
+            timeseries_per_node[node] = {
+                    "pids": pids,
+                    "accumulated": accumulated_timeseries,
+                    "timeseries": timeseries_per_process
+            }
         return timeseries_per_node
 
     def clear(self):
