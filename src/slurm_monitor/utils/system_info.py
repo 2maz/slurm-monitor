@@ -3,6 +3,7 @@ from __future__ import annotations
 import platform
 import subprocess
 from enum import Enum
+import logging
 from pathlib import Path
 import os
 import sys
@@ -10,7 +11,7 @@ import multiprocessing
 import json
 import argparse
 
-import logging
+from slurm_monitor.utils.command import Command
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +31,7 @@ class CPUInfo:
             self.count = count
 
     def get_cpu_model(self) -> str:
-        # TODO: consider lscpu
-        if Path("/proc/cpuinfo").exists():
-            return os.popen("cat /proc/cpuinfo | grep 'model name' | uniq | cut -d: -f2").read().strip()
-
-        raise RuntimeError("Failed to locate /proc/cpuinfo")
+        return Command.run("lscpu | grep -i 'model name' | uniq | cut -d: -f2 | xargs")
 
     def get_cpu_count(self) -> int:
         cpu_count = multiprocessing.cpu_count()
