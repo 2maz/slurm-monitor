@@ -282,6 +282,117 @@ class SlurmMonitorDB(Database):
                 gpu_status_series_list.append(gpu_status_series)
         return gpu_status_series_list
 
+    def get_cpu_status(
+        self,
+        node: str,
+        start_time_in_s: float | None = None,
+        end_time_in_s: float | None = None,
+        resolution_in_s: int | None = None,
+    ) -> list[GPUStatus]:
+        where = CPUStatus.node == node
+
+        start_time = None
+        if start_time_in_s is not None:
+            start_time = dt.datetime.utcfromtimestamp(start_time_in_s)
+            where &= CPUStatus.timestamp >= start_time
+
+        end_time = None
+        if end_time_in_s is not None:
+            end_time = dt.datetime.utcfromtimestamp(end_time_in_s)
+            where &= CPUStatus.timestamp < end_time
+
+        logger.info(f"SlurmMonitorDB.get_cpu_status: {node=} {start_time=} {end_time=} {resolution_in_s=}")
+        data = self.fetch_all(CPUStatus, where=where)
+        if resolution_in_s is not None:
+            return TableBase.apply_resolution(data=data, resolution_in_s=resolution_in_s)
+        else:
+            return data
+
+    def get_cpu_status_timeseries_list(
+        self,
+        nodes: list[str] | None = None,
+        start_time_in_s: float | None = None,
+        end_time_in_s: float | None = None,
+        resolution_in_s: int | None = None,
+    ) -> list[dict[str, any]]:
+        cpu_status_series_list = []
+
+        logger.info(f"{nodes=} {start_time_in_s=} {end_time_in_s=} {resolution_in_s=}")
+        if nodes is None or nodes == []:
+            nodes = self.fetch_all(Nodes.name)
+
+        for node in nodes:
+            node_data = self.get_cpu_status(
+                node=node,
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s,
+                resolution_in_s=resolution_in_s,
+            )
+
+            cpu_status_series = {
+                "label": f"{node}-cpu",
+                "data": node_data,
+            }
+            cpu_status_series_list.append(cpu_status_series)
+        return cpu_status_series_list
+
+    def get_memory_status(
+        self,
+        node: str | None = None,
+        start_time_in_s: float | None = None,
+        end_time_in_s: float | None = None,
+        resolution_in_s: int | None = None,
+    ) -> list[GPUStatus]:
+        where = sqlalchemy.sql.true()
+
+        if node is not None:
+            where &= MemoryStatus.node  == node
+
+        start_time = None
+        if start_time_in_s is not None:
+            start_time = dt.datetime.utcfromtimestamp(start_time_in_s)
+            where &= MemoryStatus.timestamp >= start_time
+
+        end_time = None
+        if end_time_in_s is not None:
+            end_time = dt.datetime.utcfromtimestamp(end_time_in_s)
+            where &= MemoryStatus.timestamp < end_time
+
+        logger.info(f"SlurmMonitorDB.get_memory_status: {node=} {start_time=} {end_time=} {resolution_in_s=}")
+        data = self.fetch_all(MemoryStatus, where=where)
+        if resolution_in_s is not None:
+            return TableBase.apply_resolution(data=data, resolution_in_s=resolution_in_s)
+        else:
+            return data
+
+    def get_memory_status_timeseries_list(
+        self,
+        nodes: list[str] | None = None,
+        start_time_in_s: float | None = None,
+        end_time_in_s: float | None = None,
+        resolution_in_s: int | None = None,
+    ) -> list[dict[str, any]]:
+        memory_status_series_list = []
+
+        logger.info(f"{nodes=} {start_time_in_s=} {end_time_in_s=} {resolution_in_s=}")
+        if nodes is None or nodes == []:
+            nodes = self.fetch_all(Nodes.name)
+
+        for node in nodes:
+            node_data = self.get_memory_status(
+                node=node,
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s,
+                resolution_in_s=resolution_in_s,
+            )
+
+            memory_status_series = {
+                "label": f"{node}-memory",
+                "data": node_data,
+            }
+            memory_status_series_list.append(memory_status_series)
+        return memory_status_series_list
+
     def get_job(self, job_id: int) -> JobStatus:
         where = sqlalchemy.sql.true()
         where &= JobStatus.job_id == job_id

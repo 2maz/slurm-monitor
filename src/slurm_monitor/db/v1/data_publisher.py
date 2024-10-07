@@ -354,7 +354,7 @@ class XPUInfoCollector(NodeStatusCollector):
                     raise
             gpus.append(gpu_data)
         return gpus
-    
+
 
     def transform(self, data) -> list[GPUStatus]:
         samples = []

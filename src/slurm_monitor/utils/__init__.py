@@ -9,5 +9,3 @@ def ensure_float(value: dict[str, any], key: str, default_value: float) -> float
         return float(value[key])
     except (KeyError, ValueError):
         return default_value
-
-

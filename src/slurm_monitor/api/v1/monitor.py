@@ -171,6 +171,56 @@ async def gpustatus(
         )
     }
 
+@api_router.get("/nodes/{nodename}/cpu_status")
+@api_router.get("/nodes/cpu_status")
+async def cpu_status(
+    nodename: str | None = None,
+    start_time_in_s: float | None = None,
+    end_time_in_s: float | None = None,
+    resolution_in_s: int | None = None,
+    dbi=Depends(db_ops.get_database),
+):
+    start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
+            start_time_in_s=start_time_in_s,
+            end_time_in_s=end_time_in_s,
+            resolution_in_s=resolution_in_s
+    )
+
+    nodes = [] if nodename is None else [nodename]
+    return {
+        "cpu_status": dbi.get_cpu_status_timeseries_list(
+            nodes=nodes,
+            start_time_in_s=start_time_in_s,
+            end_time_in_s=end_time_in_s,
+            resolution_in_s=resolution_in_s,
+        )
+    }
+
+@api_router.get("/nodes/{nodename}/memory_status")
+@api_router.get("/nodes/memory_status")
+async def memory_status(
+    nodename: str | None = None,
+    start_time_in_s: float | None = None,
+    end_time_in_s: float | None = None,
+    resolution_in_s: int | None = None,
+    dbi=Depends(db_ops.get_database),
+):
+    start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
+            start_time_in_s=start_time_in_s,
+            end_time_in_s=end_time_in_s,
+            resolution_in_s=resolution_in_s
+    )
+
+    nodes = [] if nodename is None else [nodename]
+    return {
+        "memory_status": dbi.get_memory_status_timeseries_list(
+            nodes=nodes,
+            start_time_in_s=start_time_in_s,
+            end_time_in_s=end_time_in_s,
+            resolution_in_s=resolution_in_s,
+        )
+    }
+
 
 @api_router.get("/job/{job_id}")
 @api_router.get("/jobs/{job_id}/info")
