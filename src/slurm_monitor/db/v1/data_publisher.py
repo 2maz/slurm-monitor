@@ -366,11 +366,11 @@ class XPUInfoCollector(NodeStatusCollector):
                 uuid=device_data["uuid"],
                 local_id=idx,
                 node=self.nodename,
-                power_draw=float(value["GPU Power (W)"]),
+                power_draw=ensure_float(value, "GPU Power (W)", 0),
                 temperature_gpu=ensure_float(value, "GPU Core Temperature (Celsius Degree)", 0),
-                utilization_memory=float(value["GPU Memory Utilization (%)"]),
-                utilization_gpu=float(value["GPU Utilization (%)"]),
-                memory_total=float(device_data["memory_physical_size_byte"])/(1024.0**2), # MB
+                utilization_memory=ensure_float(value, "GPU Memory Utilization (%)", 0),
+                utilization_gpu=ensure_float(value, "GPU Utilization (%)", 0),
+                memory_total=ensure_float(device_data, "memory_physical_size_byte", 0)/(1024.0**2), # MB
                 timestamp=timestamp,
             )
             samples.append(sample)
