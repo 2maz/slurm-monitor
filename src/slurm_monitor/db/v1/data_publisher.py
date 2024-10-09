@@ -429,7 +429,7 @@ class ROCMInfoCollector(NodeStatusCollector):
     def get_gpu_status(self) -> str:
         return Command.run(f"{self.query_cmd} {self.query_argument}")
 
-    def parse_response(self, response: str) -> dict[str]:
+    def parse_response(self, response: str) -> list[dict[str]]:
         gpus = []
         main_response = [x for x in response.strip().split("\n") if not x.lower().startswith("warn")]
 
