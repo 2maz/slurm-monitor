@@ -88,6 +88,14 @@ class JobMonitor:
                     pid = int(pid)
                     job_id = int(job_id)
 
+                    if pid < 0:
+                        logger.warning(f"{pid=} invalid - skipping")
+                        continue
+
+                    if job_id < 0:
+                        logger.warning(f"{job_id=} invalid - skipping")
+                        continue
+
                     process_description = ProcessStats(pid=pid)
                     try:
                         p = cls.get_process(process_description.pid)
@@ -103,7 +111,7 @@ class JobMonitor:
                         logger.debug(f"JobMonitor.get_active_jobs: no process with {pid=}")
                         pass
                 except Exception as e:
-                    logger.warning(f"Line {line} does not match the expected format - {e}")
-                    break
+                    logger.warning(f"Line '{line}' does not match the expected format - {e}")
+                    continue
 
         return active_jobs
