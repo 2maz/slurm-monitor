@@ -6,6 +6,8 @@ from slurm_monitor.main import app
 from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.api.v1.monitor import load_node_infos, validate_interval
 
+from slurm_monitor.db.v1.db_tables import Nodes
+
 
 @pytest_asyncio.fixture(scope="module")
 def client(mock_slurm_command_hint, test_db_uri, monkeypatch_module):
@@ -32,14 +34,15 @@ async def test_monitor_nodes(client):
         assert f"n{i:03d}" in nodenames
 
 @pytest.mark.asyncio
-async def test_monitor_nodes_info(client):
+async def test_monitor_nodes_info(client, test_db):
     response = client.get("/api/v1/monitor/nodes/info")
     assert response.status_code == 200
 
     json_data = response.json()
-    assert "nodes" in json_data
-    for i in range(1,23):
-        assert f"n{i:03d}" in json_data["nodes"]
+    nodes = test_db.get_nodes()
+    assert nodes
+    for node in nodes:
+        assert node in json_data["nodes"]
 
 @pytest.mark.asyncio
 async def test_job_system_status(client, test_db):
@@ -85,9 +88,10 @@ async def test_nodes_refresh_info(client, test_db):
     assert response.status_code == 200
 
     json_data = response.json()
-    assert "nodes" in json_data
-    for i in range(1,23):
-        assert f"n{i:03d}" in json_data["nodes"]
+    nodes = test_db.get_nodes()
+    assert nodes
+    for node in nodes:
+        assert node in json_data["nodes"]
 
 def test_validate_interval():
     start_time_in_s = None
@@ -114,6 +118,9 @@ def test_validate_interval():
 
 
 
-def test_nodeinfo(client, tmp_path):
-    node_info_yaml = tmp_path / "nodeinfo.yaml"
-    load_node_infos(filename=node_info_yaml)
+def test_nodeinfo(client, test_db):
+    load_infos = load_node_infos()
+    nodes = test_db.get_nodes()
+    assert nodes
+    for node in nodes:
+        assert node in load_infos

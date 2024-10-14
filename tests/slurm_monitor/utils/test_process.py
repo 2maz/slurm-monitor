@@ -30,7 +30,7 @@ import subprocess
 def test_job_monitor_get_active_jobs(lines, expected_active_jobs, monkeypatch, mocker):
     mock_slurm = mocker.patch("slurm_monitor.utils.slurm.Slurm")
     mock_slurm.ensure.return_value = "scontrol"
-    
+
     original_subprocess_fn = subprocess.run
     output = '\n'.join(lines)
     def subprocess_mock(cmd, **kwargs):
@@ -41,4 +41,3 @@ def test_job_monitor_get_active_jobs(lines, expected_active_jobs, monkeypatch, m
     from slurm_monitor.utils.process import JobMonitor
     jobs = JobMonitor.get_active_jobs()
     assert len(jobs.jobs) == expected_active_jobs
-
