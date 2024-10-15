@@ -7,9 +7,9 @@ import logging
 from pathlib import Path
 import os
 import sys
-import multiprocessing
 import json
 import argparse
+import multiprocessing
 
 from slurm_monitor.utils import ensure_float
 from slurm_monitor.utils.command import Command
@@ -34,11 +34,11 @@ class CPUInfo:
     def get_cpu_model(self) -> str:
         return Command.run("lscpu | grep -i 'model name' | uniq | cut -d: -f2 | xargs")
 
-    def get_cpu_count(self) -> int:
-        cpu_count = multiprocessing.cpu_count()
-        if "SLURM_CPUS_ON_NODE" in os.environ:
-            cpu_count = int(os.environ["SLURM_CPUS_ON_NODE"])
-        return cpu_count
+    def get_cpu_count(self, reserved: bool = False) -> int:
+        if reserved and "SLURM_CPUS_ON_NODE" in os.environ:
+            return int(os.environ["SLURM_CPUS_ON_NODE"])
+
+        return multiprocessing.cpu_count()
 
     def __iter__(self):
         yield "model", self.model
