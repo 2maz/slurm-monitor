@@ -11,6 +11,7 @@ import multiprocessing
 import json
 import argparse
 
+from slurm_monitor.utils import ensure_float
 from slurm_monitor.utils.command import Command
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,7 @@ class GPUInfo:
         CUDA = "cuda"
         ROCM = "rocm"
         HABANA = "habana"
+        XPU = "xpu"
 
     model: str | None = None
     memory_total: int = 0
@@ -80,7 +82,7 @@ class GPUInfo:
 
     @classmethod
     def detect(cls) -> GPUInfo:
-        for i in ["nvidia", "amd", "intel"]:
+        for i in ["nvidia", "amd", "intel_habana", "intel_xpu"]:
             try:
                 query_fn = f"get_{i}_gpus"
                 if not hasattr(cls, query_fn):
@@ -96,7 +98,7 @@ class GPUInfo:
         return GPUInfo()
 
     @classmethod
-    def get_intel_gpus(cls) -> tuple[str, int]:
+    def get_intel_habana_gpus(cls) -> tuple[str, int]:
         versions = {}
         try:
             import pyhlml
@@ -124,7 +126,7 @@ class GPUInfo:
         if response.returncode != 0:
             raise RuntimeError("hl-smi is not available")
 
-        result = subprocess.run("hl-smi --query-aip=name,memory.total --format=csv,nouints,noheader",
+        result = subprocess.run("hl-smi --query-aip=name,memory.total --format=csv,nounits,noheader",
                 shell=True, stdout=subprocess.PIPE, stderr=None)
         model_infos = result.stdout.decode("UTF-8").strip().split("\n")
         if len(model_infos) > 0:
@@ -139,7 +141,50 @@ class GPUInfo:
         raise ValueError("No Intel (Habana) GPU found")
 
     @classmethod
+    def get_intel_xpu_gpus(cls) -> tuple[str, int]:
+        versions = {}
+        response = subprocess.run("command -v xpu-smi", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if response.returncode != 0:
+            raise RuntimeError("xpu-smi is not available")
+
+        devices_json = Command.run("xpu-smi discovery -j")
+        devices_data = json.loads(devices_json)
+        devices = {}
+
+        if "device_list" in devices_data:
+            # mapping local id to the device data, e.g.,
+            # {
+            #     "device_function_type": "physical",
+            #     "device_id": 0,
+            #     "device_name": "Intel(R) Data Center GPU Max 1100",
+            #     "device_type": "GPU",
+            #     "drm_device": "/dev/dri/card1",
+            #     "pci_bdf_address": "0000:29:00.0",
+            #     "pci_device_id": "0xbda",
+            #     "uuid": "00000000-0000-0029-0000-002f0bda8086",
+            #     "vendor_name": "Intel(R) Corporation"
+            # },
+            for device_data in devices_data["device_list"]:
+                device_id = device_data['device_id']
+
+                device_json = Command.run(f"xpu-smi discovery -d {device_id} -j")
+                devices[device_id] = json.loads(device_json)
+
+        if not devices:
+            raise ValueError("No Intel (XPU) GPU found")
+
+        device_data = list(devices.values())[0]
+        return GPUInfo(
+                model=device_data['device_name'],
+                count=len(devices),
+                memory_total=ensure_float(device_data, 'memory_physical_size_byte', 0)/(1024.0**2),
+                framework=cls.Framework.XPU,
+                versions=versions
+        )
+
+    @classmethod
     def get_nvidia_gpus(cls) -> GPUInfo:
+        versions = {}
         if "CUDA_ROOT" in os.environ:
             version_json = Path(os.environ['CUDA_ROOT']) / "version.json"
             if version_json.exists():
@@ -199,7 +244,6 @@ class GPUInfo:
             for file in (Path(os.environ['ROCm_ROOT']) / ".info").glob("version*"):
                 with open(file, "r") as f:
                     versions[file.name] = f.read().strip()
-
         try:
             from pyrsmi import rocml
             rocml.smi_initialize()

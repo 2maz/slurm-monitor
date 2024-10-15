@@ -6,7 +6,6 @@ from slurm_monitor.main import app
 from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.api.v1.monitor import load_node_infos, validate_interval
 
-from slurm_monitor.db.v1.db_tables import Nodes
 
 
 @pytest_asyncio.fixture(scope="module")
