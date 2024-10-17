@@ -78,6 +78,7 @@ test = [
     "tox"
 ]
 
+
 [project.scripts]
 slurm-monitor = "slurm_monitor.cli.main:run"
 
