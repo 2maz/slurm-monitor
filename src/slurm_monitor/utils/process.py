@@ -64,7 +64,11 @@ class JobMonitor:
     def get_active_jobs(cls):
         active_jobs: JobList = JobList()
 
-        scontrol = Slurm.ensure("scontrol")
+        try:
+            scontrol = Slurm.ensure("scontrol")
+        except RuntimeError as e:
+            logger.warning(f"JobMonitor.get_active_jobs: no active slurm jobs identifiable - {e}")
+            return active_jobs
 
         cmd = f"{scontrol} listpids"
         response = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
