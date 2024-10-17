@@ -130,10 +130,10 @@ function start_probe() {
 
     echo "Starting slurm-monitor-probe (check $LOG_FILE)"
     if [ $DRYRUN -eq 0 ]; then
-        nohup slurm-monitor-probe --host $TARGET_HOST > $LOG_FILE 2>&1 &
+        nohup slurm-monitor probe --host $TARGET_HOST > $LOG_FILE 2>&1 &
         echo $! > $PID_FILE
     else
-        echo "nohup slurm-monitor-probe --host $TARGET_HOST > $LOG_FILE 2>&1 & (dryrun)"
+        echo "nohup slurm-monitor probe --host $TARGET_HOST > $LOG_FILE 2>&1 & (dryrun)"
     fi
 }
 
