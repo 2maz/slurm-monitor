@@ -23,9 +23,13 @@ class MessageHandler:
     database: SlurmMonitorDB
     nodes: dict[str, any]
 
+    _unknown_jobs: set[int]
+
     def __init__(self, database: SlurmMonitorDB):
         self.database = database
         self.nodes = {}
+
+        self._unknown_jobs = set()
 
     def process(self, message) -> dt.datetime:
         nodes_update = {}
@@ -123,12 +127,16 @@ class MessageHandler:
                 job = None
                 jobs = self.database.fetch_all(JobStatus, JobStatus.job_id == job_id)
                 if not jobs:
-                    logger.warning(f"Slurm Job {job_id} is not registered yet -- skipping recording")
+                    if job_id not in self._unknown_jobs:
+                        logger.warning(f"Slurm Job {job_id} is not registered yet -- skipping recording")
+                        self._unknown_jobs.add(job_id)
                     continue
                 elif len(jobs) > 1:
                     sorted(jobs, key=lambda x: x.submit_time, reverse=True)
 
                 job = jobs[0]
+                if job_id in self._unknown_jobs:
+                    self._unknown_jobs.remove(job_id)
 
                 processes_status = []
                 for process in processes:
