@@ -1,4 +1,3 @@
-from argparse import ArgumentParser
 from kafka import KafkaConsumer
 import time
 import logging
@@ -16,7 +15,6 @@ from slurm_monitor.db.v1.db_tables import (
         ProcessStatus
 )
 from slurm_monitor.db.v1.data_publisher import KAFKA_NODE_STATUS_TOPIC
-from slurm_monitor.app_settings import AppSettings
 
 logger = logging.getLogger(__name__)
 
@@ -184,35 +182,3 @@ def main(*,
             time.sleep(retry_timeout_in_s)
 
     logger.info("All tasks gracefully stopped")
-
-def cli_run():
-    logging.basicConfig()
-
-    parser = ArgumentParser()
-    parser.add_argument("--host", type=str, default=None, required=True)
-    parser.add_argument("--db-uri", type=str, default=None, help="sqlite:////tmp/sqlite.db or timescaledb://slurmuser:test@localhost:10100/ex3cluster")
-    parser.add_argument("--port", type=int, default=10092)
-    parser.add_argument("--log-level", type=str, default="INFO", help="Set the logging level")
-
-    parser.add_argument("--topic",
-            type=str,
-            default=KAFKA_NODE_STATUS_TOPIC,
-            help=f"Topic which is subscribed -- default {KAFKA_NODE_STATUS_TOPIC}"
-    )
-
-    args, options = parser.parse_known_args()
-
-    logger.setLevel(logging.getLevelName(args.log_level))
-
-    app_settings = AppSettings.initialize()
-
-    if args.db_uri is not None:
-        app_settings.database.uri = args.db_uri
-
-    database = SlurmMonitorDB(db_settings=app_settings.database)
-
-    # Use asyncio.run to start the event loop and run the main coroutine
-    main(host=args.host,
-        port=args.port,
-        database=database,
-        topic=args.topic)

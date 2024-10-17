@@ -3,7 +3,6 @@ import psutil
 import asyncio
 from kafka import KafkaConsumer, KafkaProducer
 
-from argparse import ArgumentParser
 import subprocess
 import datetime as dt
 from abc import abstractmethod
@@ -93,6 +92,8 @@ class DataCollector():
                 sample: NodeStatus = self.get_node_status()
                 if publish_fn:
                     publish_fn(sample)
+                else:
+                    print(json.dumps(sample.model_dump(), indent=2, default=str), flush=True)
 
                 if max_samples is not None:
                     samples_collected += 1
@@ -100,13 +101,12 @@ class DataCollector():
                         logger.warning(f"Max number of samples collected ({max_samples}). Stopping")
                         shutdown_event.set()
 
-
             except Exception as e:
-                shutdown_event.set()
                 logger.warning(f"{e.__class__} {e}")
             finally:
-                logger.debug(f"Sleeping for {self.sampling_interval_in_s}")
-                await asyncio.sleep(self.sampling_interval_in_s)
+                if not shutdown_event.set():
+                    logger.debug(f"Sleeping for {self.sampling_interval_in_s}")
+                    await asyncio.sleep(self.sampling_interval_in_s)
 
     def get_node_status(self) -> NodeStatus:
         raise NotImplementedError()
@@ -553,7 +553,8 @@ class Controller:
 async def main(*, host: str, port: int,
         publisher_topic: str = KAFKA_NODE_STATUS_TOPIC,
         subscriber_topic: str = KAFKA_PROBE_CONTROL_TOPIC,
-        max_samples: int | None = None):
+        max_samples: int | None = None
+        ):
     shutdown_event = asyncio.Event()
 
     broker = f"{host}:{port}"
@@ -576,11 +577,17 @@ async def main(*, host: str, port: int,
             return False
 
     # Schedule the periodic publisher
-    collector_task = asyncio.create_task(status_collector.collect(shutdown_event, publish_fn, max_samples))
+    collector_task = asyncio.create_task(
+            status_collector.collect(
+                shutdown_event=shutdown_event,
+                publish_fn=publish_fn,
+                max_samples=max_samples)
+            )
     controller = Controller(status_collector,
             bootstrap_servers=broker,
             shutdown_event=shutdown_event,
-            subscriber_topic=subscriber_topic)
+            subscriber_topic=subscriber_topic
+        )
     control_task = asyncio.create_task(controller.run())
 
     tasks = [control_task, collector_task]
@@ -593,41 +600,3 @@ async def main(*, host: str, port: int,
         shutdown_event.set()
         [await x for x in tasks]
         print("All tasks gracefully stopped")
-
-def cli_run():
-    parser = ArgumentParser()
-    parser.add_argument("--host", type=str, default=None, required=True, help="Kafka broker's hostname")
-    parser.add_argument("--port", type=int, default=10092, help="Port on which the kafka broker is listening")
-    parser.add_argument("--log-level", type=str, default="INFO", help="Log level to set")
-    parser.add_argument("--number", "-n", type=int, default=None,
-            help="Number of collected samples after which the probe is stopped")
-
-    parser.add_argument("--publisher-topic",
-            type=str,
-            default=KAFKA_NODE_STATUS_TOPIC,
-            help=f"Topic under which samples are published -- default {KAFKA_NODE_STATUS_TOPIC}"
-    )
-    parser.add_argument("--subscriber-topic",
-            type=str,
-            default=KAFKA_PROBE_CONTROL_TOPIC,
-            help=f"Topic which is subscribed for control messages -- default {KAFKA_PROBE_CONTROL_TOPIC}"
-    )
-
-    args, options = parser.parse_known_args()
-
-    logging.basicConfig(
-            format='%(asctime)s %(levelname)-8s %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    logger.setLevel(logging.getLevelName(args.log_level.upper()))
-
-    # Use asyncio.run to start the event loop and run the main coroutine
-    asyncio.run(main(host=args.host, port=args.port,
-        publisher_topic=args.publisher_topic,
-        subscriber_topic=args.subscriber_topic,
-        max_samples=args.number
-        ))
-
-
-if __name__ == "__main__":
-    cli_run()

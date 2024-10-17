@@ -4,7 +4,8 @@ import logging
 from slurm_monitor.cli.base import BaseParser
 from logging import basicConfig, getLogger
 
-from slurm_monitor.cli.run import RunParser
+from slurm_monitor.cli.probe import ProbeParser
+from slurm_monitor.cli.listen import ListenParser
 from slurm_monitor.cli.system_info import SystemInfoParser
 
 logger = getLogger(__name__)
@@ -28,12 +29,19 @@ class MainParser(ArgumentParser):
 
 
 def run():
-    basicConfig()
+    basicConfig(
+        format='%(asctime)s %(levelname)-8s %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+
 
     main_parser = MainParser()
 
     main_parser.attach_subcommand_parser(
-        subcommand="run", help="Run", parser_klass=RunParser
+        subcommand="probe", help="Probe/monitor system", parser_klass=ProbeParser
+    )
+    main_parser.attach_subcommand_parser(
+        subcommand="listen", help="Listen to monitor messages", parser_klass=ListenParser
     )
     main_parser.attach_subcommand_parser(
         subcommand="system-info", help="Extract system information", parser_klass=SystemInfoParser
