@@ -342,11 +342,21 @@ def mock_gpu(gpu_type, gpu_responses, monkeypatch):
 
     # Disable existing python libraries that could be use for retrieval
     try:
-        def mock_nvmlInit():
+        def mock_force_fail():
             raise RuntimeError("Test: forced error")
 
-        monkeypatch.setattr(pynvml, "nvmlInit", mock_nvmlInit)
+        monkeypatch.setattr(pynvml, "nvmlInit", mock_force_fail)
     except NameError:
+        pass
+
+    # Disable existing python libraries that could be use for retrieval
+    try:
+        def mock_force_fail():
+            raise RuntimeError("Test: forced error")
+
+        from pyrsmi import rocml
+        monkeypatch.setattr(rocml, "smi_initialize", mock_force_fail)
+    except (ImportError, NameError):
         pass
 
     orig_subprocess_run = subprocess.run

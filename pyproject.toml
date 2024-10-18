@@ -58,6 +58,11 @@ restapi = [
     "uvicorn",
 ]
 
+vendorlibs = [
+    "pynvml",
+    "pyrsmi"
+]
+
 dev = [
     "isort",
     "jupyter-book",

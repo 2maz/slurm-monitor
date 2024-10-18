@@ -38,8 +38,10 @@ class ROCM(GPU):
                     framework=GPUInfo.Framework.ROCM,
                     versions=versions
             )
-        except ImportError:
-            logger.debug("pyrsmi - failed to import - trying with rocm-smi")
+        except ImportError as e:
+            logger.debug(f"{cls}.detect: failed to import {e}")
+        except Exception as e:
+            logger.debug(f"{cls}.detect: failed to extract information - {e}")
 
         response = subprocess.run("command -v rocm-smi", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if response.returncode != 0:
