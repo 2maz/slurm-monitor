@@ -79,6 +79,7 @@ class DataCollector():
 
                 if max_samples is not None:
                     samples_collected += 1
+
                     if samples_collected >= max_samples:
                         logger.warning(f"Max number of samples collected ({max_samples}). Stopping")
                         shutdown_event.set()
@@ -86,7 +87,7 @@ class DataCollector():
             except Exception as e:
                 logger.warning(f"{e.__class__} {e}")
             finally:
-                if not shutdown_event.set():
+                if not shutdown_event.is_set():
                     logger.debug(f"Sleeping for {self.sampling_interval_in_s}")
                     await asyncio.sleep(self.sampling_interval_in_s)
 

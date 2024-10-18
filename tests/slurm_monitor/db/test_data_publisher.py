@@ -123,11 +123,11 @@ async def test_collector_collect_max_samples(controller, mock_slurm_command_hint
     shutdown_event = asyncio.Event()
 
     collector = NodeStatusCollector(sampling_interval_in_s=2)
-    collector_task = asyncio.create_task(collector.collect(shutdown_event, publish_fn, max_samples=1))
+    collector_task = asyncio.create_task(collector.collect(shutdown_event, publish_fn, max_samples=3))
     future = asyncio.gather(collector_task)
 
     await future
-    assert len(messages) == 1
+    assert len(messages) == 3
     node_status = messages[0]
 
     assert node_status is not None

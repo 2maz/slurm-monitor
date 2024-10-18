@@ -339,14 +339,14 @@ def gpu_responses():
 
 @pytest.fixture
 def mock_gpu(gpu_type, gpu_responses, monkeypatch):
-
     # Disable existing python libraries that could be use for retrieval
     try:
         def mock_force_fail():
             raise RuntimeError("Test: forced error")
 
+        import pynvml
         monkeypatch.setattr(pynvml, "nvmlInit", mock_force_fail)
-    except NameError:
+    except (ImportError, NameError):
         pass
 
     # Disable existing python libraries that could be use for retrieval
