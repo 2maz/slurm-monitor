@@ -7,7 +7,7 @@ from slurm_monitor.db.v1.data_publisher import (
         main,
         KAFKA_NODE_STATUS_TOPIC,
         KAFKA_PROBE_CONTROL_TOPIC,
-        get_status_collector,
+        NodeStatusCollector
 )
 
 class ProbeParser(BaseParser):
@@ -39,7 +39,7 @@ class ProbeParser(BaseParser):
         super().execute(args)
 
         if args.one_shot:
-            status_collector = get_status_collector()
+            status_collector = NodeStatusCollector()
             node_status = status_collector.get_node_status()
             print(json.dumps(node_status.model_dump(), indent=2, default=str), flush=True)
             return

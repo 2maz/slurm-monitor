@@ -105,3 +105,6 @@ multi_line_output = 8
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff.per-file-ignores]
+"conftest.py" = ["E501"]

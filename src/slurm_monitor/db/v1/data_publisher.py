@@ -3,9 +3,7 @@ import psutil
 import asyncio
 from kafka import KafkaConsumer, KafkaProducer
 
-import subprocess
 import datetime as dt
-from abc import abstractmethod
 from typing import TypeVar, Callable
 
 import os
@@ -17,10 +15,11 @@ from pydantic_settings import BaseSettings
 import logging
 import re
 
-from slurm_monitor.utils import utcnow, ensure_float
+from slurm_monitor.utils import utcnow
 from slurm_monitor.utils.process import ProcessStats, JobMonitor
-from slurm_monitor.utils.command import Command
 from slurm_monitor.utils.system_info import SystemInfo
+
+from slurm_monitor.devices.gpu import GPUStatus
 
 logger = logging.getLogger(__name__)
 
@@ -46,23 +45,6 @@ class MemoryStatus(BaseModel):
     cached: int
     shared: int
     slab: int
-
-# from .db_tables import GPUs, GPUStatus
-class GPUStatus(BaseModel):
-    uuid: str
-    node: str
-    model: str
-    local_id: int
-    memory_total: int
-
-    temperature_gpu: float
-    power_draw: float
-    utilization_gpu: float
-    utilization_memory: float
-
-    pstate: str | None = None
-    timestamp: str | dt.datetime
-
 
 class NodeStatus(BaseSettings):
     node: str
@@ -114,37 +96,25 @@ class DataCollector():
 class NodeStatusCollector(DataCollector):
     system_info: SystemInfo
 
-    gpu_type: str | None
-
-    def __init__(self, gpu_type: str | None = None, sampling_interval_in_s: int | None = None):
+    def __init__(self, sampling_interval_in_s: int | None = None):
         if sampling_interval_in_s is None:
             sampling_interval_in_s = 20
 
         super().__init__(name=f"collector-{platform.node()}", sampling_interval_in_s=sampling_interval_in_s)
 
         self.nodename = platform.node()
-        self.gpu_type = gpu_type
-
         self.system_info = SystemInfo()
-
-    def has_gpus(self) -> bool:
-        return self.gpu_type is not None
 
     def get_node_status(self) -> NodeStatus:
         gpu_status = []
-        if self.has_gpus():
-            # TODO: compact again
-            response = self.get_gpu_status()
-            if response == "" or response is None:
-                raise ValueError("NodeStatusCollector: No value response")
-
-            data = {self.nodename: {"gpus": self.parse_response(response)}}
-            gpu_status = self.transform(data)
+        if self.system_info._gpu is not None:
+            gpu_status = self.system_info._gpu.get_status()
 
         timestamp = utcnow()
+        cpu_model = self.system_info.cpu_info.get_cpu_model()
         cpu_status = [
                 CPUStatus(
-                    cpu_model=self.system_info.cpu_info.get_cpu_model(),
+                    cpu_model=cpu_model,
                     cpu_percent=percent,
                     local_id=idx)
                 for idx, percent in enumerate(psutil.cpu_percent(percpu=True))
@@ -160,336 +130,6 @@ class NodeStatusCollector(DataCollector):
                 memory=memory_status,
                 jobs=job_status.jobs,
                 timestamp=timestamp)
-
-    def get_gpu_status(self) -> str:
-        msg = f"{self.query_cmd} {self.query_argument}={','.join(self.query_properties)}"
-        return Command.run(msg)
-
-    @property
-    @abstractmethod
-    def query_properties(self) -> list[str]:
-        raise NotImplementedError("Please implement 'query_properties'")
-
-    def parse_response(self, response: str) -> dict[str]:
-        gpus = []
-        for line in response.strip().split("\n"):
-            gpu_data = {}
-            for idx, field in enumerate(line.split(",")):
-                value = field.strip()
-                try:
-                    gpu_data[self.query_properties[idx]] = value
-                except IndexError:
-                    logger.warning(f"Index {idx} for {field} does not exist")
-                    raise
-
-            gpus.append(gpu_data)
-        return gpus
-
-    def transform(self, data: list[dict, any]) -> list[GPUStatus]:
-        samples = []
-        timestamp = utcnow()
-
-        for idx, value in enumerate(data[self.nodename]["gpus"]):
-            sample = GPUStatus(
-                model=value["name"],
-                uuid=value["uuid"],
-                local_id=idx,
-                node=self.nodename,
-                power_draw=value["power.draw"],
-                temperature_gpu=value["temperature.gpu"],
-                utilization_memory=value["utilization.memory"],
-                utilization_gpu=value["utilization.gpu"],
-                memory_total=int(value["memory.used"]) + int(value["memory.free"]),
-                timestamp=timestamp,
-            )
-            samples.append(sample)
-        return samples
-
-
-class NvidiaInfoCollector(NodeStatusCollector):
-    def __init__(self, sampling_interval_in_s: int | None = None):
-        super().__init__(gpu_type="nvidia", sampling_interval_in_s=sampling_interval_in_s)
-
-    @property
-    def query_cmd(self):
-        return "nvidia-smi"
-
-    @property
-    def query_argument(self):
-        return "--format=csv,nounits,noheader --query-gpu"
-
-    @property
-    def query_properties(self):
-        return [
-            "name",
-            "uuid",
-            "power.draw",
-            "temperature.gpu",  #
-            "utilization.gpu",  # Percent of time over the past sample
-            # period during which one or more kernels was executing on the GPU.
-            "utilization.memory",  # Percent of time over the past sample
-            # period during which global (device) memory was being read or written.
-            "memory.used",
-            "memory.free",
-            # extra
-            #'pstate',
-        ]
-
-
-class HabanaInfoCollector(NodeStatusCollector):
-    def __init__(self, sampling_interval_in_s: int | None = None):
-        super().__init__(gpu_type="habana", sampling_interval_in_s=sampling_interval_in_s)
-
-    @property
-    def query_cmd(self):
-        return "hl-smi"
-
-    @property
-    def query_argument(self):
-        return "--format=csv,nounits,noheader --query-aip"
-
-    @property
-    def query_properties(self):
-        return [
-            "name",
-            "uuid",
-            "power.draw",
-            "temperature.aip",
-            "utilization.aip",
-            "memory.used",
-            #'memory.free',
-            # extra
-            "memory.total",
-        ]
-
-    def transform(self, data) -> list[GPUStatus]:
-        samples = []
-        timestamp = utcnow()
-        for idx, value in enumerate(data[self.nodename]["gpus"]):
-            sample = GPUStatus(
-                model=value["name"],
-                uuid=value["uuid"],
-                local_id=idx,
-                node=self.nodename,
-                power_draw=value["power.draw"],
-                temperature_gpu=value["temperature.aip"],
-                utilization_memory=int(value["memory.used"])
-                * 100.0
-                / int(value["memory.total"]),
-                utilization_gpu=value["utilization.aip"],
-                memory_total=value["memory.total"],
-                timestamp=timestamp,
-            )
-            samples.append(sample)
-
-        return samples
-
-class XPUInfoCollector(NodeStatusCollector):
-    devices: dict[str,any]
-
-    def __init__(self, sampling_interval_in_s: int | None = None):
-        super().__init__(gpu_type="xpu", sampling_interval_in_s=sampling_interval_in_s)
-
-        self.discover()
-
-    def discover(self):
-        devices_json = Command.run("xpu-smi discovery -j")
-        devices_data = json.loads(devices_json)
-        self.devices = {}
-
-        if "device_list" in devices_data:
-            # mapping local id to the device data, e.g.,
-            # {
-            #     "device_function_type": "physical",
-            #     "device_id": 0,
-            #     "device_name": "Intel(R) Data Center GPU Max 1100",
-            #     "device_type": "GPU",
-            #     "drm_device": "/dev/dri/card1",
-            #     "pci_bdf_address": "0000:29:00.0",
-            #     "pci_device_id": "0xbda",
-            #     "uuid": "00000000-0000-0029-0000-002f0bda8086",
-            #     "vendor_name": "Intel(R) Corporation"
-            # },
-            for device_data in devices_data["device_list"]:
-                device_id = device_data['device_id']
-
-                device_json = Command.run(f"xpu-smi discovery -d {device_id} -j")
-                self.devices[device_id] = json.loads(device_json)
-
-    @property
-    def query_cmd(self):
-        return "xpu-smi dump"
-
-    def get_gpu_status(self) -> str:
-        return Command.run(f"{self.query_cmd} {self.query_argument}")
-
-    @property
-    def query_argument(self):
-        return "-i1 -n1 -d'-1' -m 0,1,2,3,4,5,18"
-
-    @property
-    def query_properties(self):
-        return [
-            "Timestamp",
-            "DeviceId",
-            "GPU Utilization (%)",
-            "GPU Power (W)",
-            "GPU Frequency (MHz)",
-            "GPU Core Temperature (Celsius Degree)",
-            "GPU Memory Temperature (Celsius Degree)",
-            "GPU Memory Utilization (%)",
-            "GPU Memory Used (MiB)"
-        ]
-
-    def parse_response(self, response: str) -> dict[str]:
-        gpus = []
-        for line in response.strip().splitlines()[1:]:
-            gpu_data = {}
-            for idx, field in enumerate(line.split(',')):
-                value = field.strip()
-                try:
-                    gpu_data[self.query_properties[idx]] = value
-                except IndexError:
-                    logger.warning(f"Index {idx} for {field} does not exist")
-                    raise
-            gpus.append(gpu_data)
-        return gpus
-
-
-    def transform(self, data) -> list[GPUStatus]:
-        samples = []
-        timestamp = utcnow()
-        for idx, value in enumerate(data[self.nodename]["gpus"]):
-            device_data = self.devices[idx]
-            sample = GPUStatus(
-                model=device_data["device_name"],
-                uuid=device_data["uuid"],
-                local_id=idx,
-                node=self.nodename,
-                power_draw=ensure_float(value, "GPU Power (W)", 0),
-                temperature_gpu=ensure_float(value, "GPU Core Temperature (Celsius Degree)", 0),
-                utilization_memory=ensure_float(value, "GPU Memory Utilization (%)", 0),
-                utilization_gpu=ensure_float(value, "GPU Utilization (%)", 0),
-                memory_total=ensure_float(device_data, "memory_physical_size_byte", 0)/(1024.0**2), # MB
-                timestamp=timestamp,
-            )
-            samples.append(sample)
-
-        return samples
-
-
-class ROCMInfoCollector(NodeStatusCollector):
-    def __init__(self, sampling_interval_in_s: int | None = None):
-        super().__init__(gpu_type="amd", sampling_interval_in_s=sampling_interval_in_s)
-
-    @property
-    def query_cmd(self):
-        return "rocm-smi"
-
-    @property
-    def query_argument(self):
-        # from https://github.com/ROCm/rocm_smi_lib/tree/master/python_smi_tools
-        # showmeminfo: vram, vis_vram, gtt
-        #     vram: Video RAM or graphicy memory
-        #     vis_vram: visible VRAM - CPU accessible video memory
-        #     gtt: Graphics Translation Table
-        #     all: all of the above
-        #
-        # --show-productname -> Card series,Card model,Card vendor,Card SKU
-        return "--showuniqueid --showproductname --showuse --showmemuse \
-                --showmeminfo vram --showvoltage --showtemp --showpower --csv"
-
-    @property
-    def query_properties(self):
-        return [
-            "device",
-            "Unique ID",  # uuid
-            "Temperature (Sensor edge) (C)",  # 'temperature.sensor_edge
-            "Temperature (Sensor junction) (C)",  # temperature.sensor_junction
-            "Temperature (Sensor memory) (C)",  # temperature.sensor_memory
-            # optional
-            "Temperature (Sensor HBM 0) (C)",  # temperature.sensor_hbm_0
-            "Temperature (Sensor HBM 1) (C)",  # temperature.sensor_hbm_1
-            "Temperature (Sensor HBM 2) (C)",  # temperature.sensor_hbm_2
-            "Temperature (Sensor HBM 3) (C)",  # temperature.sensor_hbm_3
-            "Average Graphics Package Power (W)",  # power.draw
-            "GPU use (%)",  # utilization.gpu
-            "GFX Activity",  # utilization.gfx,
-            "GPU memory use (%)",  # utilization.memory / high or low (1 or 0)
-            "Memory Activity",
-            "Voltage (mV)",
-            "VRAM Total Memory (B)",  # memory.total
-            "VRAM Total Used Memory (B)",  # memory used
-            "Card series",
-            "Card model",
-            "Card vendor",
-            "Card SKU"
-        ]
-
-    def get_gpu_status(self) -> str:
-        return Command.run(f"{self.query_cmd} {self.query_argument}")
-
-    def parse_response(self, response: str) -> list[dict[str]]:
-        gpus = []
-        main_response = [x for x in response.strip().split("\n") if not x.lower().startswith("warn")]
-
-        field_names = main_response[0].split(",")
-        for line in main_response[1:]:
-            gpu_data = {}
-            for idx, field in enumerate(line.split(",")):
-                property_name = field_names[idx]
-                if property_name not in self.query_properties:
-                    continue
-
-                value = field.strip()
-                gpu_data[property_name] = value
-            gpus.append(gpu_data)
-        return gpus
-
-    def transform(self, data) -> list[GPUStatus]:
-        samples = []
-        timestamp = utcnow()
-
-        for idx, value in enumerate(data[self.nodename]["gpus"]):
-            sample = GPUStatus(
-                model=value["Card series"],
-                uuid=value["Unique ID"],
-                local_id=idx,
-                node=self.nodename,
-                power_draw=value["Average Graphics Package Power (W)"],
-                temperature_gpu=value["Temperature (Sensor edge) (C)"],
-                utilization_memory=int(value["GPU memory use (%)"]),
-                utilization_gpu=value["GPU use (%)"],
-                memory_total=int(value["VRAM Total Memory (B)"])/(1024**2),
-                timestamp=timestamp,
-            )
-            samples.append(sample)
-        return samples
-
-
-def check_command(command: str):
-    p = subprocess.run(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if p.returncode == 0:
-        return True
-    return False
-
-def get_status_collector() -> NodeStatusCollector:
-    if check_command(command="nvidia-smi -L"):
-        return NvidiaInfoCollector()
-
-    if check_command(command="rocm-smi -a"):
-        response = Command.run("rocm-smi -i --csv")
-        if response:
-            return ROCMInfoCollector()
-
-    if check_command(command="hl-smi"):
-        return HabanaInfoCollector()
-
-    if check_command(command="xpu-smi"):
-        return XPUInfoCollector()
-
-    return NodeStatusCollector()
-
 
 class Controller:
     collector: DataCollector
@@ -558,8 +198,8 @@ async def main(*, host: str, port: int,
     shutdown_event = asyncio.Event()
 
     broker = f"{host}:{port}"
-    status_collector = get_status_collector()
-    logger.info(f"Running status collector {type(status_collector)}")
+    status_collector = NodeStatusCollector()
+    logger.info(f"Running status collector - gpus: {status_collector.system_info.gpu_info}")
 
     node_status_producer = KafkaProducer(
             value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8'),

@@ -28,7 +28,7 @@ def migrate(
     logger.info("Loading Nodes")
     v0_nodes = v0_db.fetch_all(v0.db.Nodes)
     logger.info("Loading JobStatus")
-    v0_jobs = v0_db.fetch_all(v0.db.JobStatus)
+    v0_db.fetch_all(v0.db.JobStatus)
     logger.info("Loading GPUStatus")
     #v0_gpu_status = v0_db.fetch_all(v0.db.GPUStatus)
 
