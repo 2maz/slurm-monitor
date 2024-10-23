@@ -6,6 +6,16 @@ This package provides mainly three components for monitoring GPU and CPU resourc
 0. a listener that collects monitoring data a writes it to a database (sqlite or timeseriesdb)
 0. a REST Api to make the data accessible, so that it can, for instance, be used with a [web frontend](https://github.com/2maz/slurm-monitor-frontend)
 
+If being an admin and requiring a detailled generic monitoring to be available with [Performance Co-Pilot](pcp.io), this library is being used as 
+quick approach to include recent GPU devices into the monitoring.
+GPU data is being collected through vendor's smi tools, although pynvml and pyrsmi can be used as well.
+
+This library currently include monitoring data by quering the following:
+ - [nvidia-smi](https://docs.nvidia.com/deploy/nvidia-smi/index.html)
+ - [rocm-smi](https://github.com/ROCm/rocm_smi_lib/tree/master/python_smi_tools)
+ - [hl-smi](https://docs.habana.ai/en/latest/Management_and_Monitoring/Embedded_System_Tools_Guide/System_Management_Interface_Tool.html)
+ - [xpu-smi](https://intel.github.io/xpumanager/smi_user_guide.html)
+
 
 ## Usage
 
