@@ -1,5 +1,6 @@
 import pytest
 import subprocess
+import os
 
 @pytest.mark.parametrize('lines,expected_active_jobs',[
         [
@@ -21,7 +22,7 @@ import subprocess
             [
             "PID      JOBID    STEPID   LOCALID GLOBALID",
             "1   10   0        0       0",
-            "2   20   0        -       -",
+            f"{os.getpid()}   20   0        -       -",
             ],
             2
         ],

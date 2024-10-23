@@ -3,6 +3,7 @@ import asyncio
 import datetime as dt
 import os
 import signal
+from psutil import Process
 
 from slurm_monitor.db.v1.data_publisher import (
         DataCollector,
@@ -71,8 +72,10 @@ def test_controller_ignore_message(message, controller):
     controller.handle(message)
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_collector_collect(controller, mock_slurm_command_hint):
+async def test_collector_collect(controller, mock_slurm_command_hint, monkeypatch):
     Slurm._BIN_HINTS = [ mock_slurm_command_hint ]
+
+    monkeypatch.setattr(JobMonitor, "get_process", lambda p : Process(1) )
 
     # using the mock scontrol script here
     active_jobs = JobMonitor.get_active_jobs()
@@ -109,9 +112,10 @@ async def test_collector_collect(controller, mock_slurm_command_hint):
     assert type(node_status.timestamp) == dt.datetime
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_collector_collect_max_samples(controller, mock_slurm_command_hint):
+async def test_collector_collect_max_samples(controller, mock_slurm_command_hint, monkeypatch):
     Slurm._BIN_HINTS = [ mock_slurm_command_hint ]
 
+    monkeypatch.setattr(JobMonitor, "get_process", lambda p : Process(1) )
     # using the mock scontrol script here
     active_jobs = JobMonitor.get_active_jobs()
     assert active_jobs.jobs
