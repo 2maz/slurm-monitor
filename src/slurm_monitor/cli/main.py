@@ -53,7 +53,8 @@ def run():
         print(__version__)
         sys.exit(0)
 
-    args.active_subparser.execute(args)
+    if hasattr(args, "active_subparser"):
+        getattr(args, "active_subparser").execute(args)
 
     for logger in [logging.getLogger(x) for x in logging.root.manager.loggerDict]:
         logger.setLevel(logging.getLevelName(args.log_level))
