@@ -1,15 +1,15 @@
 [build-system]
 requires = ["setuptools >= 61.0.0",
-    "wheel",
     "build",
     "sphinx"]
+build-backend = "setuptools.build_meta"
 
 # https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
 [project]
 name = "slurm-monitor"
-version = "0.1"
-description = "Slurm monitor as thin wrapper to slurmrestd"
-license = { file="LICENSE" }
+dynamic = ["version"]
+description = "Slurm monitor contains a 'probe' implementation to publish monitoring data from nodes a collector to make monitor data persistent in a database, and a REST API component to make the data accessible"
+license = { file = "LICENSE" }
 readme = "README.md"
 keywords = ["slurm", "monitor"]
 authors = [
@@ -98,6 +98,9 @@ ignore_missing_imports = true
         "bin/slurm-monitor-probes-ctl",
         "bin/slurm-monitor-ctl"
     ]
+
+[tool.setuptools.dynamic]
+version = { attr = "slurm_monitor.__version__" }
 
 [tool.coverage.run]
 source = ["src"]

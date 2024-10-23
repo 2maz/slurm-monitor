@@ -1,12 +1,13 @@
 from argparse import ArgumentParser
-
+import sys
 import logging
-from slurm_monitor.cli.base import BaseParser
 from logging import basicConfig, getLogger
 
+from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.cli.probe import ProbeParser
 from slurm_monitor.cli.listen import ListenParser
 from slurm_monitor.cli.system_info import SystemInfoParser
+from slurm_monitor import __version__
 
 logger = getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -18,7 +19,7 @@ class MainParser(ArgumentParser):
 
         self.description = "slurm-monitor - provide interface for monitoring slurm"
         self.add_argument("--log-level", type=str, default="INFO", help="Logging level")
-
+        self.add_argument("--version","-v", action="store_true", help="Show version")
         self.subparsers = self.add_subparsers(help="sub-command help")
 
     def attach_subcommand_parser(
@@ -34,7 +35,6 @@ def run():
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-
     main_parser = MainParser()
 
     main_parser.attach_subcommand_parser(
@@ -48,6 +48,11 @@ def run():
     )
 
     args = main_parser.parse_args()
+
+    if args.version:
+        print(__version__)
+        sys.exit(0)
+
     args.active_subparser.execute(args)
 
     for logger in [logging.getLogger(x) for x in logging.root.manager.loggerDict]:
