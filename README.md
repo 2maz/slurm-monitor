@@ -141,7 +141,7 @@ In case you want to distribute the probe as a single binary, create a platform s
 tox -e build:nuitka
 ```
 
-The binary is then generated as: dist/<arch>/slurm-monitor
+The binary is then generated as: dist/&lt;arch&gt;/slurm-monitor
 
 Note, that there is no cross-compilation support at the moment. So the build is always targeting the architecture the program runs on.
 
