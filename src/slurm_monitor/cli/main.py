@@ -7,6 +7,7 @@ from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.cli.probe import ProbeParser
 from slurm_monitor.cli.listen import ListenParser
 from slurm_monitor.cli.system_info import SystemInfoParser
+from slurm_monitor.cli.autodeploy import AutoDeployParser
 from slurm_monitor import __version__
 
 logger = getLogger(__name__)
@@ -17,7 +18,7 @@ class MainParser(ArgumentParser):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.description = "slurm-monitor - provide interface for monitoring slurm"
+        self.description = "slurm-monitor - components for monitoring (slurm) nodes"
         self.add_argument("--log-level", type=str, default="INFO", help="Logging level")
         self.add_argument("--version","-v", action="store_true", help="Show version")
         self.subparsers = self.add_subparsers(help="sub-command help")
@@ -38,13 +39,24 @@ def run():
     main_parser = MainParser()
 
     main_parser.attach_subcommand_parser(
-        subcommand="probe", help="Probe/monitor system", parser_klass=ProbeParser
+        subcommand="probe",
+        help="Probe/monitor system",
+        parser_klass=ProbeParser
     )
     main_parser.attach_subcommand_parser(
-        subcommand="listen", help="Listen to monitor messages", parser_klass=ListenParser
+        subcommand="listen",
+        help="Listen to monitor messages",
+        parser_klass=ListenParser
     )
     main_parser.attach_subcommand_parser(
-        subcommand="system-info", help="Extract system information", parser_klass=SystemInfoParser
+        subcommand="system-info",
+        help="Extract system information",
+        parser_klass=SystemInfoParser
+    )
+    main_parser.attach_subcommand_parser(
+        subcommand="auto-deploy",
+        help="Watch status messages and auto-deploy nodes if needed",
+        parser_klass=AutoDeployParser
     )
 
     args = main_parser.parse_args()

@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "slurm-monitor"
 dynamic = ["version"]
-description = "Slurm monitor contains a 'probe' implementation to publish monitoring data from nodes a collector to make monitor data persistent in a database, and a REST API component to make the data accessible"
+description = "Slurm monitor contains a 'probe' implementation to publish monitoring data from nodes, a collector to make monitor data persistent in a database, and a REST API component to make the data accessible"
 license = { file = "LICENSE" }
 readme = "README.md"
 keywords = ["slurm", "monitor"]
