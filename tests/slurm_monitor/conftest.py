@@ -4,6 +4,7 @@ import subprocess
 
 from slurm_monitor.db.v1.db import SlurmMonitorDB, DatabaseSettings
 from slurm_monitor.db.v1.db_tables import (
+        CPUStatus,
         GPUs,
         GPUStatus,
         JobStatus,
@@ -38,6 +39,10 @@ def number_of_gpus() -> int:
     return 2
 
 @pytest.fixture(scope='module')
+def number_of_cpus() -> int:
+    return 2
+
+@pytest.fixture(scope='module')
 def number_of_samples() -> int:
     return 50
 
@@ -50,7 +55,7 @@ def test_db_uri(tmp_path_factory, pytestconfig):
     return db_uri
 
 @pytest.fixture(scope="module")
-def test_db(test_db_uri, number_of_nodes, number_of_gpus, number_of_samples) -> SlurmMonitorDB:
+def test_db(test_db_uri, number_of_nodes, number_of_cpus, number_of_gpus, number_of_samples) -> SlurmMonitorDB:
     db_settings = DatabaseSettings(uri=test_db_uri)
     db = SlurmMonitorDB(db_settings)
 
@@ -58,7 +63,18 @@ def test_db(test_db_uri, number_of_nodes, number_of_gpus, number_of_samples) -> 
 
     for i in range(0, number_of_nodes):
         nodename = f"node-{i}"
-        db.insert_or_update(Nodes(name=nodename, cpu_count=128, cpu_model='Intel Xeon', memory_total=256*1024**2))
+        db.insert_or_update(Nodes(name=nodename, cpu_count=number_of_cpus, cpu_model='Intel Xeon', memory_total=256*1024**2))
+
+        for c in range(0, number_of_cpus):
+            start_time = dt.datetime.now() - dt.timedelta(seconds=number_of_samples)
+            for s in range(0, number_of_samples):
+                sample = CPUStatus(
+                    node=nodename,
+                    local_id=c,
+                    cpu_percent=25,
+                    timestamp=start_time + dt.timedelta(seconds=s)
+                )
+                db.insert(sample)
 
         for g in range(0, number_of_gpus):
             start_time = dt.datetime.now() - dt.timedelta(seconds=number_of_samples)

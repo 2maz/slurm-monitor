@@ -18,7 +18,7 @@ class AppSettings(BaseSettings):
 
     @classmethod
     def get_instance(cls) -> AppSettings:
-        if not cls._instance:
+        if not hasattr(cls, "_instance") or not cls._instance:
             raise RuntimeError(
                 "AppSettings: instance is not accessible. Please call AppSettings.initialize() first."
             )

@@ -1,11 +1,12 @@
 import pytest
 import pytest_asyncio
+import datetime as dt
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from slurm_monitor.main import app
 from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.api.v1.monitor import load_node_infos, validate_interval
-
+from slurm_monitor.db.v1.db_tables import CPUStatus
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -79,8 +80,6 @@ async def test_nodes_gpu_status_with_args(client, test_db):
     json_data = response.json()
     assert "gpu_status" in json_data
 
-
-
 @pytest.mark.asyncio
 async def test_nodes_refresh_info(client, test_db):
     response = client.get("/api/v1/monitor/nodes/refresh_info")
@@ -115,11 +114,26 @@ def test_validate_interval():
     with pytest.raises(HTTPException, match="must be >= 1"):
         validate_interval(120, 100, -1)
 
-
-
 def test_nodeinfo(client, test_db):
     load_infos = load_node_infos()
     nodes = test_db.get_nodes()
     assert nodes
     for node in nodes:
         assert node in load_infos
+
+
+@pytest.mark.asyncio
+async def test_nodes_last_probe_timestamp(client, test_db):
+    response = client.get("/api/v1/monitor/nodes/last_probe_timestamp")
+    assert response.status_code == 200
+
+    json_data = response.json()
+
+    nodes = test_db.get_nodes()
+    assert nodes
+    for node in nodes:
+        assert node in json_data
+
+        latest_cpu_status = test_db.fetch_latest(CPUStatus, where=(CPUStatus.node == node))
+        assert latest_cpu_status
+        assert dt.datetime.fromisoformat(json_data[node]) == latest_cpu_status.timestamp

@@ -140,6 +140,10 @@ async def nodes_refreshinfo():
     load_node_infos()
     return {'nodes': NODE_INFOS}
 
+@api_router.get("/nodes/last_probe_timestamp", response_model=None)
+def nodes_last_probe_timestamp():
+    dbi = db_ops.get_database()
+    return dbi.get_last_probe_timestamp()
 
 @api_router.get("/nodes/{nodename}/gpu_status")
 @api_router.get("/nodes/gpustatus")

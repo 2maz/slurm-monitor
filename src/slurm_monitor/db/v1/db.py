@@ -155,9 +155,12 @@ class Database:
             if where is not None:
                 query = query.filter(where)
             if order_by is not None:
-                query = query.order_by(order_by.desc())
+                query = query.order_by(order_by)
 
             return query.first()
+
+    def fetch_latest(self, db_cls, where=None):
+        return self.fetch_first(db_cls=db_cls, where=where, order_by=db_cls.timestamp.desc())
 
     def insert(self, db_obj):
         with self.make_writeable_session() as session:
@@ -180,6 +183,13 @@ class SlurmMonitorDB(Database):
 
     def get_nodes(self) -> list[str]:
         return list(set(self.fetch_all(Nodes.name)))
+
+    def get_last_probe_timestamp(self) -> dict[str, float]:
+        updated = {}
+        for node in self.get_nodes():
+            result = self.fetch_latest(CPUStatus, where=(CPUStatus.node == node))
+            updated[node] = result.timestamp
+        return updated
 
     def get_gpu_uuids(self, node: str) -> list[str]:
         return self.fetch_all(GPUs.uuid, GPUs.node == node)
