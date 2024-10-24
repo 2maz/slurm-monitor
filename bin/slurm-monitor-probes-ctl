@@ -128,7 +128,7 @@ function start_probe() {
         . $VENV_NAME/bin/activate
     fi
 
-    echo "Starting slurm-monitor-probe (check $LOG_FILE)"
+    echo "Starting slurm-monitor probe (check $LOG_FILE)"
     if [ $DRYRUN -eq 0 ]; then
         nohup slurm-monitor probe --host $TARGET_HOST > $LOG_FILE 2>&1 &
         echo $! > $PID_FILE
