@@ -236,7 +236,7 @@ class Database:
         async with self.make_async_session() as session:
             query = select(*_listify(db_cls))
             if where is not None:
-                query = query.filter(where)
+                query = query.where(where)
 
             query_results = await session.execute(query)
             result = [x for x in query_results.all()] if _reduce is None else _reduce(query_results)
@@ -338,7 +338,7 @@ class SlurmMonitorDB(Database):
         end_time = None
         if end_time_in_s is not None:
             end_time = dt.datetime.utcfromtimestamp(end_time_in_s)
-            where &= GPUStatus.timestamp < end_time
+            where &= GPUStatus.timestamp <= end_time
 
         if uuid is not None:
             where &= GPUStatus.uuid == uuid
@@ -465,7 +465,7 @@ class SlurmMonitorDB(Database):
         end_time = None
         if end_time_in_s is not None:
             end_time = dt.datetime.utcfromtimestamp(end_time_in_s)
-            where &= MemoryStatus.timestamp < end_time
+            where &= MemoryStatus.timestamp <= end_time
 
         logger.info(f"SlurmMonitorDB.get_memory_status: {node=} {start_time=} {end_time=} {resolution_in_s=}")
         data = await self.fetch_all_async(MemoryStatus, where=where)
@@ -488,7 +488,7 @@ class SlurmMonitorDB(Database):
 
         tasks = {}
         for node in nodes:
-            asyncio.tasks(self.get_memory_status(
+            tasks[node] = asyncio.create_task(self.get_memory_status(
                 node=node,
                 start_time_in_s=start_time_in_s,
                 end_time_in_s=end_time_in_s,

@@ -1,12 +1,14 @@
 import pytest
 import json
 import subprocess
+import psutil
 
 from slurm_monitor.db.v1.db import SlurmMonitorDB, DatabaseSettings
 from slurm_monitor.db.v1.db_tables import (
         CPUStatus,
         GPUs,
         GPUStatus,
+        MemoryStatus,
         JobStatus,
         Nodes,
         ProcessStatus
@@ -65,8 +67,8 @@ def test_db(test_db_uri, number_of_nodes, number_of_cpus, number_of_gpus, number
         nodename = f"node-{i}"
         db.insert_or_update(Nodes(name=nodename, cpu_count=number_of_cpus, cpu_model='Intel Xeon', memory_total=256*1024**2))
 
+        start_time = utcnow() - dt.timedelta(seconds=number_of_samples)
         for c in range(0, number_of_cpus):
-            start_time = dt.datetime.now() - dt.timedelta(seconds=number_of_samples)
             for s in range(0, number_of_samples):
                 sample = CPUStatus(
                     node=nodename,
@@ -76,8 +78,15 @@ def test_db(test_db_uri, number_of_nodes, number_of_cpus, number_of_gpus, number
                 )
                 db.insert(sample)
 
+        for s in range(0, number_of_samples):
+            sample = MemoryStatus(
+                **psutil.virtual_memory()._asdict(),
+                node=nodename,
+                timestamp=start_time + dt.timedelta(seconds=s)
+            )
+            db.insert(sample)
+
         for g in range(0, number_of_gpus):
-            start_time = dt.datetime.now() - dt.timedelta(seconds=number_of_samples)
             for s in range(0, number_of_samples):
                 uuid=f"GPU-{nodename}:{g}"
                 db.insert_or_update(GPUs(
