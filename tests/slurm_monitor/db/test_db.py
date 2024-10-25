@@ -1,3 +1,5 @@
+import pytest
+
 from slurm_monitor.db.v1.db_tables import GPUStatus, ProcessStatus, TableBase
 
 def test_gpu_infos(test_db, number_of_nodes, number_of_gpus):
@@ -8,12 +10,13 @@ def test_gpu_infos(test_db, number_of_nodes, number_of_gpus):
         assert "gpus" in gpu_infos
         assert len(gpu_infos["gpus"]) == number_of_gpus
 
-def test_gpu_status(test_db, number_of_nodes, number_of_gpus, number_of_samples):
+@pytest.mark.asyncio(loop_scope="module")
+async def test_gpu_status(test_db, number_of_nodes, number_of_gpus, number_of_samples):
     for i in range(0, number_of_nodes):
         nodename = f"node-{i}"
 
         resolution_in_s = 10
-        gpu_status = test_db.get_gpu_status(node=nodename, resolution_in_s=resolution_in_s)
+        gpu_status = await test_db.get_gpu_status(node=nodename, resolution_in_s=resolution_in_s)
         assert len(gpu_status) >= (number_of_samples / resolution_in_s)
 
 def test_dataframe(test_db, number_of_gpus, number_of_samples):

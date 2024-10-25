@@ -30,6 +30,9 @@ classifiers = [
 ]
 
 dependencies = [
+    "asyncio",
+    "asyncpg",
+    "aiosqlite",
     "kafka-python-ng",
     "numpy",
     "pandas",

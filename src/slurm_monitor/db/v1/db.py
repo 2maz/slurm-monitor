@@ -1,13 +1,27 @@
 import logging
 import sqlalchemy
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 import datetime as dt
 import os
+from collections.abc import Awaitable
+import asyncio
 
 from pydantic import BaseModel
-from sqlalchemy import MetaData, event, create_engine, func, select
+from sqlalchemy import (
+        MetaData,
+        event,
+        create_engine,
+        func,
+        select
+)
 from sqlalchemy.orm import DeclarativeMeta, sessionmaker
 from sqlalchemy.engine.url import URL, make_url
+from sqlalchemy.ext.asyncio import (
+        create_async_engine,
+        async_sessionmaker,
+        AsyncEngine,
+        AsyncSession
+)
 
 from .db_tables import (
         CPUStatus,
@@ -54,6 +68,8 @@ def create_url(url_str: str, username: str | None, password: str | None) -> URL:
 
 
 class Database:
+    async_engine: AsyncEngine
+
     def __init__(self, db_settings: DatabaseSettings):
         db_url = self.db_url = create_url(
             db_settings.uri, db_settings.user, db_settings.password
@@ -67,6 +83,7 @@ class Database:
             engine_kwargs["poolclass"] = StaticPool
 
         self.engine = create_engine(db_url, **engine_kwargs)
+
         logger.info(
             f"Database with dialect: '{db_url.get_dialect().name}' detected - uri: {db_settings.uri}."
         )
@@ -96,6 +113,23 @@ class Database:
 
         if db_settings.create_missing:
             self._metadata.create_all(self.engine)
+
+        async_db_url = db_url
+        if db_settings.uri.startswith("sqlite://"):
+            async_db_url = create_url(
+                    db_settings.uri.replace("sqlite:","sqlite+aiosqlite:"),
+                    db_settings.user,
+                    db_settings.password
+            )
+        elif db_settings.uri.startswith("timescaledb://"):
+            async_db_url = create_url(
+                    db_settings.uri.replace("timescaledb:","timescaledb+asyncpg:"),
+                    db_settings.user,
+                    db_settings.password
+            )
+
+        self.async_engine = create_async_engine(async_db_url, **engine_kwargs)
+        self.async_session_factory = async_sessionmaker(self.async_engine, expire_on_commit=False)
 
     @contextmanager
     def make_session(self):
@@ -170,6 +204,69 @@ class Database:
         with self.make_writeable_session() as session:
             for obj in _listify(db_obj):
                 session.merge(obj)
+# async ----------------------------------------------------------
+    @asynccontextmanager
+    async def make_async_session(self) -> AsyncSession:
+        session = self.async_session_factory()
+        try:
+            yield session
+            if session.deleted or session.dirty or session.new:
+                raise Exception(
+                    "Found potentially modified state in a non-writable session"
+                )
+        except:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+    @asynccontextmanager
+    async def make_writeable_async_session(self) -> AsyncSession:
+        session = self.async_session_factory()
+        try:
+            yield session
+            await session.commit()
+        except:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+    async def _fetch_async(self, db_cls, where=None, _reduce=None, _unpack=True):
+        async with self.make_async_session() as session:
+            query = select(*_listify(db_cls))
+            if where is not None:
+                query = query.filter(where)
+
+            query_results = await session.execute(query)
+            result = [x for x in query_results.all()] if _reduce is None else _reduce(query_results)
+
+            if _unpack and not isinstance(db_cls, (tuple, list)):
+                result = [r[0] for r in result]
+
+            return result
+
+    async def fetch_all_async(self, db_cls, where=None):
+        return await self._fetch_async(db_cls, where=where)
+
+    async def fetch_first_async(self, db_cls, where=None, order_by=None):
+        query = select(*_listify(db_cls))
+        if where is not None:
+            query = query.filter(where)
+        if order_by is not None:
+            query = query.order_by(order_by)
+
+        query = query.limit(1)
+
+        async with self.make_async_session() as session:
+            results = [x[0] for x in await session.execute(query)]
+            if results:
+                return results[0]
+            else:
+                raise RuntimeError("No entries. Could not pick first")
+
+    async def fetch_latest_async(self, db_cls, where=None):
+       return await self.fetch_first_async(db_cls=db_cls, where=where, order_by=db_cls.timestamp.desc())
 
 
 class SlurmMonitorDB(Database):
@@ -184,12 +281,12 @@ class SlurmMonitorDB(Database):
     def get_nodes(self) -> list[str]:
         return list(set(self.fetch_all(Nodes.name)))
 
-    def get_last_probe_timestamp(self) -> dict[str, float]:
-        updated = {}
-        for node in self.get_nodes():
-            result = self.fetch_latest(CPUStatus, where=(CPUStatus.node == node))
-            updated[node] = result.timestamp
-        return updated
+    async def get_last_probe_timestamp(self) -> Awaitable[dict[str, float]]:
+        nodes = self.get_nodes()
+        tasks = {}
+        for node in nodes:
+            tasks[node] = asyncio.create_task(self.fetch_latest_async(CPUStatus, where=(CPUStatus.node == node)))
+        return {node : (await tasks[node]).timestamp for node in nodes}
 
     def get_gpu_uuids(self, node: str) -> list[str]:
         return self.fetch_all(GPUs.uuid, GPUs.node == node)
@@ -220,7 +317,7 @@ class SlurmMonitorDB(Database):
 
         return {"gpus": []}
 
-    def get_gpu_status(
+    async def get_gpu_status(
         self,
         node: str | None = None,
         uuid: str | None = None,
@@ -230,7 +327,7 @@ class SlurmMonitorDB(Database):
     ) -> list[GPUStatus]:
         where = sqlalchemy.sql.true()
         if node is not None:
-            uuids = self.fetch_all(GPUs.uuid, GPUs.node == node)
+            uuids = await self.fetch_all_async(GPUs.uuid, GPUs.node == node)
             where &= GPUStatus.uuid.in_(uuids)
 
         start_time = None
@@ -247,13 +344,13 @@ class SlurmMonitorDB(Database):
             where &= GPUStatus.uuid == uuid
 
         logger.info(f"SlurmMonitorDB.get_gpu_status: {node=} {uuid=} {start_time=} {end_time=} {resolution_in_s=}")
-        data = self.fetch_all(GPUStatus, where=where)
+        data = await self.fetch_all_async(GPUStatus, where=where)
         if resolution_in_s is not None:
             return TableBase.apply_resolution(data=data, resolution_in_s=resolution_in_s)
         else:
             return data
 
-    def get_gpu_status_timeseries_list(
+    async def get_gpu_status_timeseries_list(
         self,
         nodes: list[str] | None = None,
         start_time_in_s: float | None = None,
@@ -261,38 +358,41 @@ class SlurmMonitorDB(Database):
         resolution_in_s: int | None = None,
         local_indices: list[int] | None = None
     ) -> list[dict[str, any]]:
-        gpu_status_series_list = []
 
         logger.info(f"{nodes=} {start_time_in_s=} {end_time_in_s=} {resolution_in_s=} {local_indices=}")
         if nodes is None or nodes == []:
-            nodes = self.fetch_all(Nodes.name)
+            nodes = await self.fetch_all_async(Nodes)
+            nodes = await self.fetch_all_async(Nodes.name)
 
+        uuid2node = {}
         for node in nodes:
             uuids = self.get_gpu_uuids(node)
             if local_indices is None:
                 local_indices = range(0, len(uuids))
 
             for local_id in local_indices:
-                result = self.fetch_all(GPUs.uuid, (GPUs.local_id == local_id) & (GPUs.node == node))
+                result = await self.fetch_all_async(GPUs.uuid, (GPUs.local_id == local_id) & (GPUs.node == node))
                 if not result:
                     raise RuntimeError("Failed to retrieve uuid for GPU {local_id=} on {node=}")
 
                 uuid = result[0]
-                node_data = self.get_gpu_status(
-                    uuid=uuid,
-                    start_time_in_s=start_time_in_s,
-                    end_time_in_s=end_time_in_s,
-                    resolution_in_s=resolution_in_s,
-                )
+                uuid2node[uuid] = node
 
-                gpu_status_series = {
-                    "label": f"{node}-gpu-{local_id}",
-                    "data": node_data,
-                }
-                gpu_status_series_list.append(gpu_status_series)
-        return gpu_status_series_list
+        tasks = {}
+        for uuid, node in uuid2node.items():
+            tasks[uuid] = asyncio.create_task(self.get_gpu_status(
+                uuid=uuid,
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s,
+                resolution_in_s=resolution_in_s,
+            ))
 
-    def get_cpu_status(
+        return [{
+            "label": f"{node}-gpu-{local_id}",
+            "data": await tasks[uuid],
+        } for uuid in tasks.keys()]
+
+    async def get_cpu_status(
         self,
         node: str,
         start_time_in_s: float | None = None,
@@ -312,47 +412,46 @@ class SlurmMonitorDB(Database):
             where &= CPUStatus.timestamp < end_time
 
         logger.info(f"SlurmMonitorDB.get_cpu_status: {node=} {start_time=} {end_time=} {resolution_in_s=}")
-        data = self.fetch_all(CPUStatus, where=where)
+        data = await self.fetch_all_async(CPUStatus, where=where)
         if resolution_in_s is not None:
             return TableBase.apply_resolution(data=data, resolution_in_s=resolution_in_s)
         else:
             return data
 
-    def get_cpu_status_timeseries_list(
+    async def get_cpu_status_timeseries_list(
         self,
         nodes: list[str] | None = None,
         start_time_in_s: float | None = None,
         end_time_in_s: float | None = None,
         resolution_in_s: int | None = None,
     ) -> list[dict[str, any]]:
-        cpu_status_series_list = []
 
         logger.info(f"{nodes=} {start_time_in_s=} {end_time_in_s=} {resolution_in_s=}")
         if nodes is None or nodes == []:
-            nodes = self.fetch_all(Nodes.name)
+            nodes = await self.fetch_all_async(Nodes.name)
 
+        tasks = {}
         for node in nodes:
-            node_data = self.get_cpu_status(
+            tasks[node] = asyncio.create_task(self.get_cpu_status(
                 node=node,
                 start_time_in_s=start_time_in_s,
                 end_time_in_s=end_time_in_s,
                 resolution_in_s=resolution_in_s,
-            )
+            ))
 
-            cpu_status_series = {
+        # cpu_status_series_list
+        return [{
                 "label": f"{node}-cpu",
-                "data": node_data,
-            }
-            cpu_status_series_list.append(cpu_status_series)
-        return cpu_status_series_list
+                "data": await tasks[node]
+            } for node in nodes]
 
-    def get_memory_status(
+    async def get_memory_status(
         self,
         node: str | None = None,
         start_time_in_s: float | None = None,
         end_time_in_s: float | None = None,
         resolution_in_s: int | None = None,
-    ) -> list[GPUStatus]:
+        ) -> Awaitable[list[GPUStatus]]:
         where = sqlalchemy.sql.true()
 
         if node is not None:
@@ -369,51 +468,128 @@ class SlurmMonitorDB(Database):
             where &= MemoryStatus.timestamp < end_time
 
         logger.info(f"SlurmMonitorDB.get_memory_status: {node=} {start_time=} {end_time=} {resolution_in_s=}")
-        data = self.fetch_all(MemoryStatus, where=where)
+        data = await self.fetch_all_async(MemoryStatus, where=where)
         if resolution_in_s is not None:
             return TableBase.apply_resolution(data=data, resolution_in_s=resolution_in_s)
         else:
             return data
 
-    def get_memory_status_timeseries_list(
+    async def get_memory_status_timeseries_list(
         self,
         nodes: list[str] | None = None,
         start_time_in_s: float | None = None,
         end_time_in_s: float | None = None,
         resolution_in_s: int | None = None,
-    ) -> list[dict[str, any]]:
-        memory_status_series_list = []
+        ) -> Awaitable[list[dict[str, any]]]:
 
         logger.info(f"{nodes=} {start_time_in_s=} {end_time_in_s=} {resolution_in_s=}")
         if nodes is None or nodes == []:
-            nodes = self.fetch_all(Nodes.name)
+            nodes = await self.fetch_all_async(Nodes.name)
 
+        tasks = {}
         for node in nodes:
-            node_data = self.get_memory_status(
+            asyncio.tasks(self.get_memory_status(
                 node=node,
                 start_time_in_s=start_time_in_s,
                 end_time_in_s=end_time_in_s,
                 resolution_in_s=resolution_in_s,
-            )
+            ))
 
-            memory_status_series = {
+        # memory_status_series_list
+        return [{
                 "label": f"{node}-memory",
-                "data": node_data,
-            }
-            memory_status_series_list.append(memory_status_series)
-        return memory_status_series_list
+                "data": await tasks[node]
+            } for node in nodes]
 
-    def get_job(self, job_id: int) -> JobStatus:
+    async def get_job(self, job_id: int) -> JobStatus | None:
         where = sqlalchemy.sql.true()
         where &= JobStatus.job_id == job_id
 
-        data = self.fetch_all(JobStatus, where=where)
+        data = await self.fetch_all_async(JobStatus, where=where)
         if data:
             return data[0]
         else:
             return None
 
-    def get_job_status_timeseries_list(
+    async def get_process_status(self,
+            node: str,
+            pid: int,
+            resolution_in_s: int | None,
+            where):
+        process_status_timeseries = await self.fetch_all_async(ProcessStatus,
+                where=where
+                & (ProcessStatus.pid == pid)
+                & (ProcessStatus.node == node)
+        )
+
+        if resolution_in_s is not None:
+            process_status_timeseries = TableBase.apply_resolution(
+                    data=process_status_timeseries,
+                    resolution_in_s=resolution_in_s
+            )
+        return process_status_timeseries
+
+    async def get_accumulated_process_status(self,
+            node: str,
+            job_id: int,
+            resolution_in_s: int,
+            where
+            ):
+            # accumulated timeseries
+            query = (
+                     select(ProcessStatus.node,
+                            ProcessStatus.timestamp,
+                            func.sum(ProcessStatus.cpu_percent).label('cpu_sum'),
+                            func.sum(ProcessStatus.memory_percent).label('memory_sum')
+                     )
+                     .where(where & (ProcessStatus.node == node))
+                     .group_by(
+                         ProcessStatus.node,
+                         ProcessStatus.job_id,
+                         ProcessStatus.timestamp
+                     )
+                     .order_by(ProcessStatus.timestamp.desc())
+            )
+
+            async with self.make_async_session() as session:
+                accumulated_timeseries = [ProcessStatus(
+                    job_id=job_id,
+                    pid=0, # dummy
+                    node=x[0],
+                    timestamp=x[1],
+                    cpu_percent=x[2],
+                    memory_percent=x[3]
+                    )
+                    for x in (await session.execute(query)).all()
+                ]
+
+                if resolution_in_s is not None:
+                    accumulated_timeseries = TableBase.apply_resolution(
+                            data=accumulated_timeseries,
+                            resolution_in_s=resolution_in_s
+                    )
+
+                return accumulated_timeseries
+
+    async def get_active_pids(self,
+            node: str,
+            job_id: int,
+            now: dt.datetime = utcnow()):
+            active_time_window = now - dt.timedelta(seconds=15*60)
+            query = select(ProcessStatus.pid).filter(
+                    (ProcessStatus.node == node) &
+                    (ProcessStatus.job_id == job_id) &
+                    (ProcessStatus.timestamp > active_time_window)
+                    ).distinct()
+
+            async with self.make_async_session() as session:
+                active_pids = (await session.execute(query)).all()
+                if active_pids:
+                    active_pids = [x[0] for x in active_pids]
+
+                return active_pids
+
+    async def get_job_status_timeseries_list(
         self,
         job_id: int,
         start_time_in_s: float | None = None,
@@ -441,76 +617,43 @@ class SlurmMonitorDB(Database):
                 nodes = { x[1] : [] for x in result }
                 [ nodes[x[1]].append(x[0]) for x in result ]
 
-
         now = utcnow()
         timeseries_per_node = {}
         for node, pids in nodes.items():
-            timeseries_per_process = {}
+            accumulated_timeseries_task = asyncio.create_task(
+                    self.get_accumulated_process_status(
+                        node=node,
+                        job_id=job_id,
+                        resolution_in_s=resolution_in_s,
+                        where=where
+                    )
+            )
+
+            active_pids_task = asyncio.create_task(
+                    self.get_active_pids(
+                        node=node,
+                        job_id=job_id
+                    )
+            )
+
+            pid_timeseries_tasks = {}
             if detailed:
                 for pid in tqdm(pids):
-                    process_status_timeseries = self.fetch_all(ProcessStatus,
-                            where=where
-                            & (ProcessStatus.pid == pid)
-                            & (ProcessStatus.node == node)
+                    pid_timeseries_tasks[pid] = asyncio.create_task(
+                            self.get_process_status(
+                                node=node,
+                                pid=pid,
+                                resolution_in_s=resolution_in_s,
+                                where=where
+                            )
                     )
-
-                    if resolution_in_s is not None:
-                        process_status_timeseries = TableBase.apply_resolution(
-                                data=process_status_timeseries,
-                                resolution_in_s=resolution_in_s
-                        )
-
-                    timeseries_per_process[pid] = process_status_timeseries
-
-            # accumulated timeseries
-            with self.make_session() as session:
-                query = (
-                         select(ProcessStatus.node,
-                                ProcessStatus.timestamp,
-                                func.sum(ProcessStatus.cpu_percent).label('cpu_sum'),
-                                func.sum(ProcessStatus.memory_percent).label('memory_sum')
-                         )
-                         .where(where & (ProcessStatus.node == node))
-                         .group_by(
-                             ProcessStatus.node,
-                             ProcessStatus.job_id,
-                             ProcessStatus.timestamp
-                         )
-                         .order_by(ProcessStatus.timestamp.desc())
-                )
-
-                accumulated_timeseries = [ProcessStatus(
-                    job_id=job_id,
-                    pid=0, # dummy
-                    node=x[0],
-                    timestamp=x[1],
-                    cpu_percent=x[2],
-                    memory_percent=x[3]
-                    )
-                    for x in session.execute(query).all()
-                ]
-
-                if resolution_in_s is not None:
-                    accumulated_timeseries = TableBase.apply_resolution(
-                            data=accumulated_timeseries,
-                            resolution_in_s=resolution_in_s
-                    )
-
-            active_time_window = now - dt.timedelta(seconds=15*60)
-            active_pids = session.query(ProcessStatus.pid).filter(
-                    (ProcessStatus.node == node) &
-                    (ProcessStatus.job_id == job_id) &
-                    (ProcessStatus.timestamp > active_time_window)
-                    ).distinct().all()
-
-            if active_pids:
-                active_pids = [x[0] for x in active_pids]
 
             timeseries_per_node[node] = {
                     "pids": pids,
-                    "active_pids": active_pids,
-                    "accumulated": accumulated_timeseries,
-                    "timeseries": timeseries_per_process,
+                    "active_pids": await active_pids_task,
+                    "accumulated": await accumulated_timeseries_task,
+                    "timeseries": { x: await pid_timeseries_tasks[x]
+                        for x in pid_timeseries_tasks },
                     "timestamp": now
             }
         return timeseries_per_node
@@ -519,48 +662,3 @@ class SlurmMonitorDB(Database):
         with self.make_writeable_session() as session:
             for table in reversed(self._metadata.sorted_tables):
                 session.query(table).delete()
-
-
-if __name__ == "__main__":
-    db_settings = DatabaseSettings(
-        user="", password="", uri="timescaledb://slurmuser:test@localhost:7000/ex3cluster"
-    )
-    db = SlurmMonitorDB(db_settings=db_settings)
-
-    #value = {
-    #    "name": "Tesla V100-SXM3-32GB",
-    #    "uuid": "GPU-ad466f2f-575d-d949-35e0-9a7d912d974e",
-    #    "local_id": 0,
-    #    "power.draw": "313.07",
-    #    "temperature.gpu": "52",
-    #    "utilization.gpu": "82",
-    #    "utilization.memory": "28",
-    #    "memory.used": "4205",
-    #    "memory.free": "28295",
-    #}
-
-    #db.insert_or_update(Nodes(
-    #    name="g001",
-    #    gpu_count=16,
-    #    gpu_model="Tesla",
-    #    cpu_count="128",
-    #    cpu_model="Epyc"
-    #    )
-    #)
-
-    #db.insert(
-    #    GPUStatus(
-    #        name=value["name"],
-    #        uuid=value["uuid"],
-    #        node="g001",
-    #        local_id=value["local_id"],
-    #        power_draw=value["power.draw"],
-    #        temperature_gpu=value["temperature.gpu"],
-    #        utilization_memory=value["utilization.memory"],
-    #        utilization_gpu=value["utilization.gpu"],
-    #        memory_total=int(value["memory.used"]) + int(value["memory.free"]),
-    #        timestamp=dt.datetime.now(),
-    #    )
-    #)
-
-    print(db.first(GPUStatus.name, GPUStatus.timestamp))

@@ -141,9 +141,9 @@ async def nodes_refreshinfo():
     return {'nodes': NODE_INFOS}
 
 @api_router.get("/nodes/last_probe_timestamp", response_model=None)
-def nodes_last_probe_timestamp():
+async def nodes_last_probe_timestamp():
     dbi = db_ops.get_database()
-    return dbi.get_last_probe_timestamp()
+    return await dbi.get_last_probe_timestamp()
 
 @api_router.get("/nodes/{nodename}/gpu_status")
 @api_router.get("/nodes/gpustatus")
@@ -166,7 +166,7 @@ async def gpustatus(
 
     nodes = [] if nodename is None else [nodename]
     return {
-        "gpu_status": dbi.get_gpu_status_timeseries_list(
+        "gpu_status": await dbi.get_gpu_status_timeseries_list(
             nodes=nodes,
             start_time_in_s=start_time_in_s,
             end_time_in_s=end_time_in_s,
@@ -192,7 +192,7 @@ async def cpu_status(
 
     nodes = [] if nodename is None else [nodename]
     return {
-        "cpu_status": dbi.get_cpu_status_timeseries_list(
+        "cpu_status": await dbi.get_cpu_status_timeseries_list(
             nodes=nodes,
             start_time_in_s=start_time_in_s,
             end_time_in_s=end_time_in_s,
@@ -217,7 +217,7 @@ async def memory_status(
 
     nodes = [] if nodename is None else [nodename]
     return {
-        "memory_status": dbi.get_memory_status_timeseries_list(
+        "memory_status": await dbi.get_memory_status_timeseries_list(
             nodes=nodes,
             start_time_in_s=start_time_in_s,
             end_time_in_s=end_time_in_s,
@@ -235,7 +235,7 @@ async def job_status(
     resolution_in_s: int | None = None,
     dbi=Depends(db_ops.get_database),
 ):
-    return {"job_status": dbi.get_job(job_id=job_id) }
+    return {"job_status": await dbi.get_job(job_id=job_id) }
 
 
 @api_router.get("/jobs/{job_id}/system_status")
@@ -254,7 +254,7 @@ async def job_system_status(
     )
 
     data = {}
-    timeseries_per_node = dbi.get_job_status_timeseries_list(
+    timeseries_per_node = await dbi.get_job_status_timeseries_list(
             job_id=job_id,
             start_time_in_s=start_time_in_s,
             end_time_in_s=end_time_in_s,
