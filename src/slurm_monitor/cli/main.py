@@ -8,6 +8,7 @@ from slurm_monitor.cli.probe import ProbeParser
 from slurm_monitor.cli.listen import ListenParser
 from slurm_monitor.cli.system_info import SystemInfoParser
 from slurm_monitor.cli.autodeploy import AutoDeployParser
+from slurm_monitor.cli.query import QueryParser
 from slurm_monitor import __version__
 
 logger = getLogger(__name__)
@@ -57,6 +58,12 @@ def run():
         subcommand="auto-deploy",
         help="Watch status messages and auto-deploy nodes if needed",
         parser_klass=AutoDeployParser
+    )
+
+    main_parser.attach_subcommand_parser(
+        subcommand="query",
+        help="Query the database",
+        parser_klass=QueryParser
     )
 
     args = main_parser.parse_args()
