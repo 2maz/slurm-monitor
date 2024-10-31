@@ -36,7 +36,10 @@ from .db_tables import (
 import pandas as pd
 from tqdm import tqdm
 
-from slurm_monitor.utils import utcnow
+from slurm_monitor.utils import (
+    utcnow,
+    ensure_utc
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -376,7 +379,7 @@ class SlurmMonitorDB(Database):
                     raise RuntimeError("Failed to retrieve uuid for GPU {local_id=} on {node=}")
 
                 uuid = result[0]
-                uuid2node[uuid] = node
+                uuid2node[uuid] = { 'node': node, 'local_id': local_id }
 
         tasks = {}
         for uuid, node in uuid2node.items():
@@ -388,7 +391,7 @@ class SlurmMonitorDB(Database):
             ))
 
         return [{
-            "label": f"{node}-gpu-{local_id}",
+            "label": f"{uuid2node[uuid]['node']}-gpu-{uuid2node[uuid]['local_id']}",
             "data": await tasks[uuid],
         } for uuid in tasks.keys()]
 
@@ -574,8 +577,9 @@ class SlurmMonitorDB(Database):
     async def get_active_pids(self,
             node: str,
             job_id: int,
-            now: dt.datetime = utcnow()):
-            active_time_window = now - dt.timedelta(seconds=15*60)
+            end_time: dt.datetime = utcnow()):
+            reference_time = ensure_utc(end_time)
+            active_time_window = reference_time - dt.timedelta(seconds=15*60)
             query = select(ProcessStatus.pid).filter(
                     (ProcessStatus.node == node) &
                     (ProcessStatus.job_id == job_id) &

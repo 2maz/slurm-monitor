@@ -61,6 +61,43 @@ async def test_memory_status_timeseries_list(test_db, number_of_nodes, number_of
         assert node in status[index]['label']
         assert len(status[index]["data"]) >= (number_of_samples / resolution_in_s)
 
+@pytest.mark.asyncio(loop_scope="module")
+async def test_cpu_status_timeseries_list(test_db, number_of_nodes, number_of_samples):
+    nodes = [f"node-{i}" for i in range(0, number_of_nodes)]
+    resolution_in_s = 10
+
+    status = await test_db.get_cpu_status_timeseries_list(
+            nodes=nodes,
+            resolution_in_s=resolution_in_s)
+
+    assert len(status) == number_of_nodes
+    for index, node in enumerate(nodes):
+        assert "label" in status[index]
+        assert "data" in status[index]
+
+        assert node in status[index]['label']
+        assert len(status[index]["data"]) >= (number_of_samples / resolution_in_s)
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_gpu_status_timeseries_list(test_db, number_of_nodes, number_of_gpus, number_of_samples):
+    nodes = [f"node-{i}" for i in range(0, number_of_nodes)]
+    resolution_in_s = 10
+
+    status = await test_db.get_gpu_status_timeseries_list(
+            nodes=nodes,
+            resolution_in_s=resolution_in_s)
+
+    assert len(status) == number_of_nodes*number_of_gpus
+    for node_index, node in enumerate(nodes):
+        for gpu_index in range(number_of_gpus):
+            index = node_index*number_of_gpus + gpu_index
+            assert "label" in status[index]
+            assert "data" in status[index]
+
+            assert node in status[index]['label']
+            assert f"gpu-{gpu_index}" in status[index]['label']
+            assert len(status[index]["data"]) >= (number_of_samples / resolution_in_s)
+
 def test_dataframe(test_db, number_of_gpus, number_of_samples):
     uuids = test_db.get_gpu_uuids(node="node-1")
     assert len(uuids) == number_of_gpus
