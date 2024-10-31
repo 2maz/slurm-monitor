@@ -236,14 +236,14 @@ class Database:
             await session.close()
 
     async def _fetch_async(self, db_cls, where=None, _reduce=None, _unpack=True):
+        query = select(*_listify(db_cls))
+        if where is not None:
+            query = query.where(where)
+
         async with self.make_async_session() as session:
-            query = select(*_listify(db_cls))
-            if where is not None:
-                query = query.where(where)
-
             query_results = await session.execute(query)
-            result = [x for x in query_results.all()] if _reduce is None else _reduce(query_results)
 
+            result = [x for x in query_results.all()] if _reduce is None else _reduce(query_results)
             if _unpack and not isinstance(db_cls, (tuple, list)):
                 result = [r[0] for r in result]
 
