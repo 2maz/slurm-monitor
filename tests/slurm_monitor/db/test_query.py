@@ -11,4 +11,3 @@ def test_gpu_infos(query_name, test_db):
 
     assert isinstance(df, pd.DataFrame)
     assert len(df) > 0
-
