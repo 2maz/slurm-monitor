@@ -110,7 +110,7 @@ class ROCM(GPU):
         main_response = [x for x in response.strip().split("\n") if not x.lower().startswith("warn")]
 
         df = pd.read_csv(StringIO('\n'.join(main_response)))
-        column_names = { x: x.strip() for x in df.columns }
+        column_names = { x: x.strip().lower() for x in df.columns }
         df.rename(columns = column_names, inplace = True)
 
         records = df.to_dict('records')
@@ -119,16 +119,17 @@ class ROCM(GPU):
         timestamp = utcnow()
 
         for idx, value in enumerate(records):
+            total_memory = int(value["vram total memory (b)"])
             sample = GPUStatus(
-                model=value["Card series"],
-                uuid=value["Unique ID"],
+                model=value["card series"],
+                uuid=value["unique id"],
                 local_id=idx,
                 node=self.node,
-                power_draw=value["Average Graphics Package Power (W)"],
-                temperature_gpu=value["Temperature (Sensor edge) (C)"],
-                utilization_memory=int(value["GPU memory use (%)"]),
-                utilization_gpu=value["GPU use (%)"],
-                memory_total=int(value["VRAM Total Memory (B)"])/(1024**2),
+                power_draw=value["average graphics package power (w)"],
+                temperature_gpu=value["temperature (sensor edge) (c)"],
+                utilization_memory=int(value["vram total used memory (b)"])*100.0/total_memory,
+                utilization_gpu=value["gpu use (%)"],
+                memory_total=total_memory/(1024**2),
                 timestamp=timestamp,
             )
             samples.append(sample)

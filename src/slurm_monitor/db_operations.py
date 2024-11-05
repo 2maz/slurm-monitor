@@ -1,4 +1,3 @@
-import functools
 from logging import getLogger, Logger
 import sqlalchemy
 
@@ -8,8 +7,6 @@ from slurm_monitor.db.v1.db import SlurmMonitorDB
 
 logger: Logger = getLogger(__name__)
 
-
-@functools.cache
 def get_database(app_settings: AppSettings | None = None):
     if app_settings is None:
         app_settings = AppSettings.get_instance()
