@@ -7,6 +7,8 @@ from slurm_monitor.main import app
 from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.api.v1.monitor import load_node_infos, validate_interval
 from slurm_monitor.db.v1.db_tables import CPUStatus
+from slurm_monitor.db.v1.query import QueryMaker
+
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -137,3 +139,21 @@ async def test_nodes_last_probe_timestamp(client, test_db):
         latest_cpu_status = test_db.fetch_latest(CPUStatus, where=(CPUStatus.node == node))
         assert latest_cpu_status
         assert dt.datetime.fromisoformat(json_data[node]) == latest_cpu_status.timestamp
+
+@pytest.mark.asyncio
+async def test_queries(client, test_db):
+    response = client.get("/api/v1/monitor/queries")
+    assert response.status_code == 200
+
+    json_data = response.json()
+    assert 'queries' in json_data
+    assert QueryMaker.list_available() == json_data['queries']
+
+@pytest.mark.parametrize("query_name", QueryMaker.list_available())
+@pytest.mark.asyncio
+async def test_queries_available(query_name, client, test_db):
+    response = client.get(f"/api/v1/monitor/queries/{query_name}")
+    assert response.status_code == 200
+
+    json_data = response.json()
+    assert json_data is not None

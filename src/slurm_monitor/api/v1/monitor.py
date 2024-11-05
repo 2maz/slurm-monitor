@@ -7,6 +7,7 @@ from fastapi_cache.decorator import cache
 from tqdm import tqdm
 
 from slurm_monitor.utils.slurm import Slurm
+from slurm_monitor.db.v1.query import QueryMaker
 
 logger: Logger = getLogger(__name__)
 
@@ -263,3 +264,25 @@ async def job_system_status(
     )
     data["nodes"] = timeseries_per_node
     return data
+
+@api_router.get("/queries")
+@api_router.get("/queries/{query_name}")
+async def queries(
+    query_name: str = None,
+    start_time_in_s: float | None = None,
+    end_time_in_s: float | None = None,
+):
+    if query_name is None:
+        return { 'queries': QueryMaker.list_available() }
+
+    try:
+        query_maker = QueryMaker(db_ops.get_database())
+        query = query_maker.create(query_name)
+        df = await query.execute_async()
+
+        return df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(
+                status_code=404,
+                detail=f"Failed to execute query: '{query_name}' -- {e}"
+        )

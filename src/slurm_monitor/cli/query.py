@@ -5,6 +5,7 @@ from slurm_monitor.db.v1.db import SlurmMonitorDB
 from slurm_monitor.db.v1.query import QueryMaker
 from slurm_monitor.app_settings import AppSettings
 
+
 class QueryParser(BaseParser):
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
@@ -22,7 +23,7 @@ class QueryParser(BaseParser):
         )
         parser.add_argument("--format",
                 type=str,
-                default="json",
+                default=None,
                 help="Output format of a query"
         )
 
@@ -38,14 +39,15 @@ class QueryParser(BaseParser):
         query_maker = QueryMaker(database)
 
         query = query_maker.create(args.name)
-        df = query.execute(database)
+        result = df = query.execute()
 
-        result = None
-        if args.format.lower() == "json":
+        if not args.format:
+            pass
+        elif args.format.lower() == "json":
             result = df.to_json(orient="records")
         elif args.format.lower() == "csv":
             result = df.to_csv(header=True, sep=',', index=False)
         else:
-            raise ValueError(f"No format handler for {args.format} found")
+            raise ValueError("The requested '{args.format}' is not supported")
 
         print(result)

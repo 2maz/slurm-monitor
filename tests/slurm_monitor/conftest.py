@@ -63,6 +63,7 @@ def test_db(test_db_uri, number_of_nodes, number_of_cpus, number_of_gpus, number
 
     db.clear()
 
+    virtual_memory = psutil.virtual_memory()._asdict()
     for i in range(0, number_of_nodes):
         nodename = f"node-{i}"
         db.insert_or_update(Nodes(name=nodename, cpu_count=number_of_cpus, cpu_model='Intel Xeon', memory_total=256*1024**2))
@@ -80,7 +81,7 @@ def test_db(test_db_uri, number_of_nodes, number_of_cpus, number_of_gpus, number
 
         for s in range(0, number_of_samples):
             sample = MemoryStatus(
-                **psutil.virtual_memory()._asdict(),
+                **virtual_memory,
                 node=nodename,
                 timestamp=start_time + dt.timedelta(seconds=s)
             )
@@ -105,7 +106,6 @@ def test_db(test_db_uri, number_of_nodes, number_of_cpus, number_of_gpus, number
                         timestamp=start_time + dt.timedelta(seconds=s)
                 )
                 db.insert(sample)
-
 
         job_id = i
         sample_count = 100
