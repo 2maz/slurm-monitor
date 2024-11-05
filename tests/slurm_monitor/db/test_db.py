@@ -113,3 +113,8 @@ def test_apply_resolution_GPUStatus(test_db):
 def test_apply_resolution_ProcessStatus(test_db):
     data = test_db.fetch_all(ProcessStatus)
     TableBase.apply_resolution(data, resolution_in_s=100)
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_get_last_probe_timestamp(test_db, number_of_nodes):
+    timestamps = await test_db.get_last_probe_timestamp()
+    assert len(timestamps) == number_of_nodes

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from threading import Thread
 import time
 import datetime as dt
@@ -10,6 +11,7 @@ from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.db.v1.db import SlurmMonitorDB
 from slurm_monitor.utils import utcnow
 from slurm_monitor.utils.command import Command
+
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,7 @@ class AutoDeployer:
         self.thread.start()
 
     def stop(self):
-        self._stop = False
+        self._stop = True
         self.thread.join()
 
     def is_drained(self, node: str) -> bool:
@@ -42,16 +44,19 @@ class AutoDeployer:
         logger.info(response)
 
     def run(self):
-        start_time = utcnow()
+        start_time = None
         while not self._stop:
             now = utcnow()
-            elapsed = (now - start_time).total_seconds()
-            if elapsed < self._sampling_interval_in_s:
-                time.sleep(self._sampling_interval_in_s - elapsed)
+            if start_time:
+                elapsed = (now - start_time).total_seconds()
+                if elapsed < self._sampling_interval_in_s:
+                    time.sleep(self._sampling_interval_in_s - elapsed)
+            else:
+                start_time = utcnow()
 
             now = utcnow()
             print(f"-- autodeploy check: {now}")
-            last_probe_timestamp = self.dbi.get_last_probe_timestamp()
+            last_probe_timestamp = asyncio.run(self.dbi.get_last_probe_timestamp())
             for node in sorted(last_probe_timestamp.keys()):
                 node_time = last_probe_timestamp[node].replace(tzinfo=dt.timezone.utc)
                 last_seen_in_s = (now - node_time).total_seconds()
