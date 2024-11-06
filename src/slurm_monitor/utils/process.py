@@ -5,22 +5,16 @@ from typing import ClassVar
 import re
 import subprocess
 from pydantic import (
-        BaseModel,
-        NonNegativeInt
+        BaseModel
 )
 from pydantic_settings import BaseSettings
 import logging
 from functools import reduce
 from slurm_monitor.utils.slurm import Slurm
+from slurm_monitor.utils.stats_types import ProcessStats
+from slurm_monitor.utils.docker import Docker
 
 logger = logging.getLogger(__name__)
-
-class ProcessStats(BaseModel):
-    # actual os process id
-    pid: NonNegativeInt
-
-    cpu_percent: float = 0.0
-    memory_percent: float = 0.0
 
 class JobStats(BaseModel):
     cpu_percent: float = 0.0
@@ -37,7 +31,7 @@ class JobList(BaseSettings):
 
     def get_job_stats(self, job_id) -> JobStats:
         """
-            Compute the aggregated stats per for a single slurm job
+            Compute the aggregated stats for a single slurm job
         """
         if job_id not in self.jobs:
             raise KeyError(f"Job {job_id} does not exist")
@@ -63,7 +57,6 @@ class JobMonitor:
     @classmethod
     def get_active_jobs(cls):
         active_jobs: JobList = JobList()
-
         try:
             scontrol = Slurm.ensure("scontrol")
         except RuntimeError as e:
@@ -117,5 +110,14 @@ class JobMonitor:
                 except Exception as e:
                     logger.warning(f"Line '{line}' does not match the expected format - {e}")
                     continue
+
+        # Identify cpu/memory of associated containers
+        docker = Docker()
+        if docker.is_available():
+            for job_id,_ in active_jobs.jobs.items():
+                # identify docker related process stats
+                    docker_process_stats = docker.get_process_stats(job_id=job_id)
+                    if docker_process_stats:
+                        active_jobs.jobs[job_id].extend(docker_process_stats)
 
         return active_jobs

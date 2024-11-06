@@ -1,6 +1,8 @@
 from typing import ClassVar
 import logging
 import json
+import subprocess
+import re
 
 from slurm_monitor.utils.command import Command
 
@@ -44,3 +46,47 @@ class Slurm:
     def get_node_names(cls) -> list[str]:
         nodes_data = cls.get_slurmrestd("/nodes")
         return [node["name"] for node in nodes_data["nodes"]]
+
+    @classmethod
+    def get_associated_pids(cls, job_id: int) -> list[int]:
+        pids = []
+        try:
+            scontrol = Slurm.ensure("scontrol")
+        except RuntimeError:
+            logger.warning("Slurm.get_associated_pids: scontrol is not available")
+            return pids
+
+        cmd = f"{scontrol} listpids {job_id}"
+        response = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if response.returncode != 0:
+            error_msg = response.stderr.decode('UTF-8').strip()
+            if re.match("No job steps", error_msg) or re.match(".*no steps.*", error_msg):
+                return pids
+            elif re.match("Unable to connect to slurmstepd", error_msg):
+                pass
+            else:
+                raise RuntimeError(f"Calling {cmd} failed - {error_msg}")
+
+        # PID JOBID STEPID LOCALID GLOBALID
+        lines = response.stdout.decode("UTF-8").strip().splitlines()
+        if len(lines) > 0:
+            for line in lines[1:]:
+                try:
+                    pid, current_job_id, _, _, _ = line.split()
+
+                    pid = int(pid)
+                    current_job_id = int(current_job_id)
+
+                    if pid < 0:
+                        logger.warning(f"{pid=} invalid - skipping")
+                        continue
+
+                    if job_id != current_job_id:
+                        logger.warning(f"{current_job_id=} does not match requested {job_id=} - skipping")
+                        continue
+
+                    pids.append(pid)
+                except Exception as e:
+                    logger.warning(f"Line '{line}' does not match the expected format - {e}")
+                    continue
+        return pids
