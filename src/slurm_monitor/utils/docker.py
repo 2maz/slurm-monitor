@@ -76,8 +76,12 @@ class Docker:
 
     @classmethod
     def get_pids(cls) -> list[int]:
-        response = Command.run("pidof docker run")
-        return [int(x) for x in response.split("\n")]
+        try:
+            response = Command.run("pidof docker run")
+            return [int(x) for x in response.split("\n")]
+        except RuntimeError:
+            # no docker run available
+            return []
 
     @classmethod
     def get_commandline(cls, pid: int) -> str:

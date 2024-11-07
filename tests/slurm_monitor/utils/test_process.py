@@ -35,6 +35,9 @@ def test_job_monitor_get_active_jobs(lines, expected_active_jobs, monkeypatch, m
     original_subprocess_fn = subprocess.run
     output = '\n'.join(lines)
     def subprocess_mock(cmd, **kwargs):
+        if cmd.startswith("pidof docker run"):
+            return original_subprocess_fn("pidof docker--run", **kwargs)
+
         return original_subprocess_fn(f"echo '{output}'", **kwargs)
 
     monkeypatch.setattr(subprocess, "run", subprocess_mock)
