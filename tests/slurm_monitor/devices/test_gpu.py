@@ -1,6 +1,7 @@
 import json
 import pytest
 import subprocess
+import sys
 from slurm_monitor.devices import detect_gpus
 from slurm_monitor.devices.gpu import GPU, GPUInfo
 from slurm_monitor.utils.command import Command
@@ -171,7 +172,7 @@ XPU_SMI_RESPONSE = [
                     "Vega 20 [Radeon Pro VII/Radeon Instinct MI50 32GB],"
                     "0x081e,Advanced Micro Devices Inc. [AMD/ATI],D1640600"
                 ],
-                "Vega 20 [Radeon Pro VII/Radeon Instinct MI50 32GB]",1,17163091968/1024.0**2
+                "Vega 20 [Radeon Pro VII/Radeon Instinct MI50 32GB]",1,17163091968/1024**2
             ],
             ["hl",
 
@@ -185,15 +186,15 @@ XPU_SMI_RESPONSE = [
                     "HL-205, 32768",
                     "HL-205, 32768",
                 ],
-                "HL-205",8,32768,
+                "HL-205",8,32768
             ],
             ["xpu",
                 XPU_DISCOVERY,
-                "Intel(R) Data Center GPU Max 1100", 2, 51522830336 / 1024**2,
+                "Intel(R) Data Center GPU Max 1100", 2, 51522830336/1024**2,
             ],
         ])
 
-def test_GPUInfo_detect_x_smi(gpu_type, response, model, count, memory_total, monkeypatch):
+def test_GPUInfo_detect_x_smi(gpu_type, response, model, count, memory_total, monkeypatch, mocker):
     # Disable existing python libraries that could be use for retrieval
     try:
         def mock_nvmlInit():
@@ -202,6 +203,9 @@ def test_GPUInfo_detect_x_smi(gpu_type, response, model, count, memory_total, mo
         monkeypatch.setattr(pynvml, "nvmlInit", mock_nvmlInit)
     except NameError:
         pass
+
+    mocker.patch.dict(sys.modules, {'pynvml': None })
+    mocker.patch.dict(sys.modules, {'pyrsmi': None })
 
     orig_subprocess_run = subprocess.run
     def mock_subprocess_run(cmd, **kwargs):
@@ -229,7 +233,7 @@ def test_GPUInfo_detect_x_smi(gpu_type, response, model, count, memory_total, mo
     gpu_info, gpu = detect_gpus()
     assert gpu_info.count == count
     assert gpu_info.model == model
-    assert gpu_info.memory_total == memory_total
+    assert gpu_info.memory_total/1024**2 == memory_total
     assert gpu_info.framework == smi_framework[gpu_type]
     assert gpu is not None
 
@@ -261,3 +265,5 @@ def test_GPU_transform(cls: GPU, response: list[str] | dict[str, any], gpu_count
     gpu = cls()
     gpu_status = gpu.transform('\n'.join(response))
     assert len(gpu_status) == gpu_count
+    # in GB
+    assert gpu_status[0].memory_total > 1024**3

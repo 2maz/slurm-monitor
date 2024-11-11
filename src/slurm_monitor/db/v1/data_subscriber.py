@@ -119,7 +119,7 @@ class MessageHandler:
                      node=x['node'],
                      model=x['model'],
                      local_id=x['local_id'],
-                     memory_total=x['memory_total']
+                     memory_total=x['memory_total'] # in bytes
                 )
 
         if "jobs" in sample:

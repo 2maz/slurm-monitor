@@ -30,7 +30,7 @@ class Habana(GPU):
             return GPUInfo(
                     model=model_name,
                     count=device_count,
-                    memory_total=memory.total,
+                    memory_total=memory.total, # in bytes
                     framework=GPUInfo.Framework.HABANA,
                     versions=versions
             )
@@ -41,6 +41,8 @@ class Habana(GPU):
         if response.returncode != 0:
             raise RuntimeError("hl-smi is not available")
 
+        # Examples output:
+        # HL-205, 32768
         result = subprocess.run("hl-smi --query-aip=name,memory.total --format=csv,nounits,noheader",
                 shell=True, stdout=subprocess.PIPE, stderr=None)
         model_infos = result.stdout.decode("UTF-8").strip().split("\n")
@@ -49,7 +51,7 @@ class Habana(GPU):
             return GPUInfo(
                     model=fields[0].strip(),
                     count=len(model_infos),
-                    memory_total=int(fields[1].strip()),
+                    memory_total=int(fields[1].strip())*1024**2, # in bytes
                     framework=GPUInfo.Framework.HABANA,
                     versions=versions
             )
@@ -101,7 +103,7 @@ class Habana(GPU):
                 * 100.0
                 / int(value[ query_properties["memory.total"] ]),
                 utilization_gpu=value[query_properties["utilization.aip"]],
-                memory_total=value[query_properties["memory.total"]],
+                memory_total=int(value[query_properties["memory.total"]])*1024**2, # in bytes
                 timestamp=timestamp,
             )
             samples.append(sample)

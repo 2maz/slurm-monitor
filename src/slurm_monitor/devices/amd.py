@@ -29,12 +29,12 @@ class ROCM(GPU):
                 raise RuntimeError("ROCM.detect: no GPU found")
 
             model = rocml.smi_get_device_name(0)
-            memory_total = rocml.smi_get_device_memory_total(0)
+            memory_total_in_bytes = rocml.smi_get_device_memory_total(0)
             rocml.smi_shutdown()
             return GPUInfo(
                     model=model,
                     count=device_count,
-                    memory_total=int(memory_total/(1024**2)),
+                    memory_total=memory_total_in_bytes,
                     framework=GPUInfo.Framework.ROCM,
                     versions=versions
             )
@@ -55,7 +55,7 @@ class ROCM(GPU):
             return GPUInfo(
                     model=fields[3],
                     count=len(info)-1 ,
-                    memory_total=int(fields[1])/(1024**2),
+                    memory_total=int(fields[1]), # in bytes
                     framework=GPUInfo.Framework.ROCM,
                     versions=versions
             )
@@ -119,7 +119,7 @@ class ROCM(GPU):
         timestamp = utcnow()
 
         for idx, value in enumerate(records):
-            total_memory = int(value["vram total memory (b)"])
+            total_memory_in_bytes = int(value["vram total memory (b)"])
             sample = GPUStatus(
                 model=value["card series"],
                 uuid=value["unique id"],
@@ -127,9 +127,9 @@ class ROCM(GPU):
                 node=self.node,
                 power_draw=value["average graphics package power (w)"],
                 temperature_gpu=value["temperature (sensor edge) (c)"],
-                utilization_memory=int(value["vram total used memory (b)"])*100.0/total_memory,
+                utilization_memory=int(value["vram total used memory (b)"])*100.0/total_memory_in_bytes,
                 utilization_gpu=value["gpu use (%)"],
-                memory_total=total_memory/(1024**2),
+                memory_total=total_memory_in_bytes,
                 timestamp=timestamp,
             )
             samples.append(sample)

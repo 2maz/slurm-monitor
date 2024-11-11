@@ -41,7 +41,7 @@ class Nvidia(GPU):
             return GPUInfo(
                     model=model,
                     count=device_count,
-                    memory_total=memory.total,
+                    memory_total=memory.total, # in bytes
                     framework=GPUInfo.Framework.CUDA,
                     versions=versions
             )
@@ -65,11 +65,11 @@ class Nvidia(GPU):
 
         models = result.stdout.decode("UTF-8").strip().split("\n")
         if models:
-            model, memory_total = models[0].split(',')
+            model, memory_total_in_MB = models[0].split(',')
             return GPUInfo(
                     model=model.strip(),
                     count=len(models),
-                    memory_total=int(memory_total.strip()),
+                    memory_total=int(memory_total_in_MB.strip())*1024**2,
                     framework=GPUInfo.Framework.CUDA,
                     versions=versions
                     )
@@ -121,7 +121,10 @@ class Nvidia(GPU):
                 temperature_gpu=value[ query_properties["temperature.gpu"]],
                 utilization_memory=value[ query_properties["utilization.memory"] ],
                 utilization_gpu=value[query_properties["utilization.gpu"]],
-                memory_total=int(value[query_properties["memory.used"]]) + int(value[query_properties["memory.free"]]),
+                memory_total=(
+                    int(value[query_properties["memory.used"]])
+                    + int(value[query_properties["memory.free"]])
+                    )*1024**2, # in bytes
                 timestamp=timestamp,
             )
             samples.append(sample)

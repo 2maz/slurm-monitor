@@ -40,7 +40,7 @@ class XPU(GPU):
         return GPUInfo(
                 model=device_data['device_name'],
                 count=len(devices),
-                memory_total=ensure_float(device_data, 'memory_physical_size_byte', 0)/(1024.0**2),
+                memory_total=ensure_float(device_data, 'memory_physical_size_byte', 0), # in bytes
                 framework=GPUInfo.Framework.XPU,
                 versions=versions
         )
@@ -117,7 +117,7 @@ class XPU(GPU):
                 temperature_gpu=ensure_float(value, "GPU Core Temperature (Celsius Degree)", 0),
                 utilization_memory=ensure_float(value, "GPU Memory Utilization (%)", 0),
                 utilization_gpu=ensure_float(value, "GPU Utilization (%)", 0),
-                memory_total=ensure_float(device_data, "memory_physical_size_byte", 0)/(1024.0**2), # MB
+                memory_total=ensure_float(device_data, "memory_physical_size_byte", 0), # in bytes
                 timestamp=timestamp,
             )
             samples.append(sample)

@@ -17,6 +17,7 @@ class GPUStatus(BaseModel):
     node: str
     model: str
     local_id: int
+    # memory total in bytes
     memory_total: int
 
     temperature_gpu: float
@@ -74,6 +75,7 @@ class GPUInfo:
         XPU = "xpu"
 
     model: str | None = None
+    # in bytes
     memory_total: int = 0
     count: int = 0
     framework: Framework | None = None
