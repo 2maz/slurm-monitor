@@ -264,17 +264,17 @@ class JobStatus(TableBase):
     start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime, nullable=True)
 
-    account = Column(String(100))
-    accrue_time = Column(BigInteger)
+    account = Column(String(100), default='')
+    accrue_time = Column(BigInteger, default=0)
     admin_comment = Column(String(255), default="")
-    array_job_id = Column(Integer)  # 244843
+    array_job_id = Column(Integer, nullable=True)  # 244843
     array_task_id = Column(Integer, nullable=True)  # 984
-    array_max_tasks = Column(Integer)  # 20
-    array_task_string = Column(String(255))  #
-    association_id = Column(Integer)  # ": 0,
+    array_max_tasks = Column(Integer, default=0)  # 20
+    array_task_string = Column(String(255), default="")  #
+    association_id = Column(Integer, default=0)  # ": 0,
     # batch_features": "",
     # batch_flag": true,
-    batch_host = Column(String(50))
+    batch_host = Column(String(50), default='')
     # flags": [],
     # burst_buffer": "",
     # burst_buffer_state": "",
@@ -295,8 +295,8 @@ class JobStatus(TableBase):
     # deadline": 0,
     # delay_boot": 0,
     # dependency": "",
-    derived_exit_code = Column(BigInteger)  # ": 256,
-    eligible_time = Column(Integer)  # ": 1720736375,
+    derived_exit_code = Column(BigInteger, default=0)  # ": 256,
+    eligible_time = Column(Integer, nullable=True)  # ": 1720736375,
 
     # excluded_nodes": "",
     exit_code = Column(BigInteger)  # ": 0,
@@ -304,8 +304,8 @@ class JobStatus(TableBase):
     # federation_origin": "",
     # federation_siblings_active": "",
     # federation_siblings_viable": "",
-    gres_detail = Column(GPUIdList)
-    group_id = Column(Integer)  # ": 5000,
+    gres_detail = Column(GPUIdList, default=[])
+    group_id = Column(Integer, nullable=True)  # ": 5000,
     # job_resources": {
     # "nodes": "n042",
     # "allocated_cpus": 1,
@@ -331,22 +331,22 @@ class JobStatus(TableBase):
     # mcs_label": "",
     # memory_per_tres": "",
     # name": "seidr",
-    nodes = Column(String(128))  # "n042",
+    nodes = Column(String(128), default='')  # "n042",
     # nice": null,
     # tasks_per_core": null,
     # tasks_per_node": 0,
     # tasks_per_socket": null,
     # tasks_per_board": 0,
-    cpus = Column(Integer, default=0)  # 1
+    cpus = Column(Integer, nullable=True, default=0)  # 1
     node_count = Column(Integer, default=0)  # 1
-    tasks = Column(Integer, default=0)  # 1,
+    tasks = Column(Integer, nullable=True, default=0)  # 1,
     # het_job_id": 0,
     # het_job_id_set": "",
     # het_job_offset": 0,
     partition = Column(String(255))  # "slowq",
-    # memory_per_node": null,
-    # memory_per_cpu": null,
-    # minimum_cpus_per_node": 1,
+    memory_per_node = Column(Integer, nullable=True)
+    memory_per_cpu = Column(Integer, nullable=True)
+    minimum_cpus_per_node = Column(Integer, nullable=True)
     # minimum_tmp_disk_per_node": 0,
     # preempt_time": 0,
     # pre_sus_time": 0,
@@ -367,13 +367,13 @@ class JobStatus(TableBase):
     # ,
     # sockets_per_board": 0,
     # sockets_per_node": null,
-    state_description = Column(String(255))  # "",
-    state_reason = Column(String(255))  # "None",
+    state_description = Column(String(255), default='')  # "",
+    state_reason = Column(String(255), default='')  # "None",
     # standard_error": "/home/.../scripts/logs/%j-stderr.txt",
     # standard_input": "/dev/null",
     # standard_output": "/home/.../scripts/logs/%j-stdout.txt",
 
-    suspend_time = Column(Integer)  # 0,
+    suspend_time = Column(Integer, default=0)  # 0,
     # system_comment": "",
     time_limit = Column(Integer, nullable=True)  # 7200,
     # time_minimum": 0,
@@ -386,7 +386,7 @@ class JobStatus(TableBase):
     # tres_per_task": "",
     # tres_req_str": "cpu=1,node=1,billing=1",
     # tres_alloc_str": "cpu=1,billing=1",
-    user_id = Column(Integer)  # 6500,
+    user_id = Column(Integer, default=0)  # 6500,
     # user_name": "testuser",
     # wckey": "",
     # current_working_directory": "/global/D1/homes/..."

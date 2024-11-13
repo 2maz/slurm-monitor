@@ -1,7 +1,31 @@
 import pytest
 import datetime as dt
 
-from slurm_monitor.db.v1.db_tables import GPUStatus, ProcessStatus, TableBase
+from slurm_monitor.db.v1.db_tables import (
+    GPUStatus,
+    JobStatus,
+    ProcessStatus,
+    TableBase
+)
+
+@pytest.mark.parametrize("job_status",
+    [
+        {'start_time': dt.datetime(2024, 11, 13, 11, 36, 2),
+         'end_time': dt.datetime(2024, 11, 13, 11, 36, 2),
+         'submit_time': dt.datetime(2024, 11, 13, 11, 35, 48),
+         'exit_code': 4294967295,
+         'job_state': 'CANCELLED',
+         'cpus': None,
+         'tasks': None,
+         'job_id': 352594,
+         'name': 'bash',
+         'cluster': 'slurm',
+         'partition': 'hgx2q',
+        }
+    ]
+)
+def test_job_status(job_status, test_db):
+    test_db.insert(JobStatus(**job_status))
 
 def test_gpu_infos(test_db, number_of_nodes, number_of_gpus):
     for i in range(0, number_of_nodes):
