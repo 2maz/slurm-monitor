@@ -409,7 +409,7 @@ class JobStatus(TableBase):
     # tres_req_str": "cpu=1,node=1,billing=1",
     # tres_alloc_str": "cpu=1,billing=1",
     user_id = Column(Integer, default=0)  # 6500,
-    # user_name": "testuser",
+    user_name = Column(String(64), default='', nullable=True)
     # wckey": "",
     # current_working_directory": "/global/D1/homes/..."
     # id = Column(Integer) # 244843
