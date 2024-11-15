@@ -117,7 +117,7 @@ def test_db(test_db_uri, number_of_nodes, number_of_cpus, number_of_gpus, number
             job_id=job_id,
             submit_time=submit_time,
             name="test-job",
-            start_time= start_time,
+            start_time=start_time,
             end_time=end_time,
             account="account",
             accrue_time=10000,

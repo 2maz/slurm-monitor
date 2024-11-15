@@ -22,9 +22,31 @@ from sqlalchemy import (
 from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import as_declarative, class_mapper
 
+from sqlalchemy.sql.functions import GenericFunction
+from sqlalchemy.ext.compiler import compiles
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+class EpochFn(GenericFunction):
+    type = DateTime()
+    inherit_cache = True
+
+# For PostgreSQL, we will use the `EXTRACT(EPOCH FROM <datetime>)` syntax
+@compiles(EpochFn, 'postgresql')
+def compile_postgresql(expr, compiler, **kwargs):
+    return f"EXTRACT(EPOCH FROM {compiler.process(expr.clauses.clauses[0], **kwargs)})"
+
+# For TimeScaledb
+@compiles(EpochFn, 'timescaledb')
+def compile_timescaledb(expr, compiler, **kwargs):
+    return f"EXTRACT(EPOCH FROM {compiler.process(expr.clauses.clauses[0], **kwargs)})"
+
+# For SQLite, we use `strftime('%s', datetime_column)` to get epoch
+@compiles(EpochFn, 'sqlite')
+def compile_sqlite(expr, compiler, **kwargs):
+    return f"strftime('%s', {compiler.process(expr.clauses.clauses[0], **kwargs)})"
 
 
 def Column(*args, **kwargs):

@@ -7,6 +7,7 @@ from slurm_monitor.db.v1.db_tables import (
     ProcessStatus,
     TableBase
 )
+from slurm_monitor.utils import utcnow
 
 @pytest.mark.parametrize("job_status",
     [
@@ -142,3 +143,23 @@ def test_apply_resolution_ProcessStatus(test_db):
 async def test_get_last_probe_timestamp(test_db, number_of_nodes):
     timestamps = await test_db.get_last_probe_timestamp()
     assert len(timestamps) == number_of_nodes
+
+@pytest.mark.parametrize("arguments, has_jobs",
+        [
+            [{}, True],
+            [{'min_duration_in_s': 0}, True],
+            [{'max_duration_in_s': 100000}, True],
+            [{'min_duration_in_s': 100000}, False],
+            [{'max_duration_in_s': 0}, False],
+            [{'start_before_in_s': utcnow().timestamp()}, True],
+            [{'start_after_in_s': utcnow().timestamp()}, False],
+            [{'submit_before_in_s': utcnow().timestamp()}, True],
+            [{'submit_after_in_s': utcnow().timestamp()}, False],
+            [{'end_before_in_s': utcnow().timestamp() + 100}, True],
+            [{'end_after_in_s': utcnow().timestamp() + 100}, False],
+        ]
+    )
+@pytest.mark.asyncio(loop_scope="module")
+async def test_get_jobs(arguments, has_jobs, test_db):
+    jobs = await test_db.get_jobs(**arguments)
+    assert (len(jobs) > 0) == has_jobs

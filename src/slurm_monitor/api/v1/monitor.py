@@ -226,6 +226,37 @@ async def memory_status(
         )
     }
 
+@api_router.get("/jobs/query")
+async def jobs_query(
+    user: str | None = None,
+    user_id: int | None = None,
+    job_id: int | None = None,
+    start_before_in_s: float | None = None,
+    start_after_in_s: float | None = None,
+    end_before_in_s: float | None = None,
+    end_after_in_s: float | None = None,
+    submit_before_in_s: float | None = None,
+    submit_after_in_s: float | None = None,
+    min_duration_in_s: float | None = None,
+    max_duration_in_s: float | None = None,
+    limit: int = 100,
+):
+    dbi = db_ops.get_database()
+    return {"jobs": await dbi.get_jobs(
+        user=user,
+        user_id=user_id,
+        job_id=job_id,
+        start_before_in_s=start_before_in_s,
+        start_after_in_s=start_after_in_s,
+        end_before_in_s=end_before_in_s,
+        end_after_in_s=end_after_in_s,
+        submit_before_in_s=submit_before_in_s,
+        submit_after_in_s=submit_after_in_s,
+        min_duration_in_s=min_duration_in_s,
+        max_duration_in_s=max_duration_in_s,
+        limit=limit
+        )
+    }
 
 @api_router.get("/job/{job_id}")
 @api_router.get("/jobs/{job_id}/info")

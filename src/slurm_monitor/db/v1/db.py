@@ -12,7 +12,7 @@ from sqlalchemy import (
         event,
         create_engine,
         func,
-        select
+        select,
 )
 from sqlalchemy.orm import DeclarativeMeta, sessionmaker
 from sqlalchemy.engine.url import URL, make_url
@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from .db_tables import (
+        EpochFn,
         CPUStatus,
         GPUs,
         GPUStatus,
@@ -235,10 +236,12 @@ class Database:
         finally:
             await session.close()
 
-    async def _fetch_async(self, db_cls, where=None, _reduce=None, _unpack=True):
+    async def _fetch_async(self, db_cls, where=None, limit: int | None = None,_reduce=None, _unpack=True):
         query = select(*_listify(db_cls))
         if where is not None:
             query = query.where(where)
+        if limit is not None:
+            query = query.limit(limit)
 
         async with self.make_async_session() as session:
             query_results = await session.execute(query)
@@ -249,8 +252,8 @@ class Database:
 
             return result
 
-    async def fetch_all_async(self, db_cls, where=None):
-        return await self._fetch_async(db_cls, where=where)
+    async def fetch_all_async(self, db_cls, where=None, **kwargs):
+        return await self._fetch_async(db_cls, where=where, **kwargs)
 
     async def fetch_first_async(self, db_cls, where=None, order_by=None):
         query = select(*_listify(db_cls))
@@ -513,6 +516,66 @@ class SlurmMonitorDB(Database):
             return data[0]
         else:
             return None
+
+    async def get_jobs(self,
+            user: str | None = None,
+            user_id: int | None = None,
+            job_id: int | None = None,
+            start_before_in_s: float | None = None,
+            start_after_in_s: float | None = None,
+            end_before_in_s: float | None = None,
+            end_after_in_s: float | None = None,
+            submit_before_in_s: float | None = None,
+            submit_after_in_s: float | None = None,
+            min_duration_in_s: float | None = None,
+            max_duration_in_s: float | None = None,
+            limit: int = 100
+        ):
+
+        where = sqlalchemy.sql.true()
+        if user:
+            where &= JobStatus.user_name == user
+
+        if user_id:
+            where &= JobStatus.user_id == user_id
+
+        if job_id:
+            where &= JobStatus.job_id == job_id
+
+        if start_before_in_s is not None:
+            reference_time = dt.datetime.utcfromtimestamp(start_before_in_s)
+            where &= JobStatus.start_time <= reference_time
+
+        if start_after_in_s is not None:
+            reference_time = dt.datetime.utcfromtimestamp(start_after_in_s)
+            where &= JobStatus.start_time >= reference_time
+
+        if end_before_in_s is not None:
+            reference_time = dt.datetime.utcfromtimestamp(end_before_in_s)
+            where &= JobStatus.end_time <= reference_time
+
+        if end_after_in_s is not None:
+            reference_time = dt.datetime.utcfromtimestamp(end_after_in_s)
+            where &= JobStatus.end_time >= reference_time
+
+        if submit_before_in_s is not None:
+            reference_time = dt.datetime.utcfromtimestamp(submit_before_in_s)
+            where &= JobStatus.submit_time <= reference_time
+
+        if submit_after_in_s is not None:
+            reference_time = dt.datetime.utcfromtimestamp(submit_after_in_s)
+            where &= JobStatus.submit_time >= reference_time
+
+        if min_duration_in_s is not None:
+            where &= (EpochFn(JobStatus.end_time) - EpochFn(JobStatus.start_time)) >= min_duration_in_s
+
+        if max_duration_in_s is not None:
+            where &= (EpochFn(JobStatus.end_time) - EpochFn(JobStatus.start_time)) <= max_duration_in_s
+
+        # limit search to completed jobs
+        where &= JobStatus.job_state == 'COMPLETED'
+        return await self.fetch_all_async(JobStatus, where=where, limit=limit)
+
 
     async def get_process_status(self,
             node: str,
