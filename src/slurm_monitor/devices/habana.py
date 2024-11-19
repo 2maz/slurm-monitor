@@ -5,7 +5,12 @@ from io import StringIO
 import subprocess
 
 from slurm_monitor.utils import utcnow
-from slurm_monitor.devices.gpu import GPU, GPUInfo, GPUStatus
+from slurm_monitor.devices.gpu import (
+    GPU,
+    GPUInfo,
+    GPUProcessStatus,
+    GPUStatus
+)
 
 import logging
 
@@ -108,4 +113,8 @@ class Habana(GPU):
             )
             samples.append(sample)
 
+        return samples
+
+    def get_processes(self) -> list[GPUProcessStatus]:
+        samples = []
         return samples

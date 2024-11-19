@@ -28,6 +28,15 @@ class GPUStatus(BaseModel):
     pstate: str | None = None
     timestamp: str | dt.datetime
 
+
+class GPUProcessStatus(BaseModel):
+    uuid: str
+    pid: int
+    process_name: str
+    # used memory in bytes
+    used_memory: int
+
+
 class GPU():
     node: str
 
@@ -62,9 +71,12 @@ class GPU():
     def transform(self, response: str) -> list[GPUStatus]:
         raise NotImplementedError("Please implement 'GPU.transform'")
 
-    def get_status(self) -> GPUStatus:
+    def get_status(self) -> list[GPUStatus]:
         response = self.query_status_smi()
         return self.transform(response)
+
+    def get_processes(self) -> list[GPUProcessStatus]:
+        raise NotImplementedError("Please implement 'GPU.get_processes'")
 
 class GPUInfo:
     class Framework(str, Enum):

@@ -3,17 +3,26 @@ from __future__ import annotations
 import pandas as pd
 from io import StringIO
 import os
+import re
 import subprocess
 from pathlib import Path
 
 from slurm_monitor.utils import utcnow
-from slurm_monitor.devices.gpu import GPU, GPUInfo, GPUStatus
+from slurm_monitor.utils.command import Command
+from slurm_monitor.devices.gpu import GPU, GPUInfo, GPUProcessStatus, GPUStatus
 
 import logging
 
 logger = logging.getLogger(__name__)
 
 class ROCM(GPU):
+    _uuids: list[str]
+
+    def __init__(self):
+        super().__init__()
+
+        self._uuids = []
+
     @classmethod
     def detect(cls):
         versions = {}
@@ -118,6 +127,7 @@ class ROCM(GPU):
         samples = []
         timestamp = utcnow()
 
+
         for idx, value in enumerate(records):
             total_memory_in_bytes = int(value["vram total memory (b)"])
             sample = GPUStatus(
@@ -133,4 +143,57 @@ class ROCM(GPU):
                 timestamp=timestamp,
             )
             samples.append(sample)
+
+        return samples
+
+    @property
+    def uuids(self) -> list[str]:
+        if not self._uuids:
+            self._uuids = [x.uuid for x in self.get_status()]
+        return self._uuids
+
+
+    def get_processes(self) -> list[GPUProcessStatus]:
+        response = Command.run("rocm-smi --showpidgpus")
+        pid = None
+        for x in response.strip().split("\n"):
+            if pid is not None:
+                try:
+                    local_ids = [int(i.strip()) for i in x.strip().split(" ")]
+                except Exception:
+                    logger.debug("ROCM.get_processes: pid known, but GPU id are not yet registered")
+                # local ids for this pid have been processed, so reset
+                pid = None
+
+            if x.lower().startswith("warn"):
+                continue
+
+            m = re.match(r"PID ([0-9]+) is using", x)
+            if m:
+                pid = int(m.group(1))
+
+        response = Command.run("rocm-smi --showpids --csv")
+        main_response = [x for x in response.strip().split("\n") if "warn" not in x.lower()]
+        samples = []
+        for line in main_response[1:]:
+            line = line.replace("\"","").replace(", ",",")
+            try:
+                fields = line.split(",")
+                if not fields[0].startswith("PID"):
+                    raise ValueError("Expected PID prefix")
+
+                pid = int(fields[0].replace("PID",""))
+                for local_id in local_ids:
+                    sample = GPUProcessStatus(
+                        uuid=self.uuids[local_id],
+                        pid=pid,
+                        process_name=fields[1].strip(),
+                        #number_of_gpus=int(fields[2]),
+                        used_memory=int(fields[3]), # vram_used
+                        #sdma_used=int(fields[4]),
+                        #compute_unit_occupancy=int(fields[5])
+                    )
+                    samples.append(sample)
+            except Exception as e:
+                logger.debug(e)
         return samples

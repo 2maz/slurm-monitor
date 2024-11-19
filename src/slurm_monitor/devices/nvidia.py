@@ -7,7 +7,8 @@ import json
 import subprocess
 
 from slurm_monitor.utils import utcnow
-from slurm_monitor.devices.gpu import GPU, GPUInfo, GPUStatus
+from slurm_monitor.utils.command import Command
+from slurm_monitor.devices.gpu import GPU, GPUInfo, GPUProcessStatus, GPUStatus
 
 import logging
 from pathlib import Path
@@ -127,5 +128,32 @@ class Nvidia(GPU):
                     )*1024**2, # in bytes
                 timestamp=timestamp,
             )
+            samples.append(sample)
+        return samples
+
+    def get_processes(self) -> list[GPUProcessStatus]:
+        # header gpu_uuid, pid, process_name, used_gpu_memory [MiB]
+        response = Command.run(f"{self.query_cmd} "
+                        "--query-compute-apps=gpu_uuid,pid,name,used_gpu_memory "
+                        "--format=csv,nounits"
+                )
+        df = pd.read_csv(StringIO(response.strip()))
+
+        column_names = { x: x.strip() for x in df.columns }
+        df.rename(columns = column_names, inplace = True)
+        df.gpu_uuid = df.gpu_uuid.str.strip()
+
+        records = df.to_dict('records')
+
+        samples = []
+        utcnow()
+
+        for idx, value in enumerate(records):
+            sample = GPUProcessStatus(
+                    uuid=value["gpu_uuid"],
+                    pid=int(value["pid"]),
+                    process_name=value["process_name"].strip(),
+                    used_memory=value["used_gpu_memory [MiB]"]*1024**2
+                    )
             samples.append(sample)
         return samples
