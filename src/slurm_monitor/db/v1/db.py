@@ -238,12 +238,18 @@ class Database:
         finally:
             await session.close()
 
-    async def _fetch_async(self, db_cls, where=None, limit: int | None = None,_reduce=None, _unpack=True):
+    async def _fetch_async(self, db_cls,
+            where=None,
+            limit: int | None = None,
+            order_by=None,
+            _reduce=None, _unpack=True):
         query = select(*_listify(db_cls))
         if where is not None:
             query = query.where(where)
         if limit is not None:
             query = query.limit(limit)
+        if order_by is not None:
+            query = query.order_by(order_by)
 
         async with self.make_async_session() as session:
             query_results = await session.execute(query)
@@ -279,12 +285,17 @@ class Database:
 
 class SlurmMonitorDB(Database):
     Nodes = Nodes
-    GPUs = GPUs
-    JobStatus = JobStatus
-    GPUStatus = GPUStatus
+
     CPUStatus = CPUStatus
     MemoryStatus = MemoryStatus
     ProcessStatus = ProcessStatus
+
+    GPUs = GPUs
+    GPUStatus = GPUStatus
+    GPUProcess = GPUProcess
+    GPUProcessStatus = GPUProcessStatus
+
+    JobStatus = JobStatus
 
     def get_nodes(self) -> list[str]:
         return list(set(self.fetch_all(Nodes.name)))
