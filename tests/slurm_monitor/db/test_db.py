@@ -147,19 +147,20 @@ async def test_get_last_probe_timestamp(test_db, number_of_nodes):
 @pytest.mark.parametrize("arguments, has_jobs",
         [
             [{}, True],
-            [{'min_duration_in_s': 0}, True],
-            [{'max_duration_in_s': 100000}, True],
-            [{'min_duration_in_s': 100000}, False],
-            [{'max_duration_in_s': 0}, False],
-            [{'start_before_in_s': utcnow().timestamp()}, True],
-            [{'start_after_in_s': utcnow().timestamp()}, False],
-            [{'submit_before_in_s': utcnow().timestamp()}, True],
-            [{'submit_after_in_s': utcnow().timestamp()}, False],
-            [{'end_before_in_s': utcnow().timestamp() + 100}, True],
-            [{'end_after_in_s': utcnow().timestamp() + 100}, False],
+            [{'min_duration_in_s': lambda: 0}, True],
+            [{'max_duration_in_s': lambda: 100000}, True],
+            [{'min_duration_in_s': lambda: 100000}, False],
+            [{'max_duration_in_s': lambda: 0}, False],
+            [{'start_before_in_s': lambda : utcnow().timestamp()}, True],
+            [{'start_after_in_s': lambda: utcnow().timestamp()}, False],
+            [{'submit_before_in_s': lambda: utcnow().timestamp()}, True],
+            [{'submit_after_in_s': lambda: utcnow().timestamp()}, False],
+            [{'end_before_in_s': lambda: utcnow().timestamp() + 100}, True],
+            [{'end_after_in_s': lambda: utcnow().timestamp() + 100}, False],
         ]
     )
 @pytest.mark.asyncio(loop_scope="module")
 async def test_get_jobs(arguments, has_jobs, test_db):
-    jobs = await test_db.get_jobs(**arguments)
+    args = {x: y() for x,y in arguments.items()}
+    jobs = await test_db.get_jobs(**args)
     assert (len(jobs) > 0) == has_jobs
