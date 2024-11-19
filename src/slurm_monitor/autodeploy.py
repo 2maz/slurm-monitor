@@ -66,7 +66,7 @@ class AutoDeployer:
         response = Command.run(f"slurm-monitor-probes-ctl -n {node} deploy")
         logger.info(response)
 
-        if node not in self.stats:
+        if node not in self.stats.nodes:
             raise ValueError(f"Node '{node}' has not been registered in stats yet")
 
         self.stats.nodes[node].deploy.append(utcnow())
@@ -80,6 +80,9 @@ class AutoDeployer:
 
     def run(self):
         start_time = None
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
         while not self._stop:
             now = utcnow()
             if start_time:
@@ -92,7 +95,7 @@ class AutoDeployer:
             now = utcnow()
             os.system("clear")
             print(f"-- autodeploy check: {now}")
-            last_probe_timestamp = asyncio.run(self.dbi.get_last_probe_timestamp())
+            last_probe_timestamp = loop.run_until_complete(self.dbi.get_last_probe_timestamp())
             for node in sorted(last_probe_timestamp.keys()):
                 node_time = last_probe_timestamp[node].replace(tzinfo=dt.timezone.utc)
                 if node not in self.stats.nodes:
