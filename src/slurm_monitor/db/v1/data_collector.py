@@ -10,8 +10,8 @@ import logging
 from slurm_monitor.utils import utcnow
 from slurm_monitor.utils.slurm import Slurm
 
-from .db import SlurmMonitorDB, Database
-from .db_tables import JobStatus
+from slurm_monitor.db.v1.db import SlurmMonitorDB, Database
+from slurm_monitor.db.v1.db_tables import JobStatus
 
 
 logger = logging.getLogger(__name__)
@@ -142,7 +142,17 @@ class CollectorPool(Generic[T], Observer[T]):
         [x.thread.join() for x in self._collectors]
 
     def save(self, samples):
-        self.db.insert_or_update(samples)
+        prep_samples = []
+        for s in samples:
+            if isinstance(s, JobStatus) and s.job_state != 'RUNNING':
+                job_status = self.db.fetch_first(JobStatus,
+                        where=(JobStatus.job_id == s.job_id) & (JobStatus.submit_time == s.submit_time)
+                )
+                if job_status is not None:
+                    s.gres_detail = job_status.gres_detail
+            prep_samples.append(s)
+
+        self.db.insert_or_update(prep_samples)
 
     def _save(self, batch_size: int = 500):
         while not self._stop:
@@ -170,6 +180,7 @@ class CollectorPool(Generic[T], Observer[T]):
                     self.save(samples)
                 break
         assert self._samples.qsize() == 0
+
     def start(self, verbose: bool = True):
         self._stop = False
         self.verbose = verbose
