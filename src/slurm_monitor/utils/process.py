@@ -116,8 +116,8 @@ class JobMonitor:
         if docker.is_available():
             for job_id,_ in active_jobs.jobs.items():
                 # identify docker related process stats
-                    docker_process_stats = docker.get_process_stats(job_id=job_id)
-                    if docker_process_stats:
-                        active_jobs.jobs[job_id].extend(docker_process_stats)
+                docker_process_stats = docker.get_process_stats(job_id=job_id)
+                if docker_process_stats:
+                    active_jobs.jobs[job_id].extend(docker_process_stats)
 
         return active_jobs

@@ -5,6 +5,7 @@ from pathlib import Path
 from io import StringIO
 import pandas as pd
 from typing import ClassVar
+from psutil import Process
 
 from slurm_monitor.utils.command import Command
 from slurm_monitor.utils.slurm import Slurm
@@ -78,15 +79,17 @@ class Docker:
     def get_pids(cls) -> list[int]:
         try:
             response = Command.run("pidof docker run")
-            return [int(x) for x in response.split("\n")]
+            if response:
+                return [int(x) for x in response.split("\n")]
+
         except RuntimeError:
+            pass
             # no docker run available
-            return []
+        return []
 
     @classmethod
     def get_commandline(cls, pid: int) -> str:
-        response = Command.run(f"ps -p {pid} -o cmd=")
-        return response
+        return " ".join(Process(pid).cmdline())
 
     def find_associated_to_job(self, job_id: int) -> dict[str, any]:
         containers = {}
@@ -97,7 +100,9 @@ class Docker:
         docker_pids = Docker.get_pids()
         for pid in job_related_pids:
             if pid in docker_pids:
-                containers.update(self.find_associated(pid))
+                associated = self.find_associated(pid)
+                if associated:
+                    containers.update(associated)
 
         return containers
 
