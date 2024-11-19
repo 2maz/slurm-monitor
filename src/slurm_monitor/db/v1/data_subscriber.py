@@ -8,6 +8,8 @@ from slurm_monitor.db.v1.db import SlurmMonitorDB
 from slurm_monitor.db.v1.db_tables import (
         CPUStatus,
         GPUs,
+        GPUProcess,
+        GPUProcessStatus,
         GPUStatus,
         JobStatus,
         MemoryStatus,
@@ -122,6 +124,12 @@ class MessageHandler:
                      memory_total=x['memory_total'] # in bytes
                 )
 
+            self.database.insert_or_update([x for x in gpus.values()])
+            self.database.insert(gpu_samples)
+
+
+        # map process_id to job_id
+        process2job = {}
         if "jobs" in sample:
             for job_id, processes in sample["jobs"].items():
                 job = None
@@ -149,13 +157,40 @@ class MessageHandler:
                             memory_percent=process['memory_percent'],
                             timestamp=timestamp
                     )
+                    process2job[status.pid] = job.job_id, job.submit_time
+
                     processes_status.append(status)
 
                     self.database.insert(processes_status)
 
-        if gpus:
-            self.database.insert_or_update([x for x in gpus.values()])
-            self.database.insert(gpu_samples)
+        if "gpu_processes" in sample:
+            gpu_processes_status = []
+            for gpu_process_stats in sample["gpu_processes"]:
+                try:
+                    pid = gpu_process_stats["pid"]
+                    results = self.database.fetch_all(GPUProcess, where=(GPUProcess.pid == pid))
+                    if not results:
+                        job_id, job_submit_time = process2job.get(pid, (None, None))
+                        gpu_process = GPUProcess(
+                            pid=pid,
+                            process_name=gpu_process_stats["process_name"],
+                            start_time=timestamp,
+                            job_id=job_id,
+                            job_submit_time=job_submit_time
+                        )
+                        self.database.insert(gpu_process)
+                    gpu_process_status = GPUProcessStatus(
+                        uuid=gpu_process_stats['uuid'],
+                        pid=pid,
+                        utilization_sm=gpu_process_stats['utilization_sm'], # in percent
+                        used_memory=gpu_process_stats['used_memory'], # in bytes
+                        timestamp=timestamp
+                    )
+                except Exception as e:
+                    logger.warning(e)
+
+                gpu_processes_status.append(gpu_process_status)
+            self.database.insert(gpu_processes_status)
 
         # Current timestamp
         return cpu_samples[0].node, timestamp

@@ -156,6 +156,7 @@ class ROCM(GPU):
     def get_processes(self) -> list[GPUProcessStatus]:
         response = Command.run("rocm-smi --showpidgpus")
         pid = None
+        local_ids = []
         for x in response.strip().split("\n"):
             if pid is not None:
                 try:
@@ -191,7 +192,7 @@ class ROCM(GPU):
                         #number_of_gpus=int(fields[2]),
                         used_memory=int(fields[3]), # vram_used
                         #sdma_used=int(fields[4]),
-                        #compute_unit_occupancy=int(fields[5])
+                        utilization_sm=float(fields[5].strip()),
                     )
                     samples.append(sample)
             except Exception as e:

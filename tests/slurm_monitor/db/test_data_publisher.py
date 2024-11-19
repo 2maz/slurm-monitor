@@ -38,6 +38,7 @@ def test_NodeStatusCollector(gpu_type, mock_gpu, monkeypatch, mock_slurm_command
     node_status = collector.get_node_status()
 
     assert len(node_status.gpus) == mock_gpu['gpu_count']
+    assert len(node_status.gpu_processes) == mock_gpu['gpu_processes']
 
 
 @pytest.fixture

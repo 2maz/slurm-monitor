@@ -33,6 +33,9 @@ class GPUProcessStatus(BaseModel):
     uuid: str
     pid: int
     process_name: str
+
+    # utilization in percent of stream multiprocessors
+    utilization_sm: float
     # used memory in bytes
     used_memory: int
 

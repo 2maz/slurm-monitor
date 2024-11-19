@@ -153,6 +153,7 @@ class Nvidia(GPU):
                     uuid=value["gpu_uuid"],
                     pid=int(value["pid"]),
                     process_name=value["process_name"].strip(),
+                    utilization_sm=0, # TBD
                     used_memory=value["used_gpu_memory [MiB]"]*1024**2
                     )
             samples.append(sample)

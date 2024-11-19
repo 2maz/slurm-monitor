@@ -450,6 +450,7 @@ class ProcessStatus(TableBase):
 
     timestamp = Column(DateTime(), default=dt.datetime.now, primary_key=True)
 
+
 class Nodes(TableBase):
     __tablename__ = "nodes"
 
@@ -458,6 +459,7 @@ class Nodes(TableBase):
     cpu_count = Column(Integer)
     cpu_model = Column(String(255), nullable=True)
     memory_total = Column(BigInteger, default=0)
+
 
 class CPUStatus(TableBase):
     __tablename__ = "cpu_status"
@@ -519,4 +521,42 @@ class GPUStatus(TableBase):
     # Only Nvidia
     pstate = Column(String(10), nullable=True)
 
+    timestamp = Column(DateTime(), default=dt.datetime.now, primary_key=True)
+
+
+class GPUProcess(TableBase):
+    __tablename__ = "gpu_process"
+    pid = Column(Integer, index=True, primary_key=True)
+    process_name = Column(String(255))
+    start_time = Column(DateTime(), default=dt.datetime.now, primary_key=True)
+
+    job_id = Column(Integer, nullable=True, index=True)
+    job_submit_time = Column(DateTime, nullable=True, index=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint([job_id, job_submit_time], [JobStatus.job_id, JobStatus.submit_time]),
+        {
+        'timescaledb_hypertable': {
+            'time_column_name': 'start_time',
+            'chunk_time_interval': '24 hours',
+            }
+        }
+    )
+
+class GPUProcessStatus(TableBase):
+    __tablename__ = "gpu_process_status"
+    __table_args__ = (
+        {
+        'timescaledb_hypertable': {
+            'time_column_name': 'timestamp',
+            'chunk_time_interval': '24 hours',
+            }
+        }
+    )
+
+    uuid = Column(String(64), ForeignKey("gpus.uuid"), index=True, primary_key=True)
+    pid = Column(Integer, index=True, primary_key=True)
+
+    utilization_sm = Column(Float, default=0) # in percent (streaming multiprocessor usage)
+    used_memory = Column(Float) # in bytes
     timestamp = Column(DateTime(), default=dt.datetime.now, primary_key=True)

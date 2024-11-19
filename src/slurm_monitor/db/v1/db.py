@@ -27,6 +27,8 @@ from .db_tables import (
         EpochFn,
         CPUStatus,
         GPUs,
+        GPUProcess,
+        GPUProcessStatus,
         GPUStatus,
         JobStatus,
         Nodes,
@@ -367,7 +369,6 @@ class SlurmMonitorDB(Database):
 
         logger.info(f"{nodes=} {start_time_in_s=} {end_time_in_s=} {resolution_in_s=} {local_indices=}")
         if nodes is None or nodes == []:
-            nodes = await self.fetch_all_async(Nodes)
             nodes = await self.fetch_all_async(Nodes.name)
 
         uuid2node = {}
@@ -379,7 +380,10 @@ class SlurmMonitorDB(Database):
             for local_id in local_indices:
                 result = await self.fetch_all_async(GPUs.uuid, (GPUs.local_id == local_id) & (GPUs.node == node))
                 if not result:
-                    raise RuntimeError("Failed to retrieve uuid for GPU {local_id=} on {node=}")
+                    raise RuntimeError(
+                            "SlurmMonitorDB.get_gpu_status_timeseries_list:"
+                            f"Failed to retrieve uuid for GPU {local_id=} on {node=}"
+                    )
 
                 uuid = result[0]
                 uuid2node[uuid] = { 'node': node, 'local_id': local_id }

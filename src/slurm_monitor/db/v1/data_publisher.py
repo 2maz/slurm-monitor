@@ -19,7 +19,10 @@ from slurm_monitor.utils import utcnow
 from slurm_monitor.utils.process import ProcessStats, JobMonitor
 from slurm_monitor.utils.system_info import SystemInfo
 
-from slurm_monitor.devices.gpu import GPUStatus
+from slurm_monitor.devices.gpu import (
+    GPUStatus,
+    GPUProcessStatus
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +53,7 @@ class NodeStatus(BaseSettings):
     node: str
     cpus: list[CPUStatus]
     gpus: list[GPUStatus]
+    gpu_processes: list[GPUProcessStatus]
     memory: MemoryStatus
     jobs: dict[int, list[ProcessStats]]
 
@@ -108,8 +112,10 @@ class NodeStatusCollector(DataCollector):
 
     def get_node_status(self) -> NodeStatus:
         gpu_status = []
+        gpu_processes = []
         if self.system_info._gpu is not None:
             gpu_status = self.system_info._gpu.get_status()
+            gpu_processes = self.system_info._gpu.get_processes()
 
         timestamp = utcnow()
         cpu_model = self.system_info.cpu_info.get_cpu_model()
@@ -127,6 +133,7 @@ class NodeStatusCollector(DataCollector):
         return NodeStatus(
                 node=platform.node(),
                 gpus=gpu_status,
+                gpu_processes=gpu_processes,
                 cpus=cpu_status,
                 memory=memory_status,
                 jobs=job_status.jobs,

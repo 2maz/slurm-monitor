@@ -231,10 +231,15 @@ GPU_RESPONSES = {
                 "Tesla V100-SXM3-32GB, GPU-83b0c1d3-23c8-b85e-c5f7-19bbef62931c, 52.23, 46, 0, 0, 5, 32495",
                 "Tesla V100-SXM3-32GB, GPU-25ed1520-6fbc-ae62-814d-64ea9098b047, 51.17, 37, 0, 0, 5, 32495",
             ],
+            'process-status': [
+                "gpu_uuid, pid, process_name, used_gpu_memory [MiB]",
+                "GPU-ad466f2f-575d-d949-35e0-9a7d912d974e, 1, /home/auser/D1/miniconda3/envs/vLLM_test_env/bin/python, 8032",
+            ],
             'expect': {
                 'gpu_count': 16,
                 'gpu_model': 'Tesla V100-SXM3-32GB',
                 'gpu_memory': 32768,
+                'gpu_processes': 1,
             }
         },
     "rocm":
@@ -249,10 +254,22 @@ GPU_RESPONSES = {
                 "card0,0x67c63ac3c3c637f9,45.0,45.0,50.0,50.0,50.0,49.0,47.0,36.0,0,858010810,0,115487143,718,68702699520,10960896,Instinct MI210,0x0c34,Advanced Micro Devices Inc. [AMD/ATI],D67301",
                 "card1,0x7b6b270993774982,33.0,40.0,52.0,51.0,50.0,50.0,51.0,40.0,0,781368565,0,147407533,793,68702699520,10960896,Instinct MI210,0x0c34,Advanced Micro Devices Inc. [AMD/ATI],D67301",
             ],
+            'showpidgpus': [
+                "=============================== GPUs Indexed by PID ================================",
+                "PID 3903703 is using 2 DRM device(s):",
+                "0 1",
+                "====================================================================================",
+                "=============================== End of ROCm SMI Log ================================"
+            ],
+            'showpids': [
+                "name, value",
+                '"PID3903703", "python, 2, 12333932544, 0, 11"'
+            ],
             'expect': {
                 'gpu_count': 2,
                 'gpu_model': "Instinct MI210",
                 'gpu_memory': 68702699520/1024.0**2,
+                'gpu_processes': 2,
             }
         },
     "hl":
@@ -282,6 +299,7 @@ GPU_RESPONSES = {
                 'gpu_count': 8,
                 'gpu_model': "HL-205",
                 'gpu_memory': 32768,
+                'gpu_processes': 0,
             }
         },
     "xpu":
@@ -354,6 +372,7 @@ GPU_RESPONSES = {
                     'gpu_count': 2,
                     'gpu_memory': int(51522830336 / 1024.0**2),
                     'gpu_model': "Intel(R) Data Center GPU Max 1100",
+                    'gpu_processes': 0,
             }
         }
     }
@@ -403,6 +422,13 @@ def mock_gpu(gpu_type, gpu_responses, monkeypatch):
                 smi_response = '\n'.join(smi_response)
 
             if cmd.startswith(f"{gpu_type}-smi"):
+                if "--query-compute-apps" in cmd: # nvidia
+                    smi_response = '\n'.join(gpu_responses[gpu_type]['process-status'])
+                elif "--showpids" in cmd: # rocm
+                    smi_response = '\n'.join(gpu_responses[gpu_type]['showpids'])
+                elif "--showpidgpus" in cmd:
+                    smi_response = '\n'.join(gpu_responses[gpu_type]['showpidgpus'])
+
                 return orig_subprocess_run(f"echo '{smi_response}'", **kwargs)
 
         return orig_subprocess_run(cmd, **kwargs)
