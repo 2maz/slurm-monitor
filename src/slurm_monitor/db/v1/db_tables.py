@@ -431,9 +431,9 @@ class ProcessStatus(TableBase):
     __tablename__ = "process_status"
 
     pid = Column(Integer, index=True, primary_key=True)
-    job_id = Column(Integer, primary_key=True)
+    job_id = Column(Integer, index=True, primary_key=True)
     job_submit_time = Column(DateTime, index=True, primary_key=True)
-    node = Column(String(255), ForeignKey("nodes.name"), primary_key=True)
+    node = Column(String(255), ForeignKey("nodes.name"), primary_key=True, index=True)
 
     __table_args__ = (
         ForeignKeyConstraint([job_id, job_submit_time], [JobStatus.job_id, JobStatus.submit_time]),
@@ -449,8 +449,6 @@ class ProcessStatus(TableBase):
     memory_percent = Column(Float)
 
     timestamp = Column(DateTime(), default=dt.datetime.now, primary_key=True)
-
-
 
 class Nodes(TableBase):
     __tablename__ = "nodes"
