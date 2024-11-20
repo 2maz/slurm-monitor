@@ -42,9 +42,17 @@ class GPUProcessStatus(BaseModel):
 
 class GPU():
     node: str
+    _uuids: list[str]
 
     def __init__(self):
         self.node = socket.gethostname()
+        self._uuids = []
+
+    @property
+    def uuids(self) -> list[str]:
+        if not self._uuids:
+            self._uuids = [x.uuid for x in self.get_status()]
+        return self._uuids
 
     @property
     def query_cmd(self):
@@ -70,7 +78,6 @@ class GPU():
         """
         raise NotImplementedError("Please implement 'GPU.query_properties'")
 
-
     def transform(self, response: str) -> list[GPUStatus]:
         raise NotImplementedError("Please implement 'GPU.transform'")
 
@@ -80,6 +87,7 @@ class GPU():
 
     def get_processes(self) -> list[GPUProcessStatus]:
         raise NotImplementedError("Please implement 'GPU.get_processes'")
+
 
 class GPUInfo:
     class Framework(str, Enum):

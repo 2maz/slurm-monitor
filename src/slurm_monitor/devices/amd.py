@@ -16,12 +16,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 class ROCM(GPU):
-    _uuids: list[str]
-
-    def __init__(self):
-        super().__init__()
-
-        self._uuids = []
 
     @classmethod
     def detect(cls):
@@ -145,12 +139,6 @@ class ROCM(GPU):
             samples.append(sample)
 
         return samples
-
-    @property
-    def uuids(self) -> list[str]:
-        if not self._uuids:
-            self._uuids = [x.uuid for x in self.get_status()]
-        return self._uuids
 
 
     def get_processes(self) -> list[GPUProcessStatus]:

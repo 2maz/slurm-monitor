@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import pandas as pd
 from io import StringIO
+import re
 import subprocess
 
 from slurm_monitor.utils import utcnow
+from slurm_monitor.utils.command import Command
 from slurm_monitor.devices.gpu import (
     GPU,
     GPUInfo,
@@ -17,6 +19,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Habana(GPU):
+
     @classmethod
     def detect(cls) -> GPUInfo:
         versions = {}
@@ -116,5 +119,45 @@ class Habana(GPU):
         return samples
 
     def get_processes(self) -> list[GPUProcessStatus]:
+        response = Command.run(self.query_cmd)
         samples = []
+        lines = response.strip().split("\n")
+        compute_line = None
+        for index, line in enumerate(lines):
+            if "Compute Processes" in line:
+                compute_line=index
+                break
+
+        # "|-------------------------------+----------------------+----------------------+",
+        # "| Compute Processes:                                               AIP Memory |",
+        # "|  AIP       PID   Type   Process name                             Usage      |",
+        # "|=============================================================================|",
+        # "|   0        10    C      python name                              1024MiB    |",
+        # "|   1        N/A   N/A    N/A                                      N/A        |",
+
+        prepared_header = re.sub(r"\s{2,}",",", lines[compute_line+1][1:-1].strip())
+        columns = [x.strip() for x in prepared_header.split(",")]
+
+        pid_index = columns.index("PID")
+        aip_index = columns.index("AIP")
+        process_name_index = columns.index("Process name")
+        used_memory_index = columns.index("Usage")
+
+        for line in lines[compute_line+3:-1]:
+            values = [x.strip() for x in re.sub(r"\s{2,}",",", line[1:-1].strip()).split(",")]
+
+            try:
+                if values[pid_index].lower() == "n/a":
+                    continue
+
+                sample = GPUProcessStatus(
+                    uuid=self.uuids[int(values[aip_index])],
+                    pid=int(values[pid_index]),
+                    process_name=values[process_name_index],
+                    utilization_sm=0,
+                    used_memory=int(values[used_memory_index].replace("MiB",''))*1024**2
+                )
+                samples.append(sample)
+            except Exception as e:
+                logger.warning(e)
         return samples

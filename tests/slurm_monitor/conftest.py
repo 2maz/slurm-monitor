@@ -274,6 +274,51 @@ GPU_RESPONSES = {
         },
     "hl":
         {
+            'plain' : [
+                "+-----------------------------------------------------------------------------+",
+                "| HL-SMI Version:                              hl-1.18.0-fw-53.1.1.1          |",
+                "| Driver Version:                                     1.18.0-ee698fb          |",
+                "|-------------------------------+----------------------+----------------------+",
+                "| AIP  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |",
+                "| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | AIP-Util  Compute M. |",
+                "|===============================+======================+======================|",
+                "|   0  HL-205              N/A  | 0000:b3:00.0     N/A |                   0  |",
+                "| N/A   33C   N/A   104W / 350W |    512MiB / 32768MiB |    15%           N/A |",
+                "|-------------------------------+----------------------+----------------------+",
+                "|   1  HL-205              N/A  | 0000:b4:00.0     N/A |                   0  |",
+                "| N/A   30C   N/A   102W / 350W |    512MiB / 32768MiB |    14%           N/A |",
+                "|-------------------------------+----------------------+----------------------+",
+                "|   2  HL-205              N/A  | 0000:cd:00.0     N/A |                   0  |",
+                "| N/A   37C   N/A   104W / 350W |    512MiB / 32768MiB |    15%           N/A |",
+                "|-------------------------------+----------------------+----------------------+",
+                "|   3  HL-205              N/A  | 0000:cc:00.0     N/A |                   0  |",
+                "| N/A   30C   N/A   103W / 350W |    512MiB / 32768MiB |    15%           N/A |",
+                "|-------------------------------+----------------------+----------------------+",
+                "|   4  HL-205              N/A  | 0000:19:00.0     N/A |                   0  |",
+                "| N/A   33C   N/A    96W / 350W |    512MiB / 32768MiB |    12%           N/A |",
+                "|-------------------------------+----------------------+----------------------+",
+                "|   5  HL-205              N/A  | 0000:1a:00.0     N/A |                   0  |",
+                "| N/A   33C   N/A   105W / 350W |    512MiB / 32768MiB |    15%           N/A |",
+                "|-------------------------------+----------------------+----------------------+",
+                "|   6  HL-205              N/A  | 0000:34:00.0     N/A |                   0  |",
+                "| N/A   36C   N/A   103W / 350W |    512MiB / 32768MiB |    15%           N/A |",
+                "|-------------------------------+----------------------+----------------------+",
+                "|   7  HL-205              N/A  | 0000:33:00.0     N/A |                   0  |",
+                "| N/A   32C   N/A   100W / 350W |    512MiB / 32768MiB |    13%           N/A |",
+                "|-------------------------------+----------------------+----------------------+",
+                "| Compute Processes:                                               AIP Memory |",
+                "|  AIP       PID   Type   Process name                             Usage      |",
+                "|=============================================================================|",
+                "|   0        10    C      python name                              1024MiB    |",
+                "|   1        N/A   N/A    N/A                                      N/A        |",
+                "|   2        N/A   N/A    N/A                                      N/A        |",
+                "|   3        N/A   N/A    N/A                                      N/A        |",
+                "|   4        N/A   N/A    N/A                                      N/A        |",
+                "|   5        N/A   N/A    N/A                                      N/A        |",
+                "|   6        20    c      custom process                           2040MiB    |",
+                "|   7        N/A   N/A    N/A                                      N/A        |",
+                "+=============================================================================+",
+            ],
             'discover' : [
                 "HL-205, 32768",
                 "HL-205, 32768",
@@ -299,7 +344,7 @@ GPU_RESPONSES = {
                 'gpu_count': 8,
                 'gpu_model': "HL-205",
                 'gpu_memory': 32768,
-                'gpu_processes': 0,
+                'gpu_processes': 2,
             }
         },
     "xpu":
@@ -422,7 +467,10 @@ def mock_gpu(gpu_type, gpu_responses, monkeypatch):
                 smi_response = '\n'.join(smi_response)
 
             if cmd.startswith(f"{gpu_type}-smi"):
-                if "--query-compute-apps" in cmd: # nvidia
+                if cmd == f"{gpu_type}-smi":
+                    if 'plain' in gpu_responses[gpu_type]:
+                        smi_response = '\n'.join(gpu_responses[gpu_type]['plain'])
+                elif "--query-compute-apps" in cmd: # nvidia
                     smi_response = '\n'.join(gpu_responses[gpu_type]['process-status'])
                 elif "--showpids" in cmd: # rocm
                     smi_response = '\n'.join(gpu_responses[gpu_type]['showpids'])
