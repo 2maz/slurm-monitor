@@ -363,7 +363,7 @@ class SlurmMonitorDB(Database):
             where &= GPUStatus.uuid == uuid
 
         logger.info(f"SlurmMonitorDB.get_gpu_status: {node=} {uuid=} {start_time=} {end_time=} {resolution_in_s=}")
-        data = await self.fetch_all_async(GPUStatus, where=where)
+        data = await self.fetch_all_async(GPUStatus, where=where, order_by=(GPUStatus.timestamp.desc()))
         if resolution_in_s is not None:
             return TableBase.apply_resolution(data=data, resolution_in_s=resolution_in_s)
         else:
@@ -433,7 +433,7 @@ class SlurmMonitorDB(Database):
             where &= CPUStatus.timestamp < end_time
 
         logger.info(f"SlurmMonitorDB.get_cpu_status: {node=} {start_time=} {end_time=} {resolution_in_s=}")
-        data = await self.fetch_all_async(CPUStatus, where=where)
+        data = await self.fetch_all_async(CPUStatus, where=where, order_by=CPUStatus.timestamp.desc())
         if resolution_in_s is not None:
             return TableBase.apply_resolution(data=data, resolution_in_s=resolution_in_s)
         else:
@@ -489,7 +489,7 @@ class SlurmMonitorDB(Database):
             where &= MemoryStatus.timestamp <= end_time
 
         logger.info(f"SlurmMonitorDB.get_memory_status: {node=} {start_time=} {end_time=} {resolution_in_s=}")
-        data = await self.fetch_all_async(MemoryStatus, where=where)
+        data = await self.fetch_all_async(MemoryStatus, where=where, order_by=MemoryStatus.timestamp.desc())
         if resolution_in_s is not None:
             return TableBase.apply_resolution(data=data, resolution_in_s=resolution_in_s)
         else:
