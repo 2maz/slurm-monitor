@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import os
 
 
 from fastapi import FastAPI, Request, exception_handlers
@@ -43,13 +44,24 @@ async def lifespan(app: FastAPI):
 
     # First make sure that this runs on a slurm system
     Slurm.ensure_commands()
-    logger.info("Startup of jobs collector")
-    jobs_pool = start_jobs_collection(database)
+
+    do_collect_jobs = True
+    if "SLURM_MONITOR_JOBS_COLLECTOR" in os.environ:
+        if os.environ["SLURM_MONITOR_JOBS_COLLECTOR"].lower() == "false":
+            do_collect_jobs = False
+    
+    jobs_pool = None
+    if do_collect_jobs:
+        logger.info("Startup of jobs collector")
+        jobs_pool = start_jobs_collection(database)
+    else:
+        logger.warning("Jobs collector has been disabled (via env SLURM_MONITOR_JOBS_COLLECTOR)")
 
     yield
 
     logger.info("Shutting down ...")
-    jobs_pool.stop()
+    if jobs_pool is not None:
+        jobs_pool.stop()
 
 
 
