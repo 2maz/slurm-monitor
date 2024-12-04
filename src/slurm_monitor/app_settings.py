@@ -15,6 +15,7 @@ class AppSettings(BaseSettings):
     port: int = Field(default=12000)
 
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    data_dir: str | None = Field(default=None)
 
     @classmethod
     def get_instance(cls) -> AppSettings:

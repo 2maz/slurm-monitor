@@ -5,9 +5,12 @@ from slurm_monitor.utils import utcnow
 import slurm_monitor.db_operations as db_ops
 from fastapi_cache.decorator import cache
 from tqdm import tqdm
+import pandas as pd
+from pathlib import Path
 
 from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.db.v1.query import QueryMaker
+from slurm_monitor.app_settings import AppSettings
 
 logger: Logger = getLogger(__name__)
 
@@ -317,3 +320,19 @@ async def queries(
                 status_code=404,
                 detail=f"Failed to execute query: '{query_name}' -- {e}"
         )
+
+
+@api_router.get("/benchmarks/{benchmark_name}")
+def benchmarks(benchmark_name: str = "lambdal"):
+    app_settings = AppSettings.initialize()
+    if app_settings.data_dir is None:
+        return {}
+
+    path = Path(app_settings.data_dir) / f"{benchmark_name}-benchmark-results.csv"
+    if not path.exists():
+        return {}
+
+    df = pd.read_csv(str(path))
+    df = df.fillna(-1)
+    del df['Unnamed: 0']
+    return df.to_dict(orient="records")
