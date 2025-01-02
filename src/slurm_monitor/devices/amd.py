@@ -94,7 +94,7 @@ class ROCM(GPU):
         # "Temperature (Sensor HBM 1) (C)",  # temperature.sensor_hbm_1
         # "Temperature (Sensor HBM 2) (C)",  # temperature.sensor_hbm_2
         # "Temperature (Sensor HBM 3) (C)",  # temperature.sensor_hbm_3
-        # "Average Graphics Package Power (W)",  # power.draw
+        # "Average Graphics Package Power (W)",  # power.draw -> Current Socket Graphics Pacakge Power (W)
         # "GPU use (%)",  # utilization.gpu
         # "GFX Activity",  # utilization.gfx,
         # "GPU memory use (%)",  # utilization.memory / high or low (1 or 0)
@@ -124,12 +124,23 @@ class ROCM(GPU):
 
         for idx, value in enumerate(records):
             total_memory_in_bytes = int(value["vram total memory (b)"])
+
+            power_draw = None
+            # account for different ROCM versions
+            for name in ["current socket graphics package power (w)", "average graphics package power (w)"]:
+                if name in value:
+                    power_draw = value[name]
+                    break
+
+            if power_draw is None:
+                raise RuntimeError("ROCM.transform: failed to extract power_draw")
+
             sample = GPUStatus(
                 model=value["card series"],
                 uuid=value["unique id"],
                 local_id=idx,
                 node=self.node,
-                power_draw=value["average graphics package power (w)"],
+                power_draw=power_draw,
                 temperature_gpu=value["temperature (sensor edge) (c)"],
                 utilization_memory=int(value["vram total used memory (b)"])*100.0/total_memory_in_bytes,
                 utilization_gpu=value["gpu use (%)"],

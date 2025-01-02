@@ -77,6 +77,12 @@ ROCM_SMI_RESPONSE_V2DOT3=[
 "card0,0x19645d9a01fc11bd,31.0,35.0,37.0,35.0,0,0,0,N/A,0,656,34342961152,6762496,Arcturus GL-XL [Instinct MI100],0x738c,Advanced Micro Devices Inc. [AMD/ATI],D3431401,0x0c34,0x01,8,51219,gfx9008"
 ]
 
+ROCM_SMI_RESPONSE_V2DOT3DOT1=[
+"device,Unique ID,Temperature (Sensor edge) (C),Temperature (Sensor junction) (C),Temperature (Sensor memory) (C),Current Socket Graphics Package Power (W),GPU use (%),GPU Memory Allocated (VRAM%),GPU Memory Read/Write Activity (%),Memory Activity,Avg. Memory Bandwidth,Voltage (mV),VRAM Total Memory (B),VRAM Total Used Memory (B),Card Series,Card Model,Card Vendor,Card SKU,Subsystem ID,Device Rev,Node ID,GUID,GFX Version",
+"card0,0x19645d9a01fc11bd,31.0,35.0,37.0,35.0,0,0,0,N/A,0,656,34342961152,6762496,Arcturus GL-XL [Instinct MI100],0x738c,Advanced Micro Devices Inc. [AMD/ATI],D3431401,0x0c34,0x01,8,51219,gfx9008"
+]
+
+
 
 # Habanalabs hl-smi/hlml version hl-1.18.0-fw-53.1.1.1 (Oct 09 2024 - 20:09:06)
 HL_SMI_RESPONSE=[
@@ -245,6 +251,7 @@ def test_GPUInfo_detect_x_smi(gpu_type, response, model, count, memory_total, mo
             [ROCM, ROCM_SMI_RESPONSE_V1DOT4, 2],
             [ROCM, ROCM_SMI_RESPONSE_V2, 2],
             [ROCM, ROCM_SMI_RESPONSE_V2DOT3, 1],
+            [ROCM, ROCM_SMI_RESPONSE_V2DOT3DOT1, 1],
             [Habana, HL_SMI_RESPONSE, 8],
             [XPU, XPU_SMI_RESPONSE, 2],
         ]
