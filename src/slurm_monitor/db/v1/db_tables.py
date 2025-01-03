@@ -271,10 +271,22 @@ class GPUs(TableBase):
 
     uuid = Column(String(64), index=True, primary_key=True)
     node = Column(String(255), ForeignKey("nodes.name"))
+    local_id = Column(Integer)
 
     model = Column(String(255))
-    local_id = Column(Integer)
     memory_total = Column(BigInteger)
+
+class LocalIndexedGPUs(TableBase):
+    __tablename__ = "local_indexed_gpus"
+
+    uuid = Column(String(64), index=True, primary_key=True)
+
+    node = Column(String(255), ForeignKey("nodes.name"))
+    local_id = Column(Integer, primary_key=True)
+
+    # Validity
+    start_time = Column(DateTime, primary_key=True, default=dt.datetime(2024,6,1))
+    end_time = Column(DateTime, default=dt.datetime(2050,5,31))
 
 class JobStatus(TableBase):
     __tablename__ = "job_status"

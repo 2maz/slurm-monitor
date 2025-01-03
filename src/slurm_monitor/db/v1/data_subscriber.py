@@ -11,6 +11,7 @@ from slurm_monitor.db.v1.db_tables import (
         GPUProcess,
         GPUProcessStatus,
         GPUStatus,
+        LocalIndexedGPUs,
         JobStatus,
         MemoryStatus,
         Nodes,
@@ -104,8 +105,11 @@ class MessageHandler:
         gpus = {}
         gpu_samples = []
         if "gpus" in sample:
+            timestamp = None
+
             for x in sample["gpus"]:
                 uuid = x['uuid']
+                timestamp=dt.datetime.fromisoformat(x['timestamp'])
                 gpu_status = GPUStatus(
                     uuid=uuid,
                     temperature_gpu=x['temperature_gpu'],
@@ -113,9 +117,44 @@ class MessageHandler:
                     utilization_gpu=x['utilization_gpu'],
                     utilization_memory=x['utilization_memory'],
                     pstate=x['pstate'],
-                    timestamp=dt.datetime.fromisoformat(x['timestamp'])
+                    timestamp=timestamp
                 )
                 gpu_samples.append(gpu_status)
+
+
+                local_indexed_gpus = self.database.fetch_all(LocalIndexedGPUs,
+                                (LocalIndexedGPUs.uuid==uuid) & (LocalIndexedGPUs.end_time > timestamp)
+                )
+
+                if local_indexed_gpus:
+                    local_indexed_gpu = local_indexed_gpus[0]
+
+                    if local_indexed_gpu.local_id != x['local_id']:
+                        logger.warning(f"Local id of gpu '{uuid}' changed from:"
+                                       f"{x['local_id']} to {local_indexed_gpu.local_id}")
+
+                        local_indexed_gpu.end_time = timestamp
+                        new_index = x['local_id']
+                        new_local_indexed_gpu = LocalIndexedGPUs(uuid=uuid,
+                             node=x['node'],
+                             local_id=new_index,
+                             start_time=timestamp
+                        )
+
+                        # check the uuid that held the local_id before and deactivate
+                        replaced_gpus = self.database.fetch_all(LocalIndexedGPUs,
+                                (LocalIndexedGPUs.node == nodename) & (LocalIndexedGPUs.local_id == new_index)
+                        )
+                        if replaced_gpus:
+                           replaced_gpu =  replaced_gpus[0]
+                           replaced_gpu.end_time = timestamp
+
+                        self.database.insert_or_update([local_indexed_gpu, new_local_indexed_gpu, replaced_gpu])
+                else:
+                    self.database.insert_or_update(LocalIndexedGPUs(uuid=uuid,
+                        node=x['node'],
+                        local_id=x['local_id'],
+                    ))
 
                 gpus[uuid] = GPUs(uuid=uuid,
                      node=x['node'],

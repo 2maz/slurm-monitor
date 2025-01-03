@@ -30,6 +30,7 @@ from .db_tables import (
         GPUProcess,
         GPUProcessStatus,
         GPUStatus,
+        LocalIndexedGPUs,
         JobStatus,
         Nodes,
         MemoryStatus,
@@ -295,6 +296,8 @@ class SlurmMonitorDB(Database):
     GPUProcess = GPUProcess
     GPUProcessStatus = GPUProcessStatus
 
+    LocalIndexedGPUs = LocalIndexedGPUs
+
     JobStatus = JobStatus
 
     def get_nodes(self) -> list[str]:
@@ -307,8 +310,19 @@ class SlurmMonitorDB(Database):
             tasks[node] = asyncio.create_task(self.fetch_latest_async(CPUStatus, where=(CPUStatus.node == node)))
         return {node : (await tasks[node]).timestamp for node in nodes}
 
-    def get_gpu_uuids(self, node: str) -> list[str]:
-        return self.fetch_all(GPUs.uuid, GPUs.node == node)
+    def get_gpu_uuids(self, node: str, when: dt.datetime | None = dt.datetime.utcnow()) -> list[str]:
+        return self.fetch_all(LocalIndexedGPUs.uuid,
+                (LocalIndexedGPUs.node == node)
+                & (LocalIndexedGPUs.start_time <= when)
+                & (LocalIndexedGPUs.end_time > when)
+        )
+
+    def get_gpu_local_id(self, uuid: str, when: dt.datetime | None = dt.datetime.utcnow()) -> list[str]:
+        return self.fetch_all(LocalIndexedGPUs.local_id,
+                (LocalIndexedGPUs.uuid == uuid)
+                & (LocalIndexedGPUs.start_time <= when)
+                & (LocalIndexedGPUs.end_time > when)
+        )
 
     def get_gpu_nodes(self) -> list[str]:
         return list(set(self.fetch_all(GPUs.node)))
@@ -384,7 +398,7 @@ class SlurmMonitorDB(Database):
 
         uuid2node = {}
         for node in nodes:
-            uuids = self.get_gpu_uuids(node)
+            uuids = self.get_gpu_uuids(node, when=dt.datetime.utcfromtimestamp(start_time_in_s))
             if local_indices is None:
                 local_indices = range(0, len(uuids))
 
