@@ -311,17 +311,21 @@ class SlurmMonitorDB(Database):
         return {node : (await tasks[node]).timestamp for node in nodes}
 
     def get_gpu_uuids(self, node: str, when: dt.datetime | None = dt.datetime.utcnow()) -> list[str]:
+        where = (LocalIndexedGPUs.node == node)
+        if when is not None:
+            where &= (LocalIndexedGPUs.start_time <= when) & (LocalIndexedGPUs.end_time > when)
+
         return self.fetch_all(LocalIndexedGPUs.uuid,
-                (LocalIndexedGPUs.node == node)
-                & (LocalIndexedGPUs.start_time <= when)
-                & (LocalIndexedGPUs.end_time > when)
+                where=where
         )
 
     def get_gpu_local_id(self, uuid: str, when: dt.datetime | None = dt.datetime.utcnow()) -> list[str]:
+        where = (LocalIndexedGPUs.uuid == uuid)
+        if when is not None:
+            where &= (LocalIndexedGPUs.start_time <= when) & (LocalIndexedGPUs.end_time > when)
+
         return self.fetch_all(LocalIndexedGPUs.local_id,
-                (LocalIndexedGPUs.uuid == uuid)
-                & (LocalIndexedGPUs.start_time <= when)
-                & (LocalIndexedGPUs.end_time > when)
+                where=where
         )
 
     def get_gpu_nodes(self) -> list[str]:
@@ -398,7 +402,11 @@ class SlurmMonitorDB(Database):
 
         uuid2node = {}
         for node in nodes:
-            uuids = self.get_gpu_uuids(node, when=dt.datetime.utcfromtimestamp(start_time_in_s))
+            when = None
+            if start_time_in_s is not None:
+                when = dt.datetime.utcfromtimestamp(start_time_in_s)
+
+            uuids = self.get_gpu_uuids(node, when=when)
             if local_indices is None:
                 local_indices = range(0, len(uuids))
 

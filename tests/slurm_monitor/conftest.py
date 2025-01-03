@@ -8,8 +8,9 @@ from slurm_monitor.db.v1.db_tables import (
         CPUStatus,
         GPUs,
         GPUStatus,
-        MemoryStatus,
         JobStatus,
+        LocalIndexedGPUs,
+        MemoryStatus,
         Nodes,
         ProcessStatus
 )
@@ -97,6 +98,14 @@ def test_db(test_db_uri, number_of_nodes, number_of_cpus, number_of_gpus, number
                     node=nodename,
                     memory_total=16*1024**3
                 ))
+                db.insert_or_update(LocalIndexedGPUs(
+                    uuid=uuid,
+                    local_id=g,
+                    node=nodename,
+                    start_time=dt.datetime(2024,6,1),
+                    end_time=dt.datetime(2050,5,31),
+                ))
+
                 sample = GPUStatus(
                         uuid=uuid,
                         power_draw=30,
