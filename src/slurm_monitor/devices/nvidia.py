@@ -36,7 +36,7 @@ class Nvidia(GPU):
                 raise ValueError("No Nvida GPU found")
 
             device = pynvml.nvmlDeviceGetHandleByIndex(0)
-            model = pynvml.nvmlDeviceGetName(device)
+            model = pynvml.nvmlDeviceGetName(device).decode('UTF-8')
             memory = pynvml.nvmlDeviceGetMemoryInfo(device)
 
             return GPUInfo(
