@@ -4,7 +4,7 @@ from slurm_monitor.utils.command import Command
 
 def test_find(mock_slurm_command_hint):
     expected_path = Path(mock_slurm_command_hint) / "scontrol"
-    assert Command.find(command="scontrol", hints=[ mock_slurm_command_hint ]) == expected_path
+    assert str(Command.find(command="scontrol", hints=[ mock_slurm_command_hint ])) == str(expected_path)
 
     with pytest.raises(RuntimeError, match="could not find"):
         Command.find(command="no-scontrol", hints=[ mock_slurm_command_hint ])
