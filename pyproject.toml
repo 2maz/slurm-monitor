@@ -26,6 +26,8 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Operating System :: OS Independent",
     "Programming Lanugage :: Python :: 3.10",
+    "Programming Lanugage :: Python :: 3.11",
+    "Programming Lanugage :: Python :: 3.12",
     "License :: OSI Approved :: BSD License",
 ]
 
@@ -67,6 +69,7 @@ vendorlibs = [
 ]
 
 dev = [
+    "alembic",
     "isort",
     "jupyter-book",
     "pre-commit",
