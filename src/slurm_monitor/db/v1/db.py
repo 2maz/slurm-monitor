@@ -310,7 +310,7 @@ class SlurmMonitorDB(Database):
             tasks[node] = asyncio.create_task(self.fetch_latest_async(CPUStatus, where=(CPUStatus.node == node)))
         return {node : (await tasks[node]).timestamp for node in nodes}
 
-    def get_gpu_uuids(self, node: str, when: dt.datetime | None = dt.datetime.utcnow()) -> list[str]:
+    def get_gpu_uuids(self, node: str, when: dt.datetime | None = dt.datetime.now(dt.timezone.utc)) -> list[str]:
         where = (LocalIndexedGPUs.node == node)
         if when is not None:
             where &= (LocalIndexedGPUs.start_time <= when) & (LocalIndexedGPUs.end_time > when)
@@ -319,7 +319,7 @@ class SlurmMonitorDB(Database):
                 where=where
         )
 
-    def get_gpu_local_id(self, uuid: str, when: dt.datetime | None = dt.datetime.utcnow()) -> list[str]:
+    def get_gpu_local_id(self, uuid: str, when: dt.datetime | None = dt.datetime.now(dt.timezone.utc)) -> list[str]:
         where = (LocalIndexedGPUs.uuid == uuid)
         if when is not None:
             where &= (LocalIndexedGPUs.start_time <= when) & (LocalIndexedGPUs.end_time > when)
@@ -369,12 +369,12 @@ class SlurmMonitorDB(Database):
 
         start_time = None
         if start_time_in_s is not None:
-            start_time = dt.datetime.utcfromtimestamp(start_time_in_s)
+            start_time = dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
             where &= GPUStatus.timestamp >= start_time
 
         end_time = None
         if end_time_in_s is not None:
-            end_time = dt.datetime.utcfromtimestamp(end_time_in_s)
+            end_time = dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
             where &= GPUStatus.timestamp <= end_time
 
         if uuid is not None:
@@ -404,7 +404,7 @@ class SlurmMonitorDB(Database):
         for node in nodes:
             when = None
             if start_time_in_s is not None:
-                when = dt.datetime.utcfromtimestamp(start_time_in_s)
+                when = dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
 
             uuids = self.get_gpu_uuids(node, when=when)
             if local_indices is None:
@@ -446,12 +446,12 @@ class SlurmMonitorDB(Database):
 
         start_time = None
         if start_time_in_s is not None:
-            start_time = dt.datetime.utcfromtimestamp(start_time_in_s)
+            start_time = dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
             where &= CPUStatus.timestamp >= start_time
 
         end_time = None
         if end_time_in_s is not None:
-            end_time = dt.datetime.utcfromtimestamp(end_time_in_s)
+            end_time = dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
             where &= CPUStatus.timestamp < end_time
 
         logger.info(f"SlurmMonitorDB.get_cpu_status: {node=} {start_time=} {end_time=} {resolution_in_s=}")
@@ -502,12 +502,12 @@ class SlurmMonitorDB(Database):
 
         start_time = None
         if start_time_in_s is not None:
-            start_time = dt.datetime.utcfromtimestamp(start_time_in_s)
+            start_time = dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
             where &= MemoryStatus.timestamp >= start_time
 
         end_time = None
         if end_time_in_s is not None:
-            end_time = dt.datetime.utcfromtimestamp(end_time_in_s)
+            end_time = dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
             where &= MemoryStatus.timestamp <= end_time
 
         logger.info(f"SlurmMonitorDB.get_memory_status: {node=} {start_time=} {end_time=} {resolution_in_s=}")
@@ -580,27 +580,27 @@ class SlurmMonitorDB(Database):
             where &= JobStatus.job_id == job_id
 
         if start_before_in_s is not None:
-            reference_time = dt.datetime.utcfromtimestamp(start_before_in_s)
+            reference_time = dt.datetime.fromtimestamp(start_before_in_s, dt.timezone.utc)
             where &= JobStatus.start_time <= reference_time
 
         if start_after_in_s is not None:
-            reference_time = dt.datetime.utcfromtimestamp(start_after_in_s)
+            reference_time = dt.datetime.fromtimestamp(start_after_in_s, dt.timezone.utc)
             where &= JobStatus.start_time >= reference_time
 
         if end_before_in_s is not None:
-            reference_time = dt.datetime.utcfromtimestamp(end_before_in_s)
+            reference_time = dt.datetime.fromtimestamp(end_before_in_s, dt.timezone.utc)
             where &= JobStatus.end_time <= reference_time
 
         if end_after_in_s is not None:
-            reference_time = dt.datetime.utcfromtimestamp(end_after_in_s)
+            reference_time = dt.datetime.fromtimestamp(end_after_in_s, dt.timezone.utc)
             where &= JobStatus.end_time >= reference_time
 
         if submit_before_in_s is not None:
-            reference_time = dt.datetime.utcfromtimestamp(submit_before_in_s)
+            reference_time = dt.datetime.fromtimestamp(submit_before_in_s, dt.timezone.utc)
             where &= JobStatus.submit_time <= reference_time
 
         if submit_after_in_s is not None:
-            reference_time = dt.datetime.utcfromtimestamp(submit_after_in_s)
+            reference_time = dt.datetime.fromtimestamp(submit_after_in_s, dt.timezone.utc)
             where &= JobStatus.submit_time >= reference_time
 
         if min_duration_in_s is not None:
@@ -705,12 +705,12 @@ class SlurmMonitorDB(Database):
 
         where = (ProcessStatus.job_id == job_id)
         if start_time_in_s is not None:
-            start_time = dt.datetime.utcfromtimestamp(start_time_in_s)
+            start_time = dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
             logger.info(f"SlurmMonitorDB.get_job_status_timeseries: {start_time=}")
             where &= ProcessStatus.timestamp >= start_time
 
         if end_time_in_s is not None:
-            end_time = dt.datetime.utcfromtimestamp(end_time_in_s)
+            end_time = dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
             logger.info(f"SlurmMonitorDB.get_job_status_timeseries: {end_time=}")
             where &= ProcessStatus.timestamp < end_time
 

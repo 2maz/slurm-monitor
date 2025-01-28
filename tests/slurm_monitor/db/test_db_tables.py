@@ -29,7 +29,7 @@ def test_GPUs():
 
 def test_GPUStatus_merge():
 
-    now = dt.datetime.utcnow()
+    now = dt.datetime.now(dt.timezone.utc)
     uuid = "gpu-1"
 
     status_a = GPUStatus(uuid=uuid,
@@ -58,7 +58,7 @@ def test_GPUStatus_merge():
 
 def test_ProcessStatus_merge():
 
-    now = dt.datetime.utcnow()
+    now = dt.datetime.now(dt.timezone.utc)
 
     status_a = ProcessStatus(
             pid=1,

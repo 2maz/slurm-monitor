@@ -226,12 +226,12 @@ class SlurmMonitorDB(Database):
             logger.info(f"SlurmMonitorDB.get_gpu_status: {node=}")
 
         if start_time_in_s is not None:
-            start_time = dt.datetime.utcfromtimestamp(start_time_in_s)
+            start_time = dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
             logger.info(f"SlurmMonitorDB.get_gpu_status: {start_time=}")
             where &= GPUStatus.timestamp >= start_time
 
         if end_time_in_s is not None:
-            end_time = dt.datetime.utcfromtimestamp(end_time_in_s)
+            end_time = dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
             logger.info(f"SlurmMonitorDB.get_gpu_status: {end_time=}")
             where &= GPUStatus.timestamp < end_time
 

@@ -246,13 +246,13 @@ def main(*,
     while True:
         try:
             consumer = KafkaConsumer(topic, bootstrap_servers=f"{host}:{port}")
-            start_time = dt.datetime.utcnow()
+            start_time = dt.datetime.now(dt.timezone.utc)
             while True:
                 for idx, msg in enumerate(consumer, 1):
                     try:
                         node, timestamp = msg_handler.process(msg.value.decode("UTF-8"))
                         print(
-                                f"{dt.datetime.utcnow()} messages consumed: {idx} since {start_time}"
+                                f"{dt.datetime.now(dt.timezone.utc)} messages consumed: {idx} since {start_time}"
                                 f"-- last received at {timestamp} from {node}      \r", flush=True, end='')
                     except Exception as e:
                         logger.warning(f"Message processing failed: {e}")

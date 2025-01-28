@@ -433,7 +433,7 @@ class JobStatus(TableBase):
         for k, v in data.items():
             if k in mapper.column_attrs:
                 if type(v) == int and type(cls.__table__.columns[k].type) == DateTime:
-                    mapped_data[k] = dt.datetime.utcfromtimestamp(v)
+                    mapped_data[k] = dt.datetime.fromtimestamp(v, dt.timezone.utc)
                 else:
                     mapped_data[k] = v
 

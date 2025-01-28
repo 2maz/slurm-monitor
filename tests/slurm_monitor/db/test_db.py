@@ -63,8 +63,8 @@ async def test_memory_status(test_db, number_of_nodes, number_of_samples):
                 end_time_in_s=end_epoch,
                 resolution_in_s=resolution_in_s)
 
-        start_epoch_date = dt.datetime.utcfromtimestamp(start_epoch)
-        end_epoch_date = dt.datetime.utcfromtimestamp(end_epoch)
+        start_epoch_date = dt.datetime.fromtimestamp(start_epoch, dt.timezone.utc).replace(tzinfo=None)
+        end_epoch_date = dt.datetime.fromtimestamp(end_epoch, dt.timezone.utc).replace(tzinfo=None)
         for x in status:
             assert x.timestamp >= start_epoch_date
             assert x.timestamp <= end_epoch_date
