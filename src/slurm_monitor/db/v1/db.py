@@ -369,12 +369,12 @@ class SlurmMonitorDB(Database):
 
         start_time = None
         if start_time_in_s is not None:
-            start_time = dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
+            start_time = dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc).replace(tzinfo=None)
             where &= GPUStatus.timestamp >= start_time
 
         end_time = None
         if end_time_in_s is not None:
-            end_time = dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
+            end_time = dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc).replace(tzinfo=None)
             where &= GPUStatus.timestamp <= end_time
 
         if uuid is not None:
@@ -404,7 +404,7 @@ class SlurmMonitorDB(Database):
         for node in nodes:
             when = None
             if start_time_in_s is not None:
-                when = dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
+                when = dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc).replace(tzinfo=None)
 
             uuids = self.get_gpu_uuids(node, when=when)
             if local_indices is None:
@@ -446,12 +446,12 @@ class SlurmMonitorDB(Database):
 
         start_time = None
         if start_time_in_s is not None:
-            start_time = dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
+            start_time = dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc).replace(tzinfo=None)
             where &= CPUStatus.timestamp >= start_time
 
         end_time = None
         if end_time_in_s is not None:
-            end_time = dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
+            end_time = dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc).replace(tzinfo=None)
             where &= CPUStatus.timestamp < end_time
 
         logger.info(f"SlurmMonitorDB.get_cpu_status: {node=} {start_time=} {end_time=} {resolution_in_s=}")
@@ -502,12 +502,12 @@ class SlurmMonitorDB(Database):
 
         start_time = None
         if start_time_in_s is not None:
-            start_time = dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
+            start_time = dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc).replace(tzinfo=None)
             where &= MemoryStatus.timestamp >= start_time
 
         end_time = None
         if end_time_in_s is not None:
-            end_time = dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
+            end_time = dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc).replace(tzinfo=None)
             where &= MemoryStatus.timestamp <= end_time
 
         logger.info(f"SlurmMonitorDB.get_memory_status: {node=} {start_time=} {end_time=} {resolution_in_s=}")
