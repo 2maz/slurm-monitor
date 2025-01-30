@@ -23,14 +23,17 @@ class Command:
         return None
 
     @classmethod
-    def run(cls, command: str) -> str:
+    def run(cls, command: str, decode: str | None = 'utf-8') -> str:
         response = subprocess.run(command,
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE)
 
         if response.returncode == 0:
-            return response.stdout.decode("utf-8").strip()
+            if decode is None:
+                return response.stdout
+            else:
+                return response.stdout.decode(decode).strip()
 
         raise RuntimeError(
                 f"Command.run: '{command}' failed with returncode: "

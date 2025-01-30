@@ -1,13 +1,17 @@
 # from slurm_monitor.backend.worker import celery_app
 from fastapi import APIRouter, Depends, HTTPException
-from logging import getLogger, Logger
-from slurm_monitor.utils import utcnow
-import slurm_monitor.db_operations as db_ops
+from fastapi.responses import Response, FileResponse
 from fastapi_cache.decorator import cache
-from tqdm import tqdm
+from logging import getLogger, Logger
 import pandas as pd
 from pathlib import Path
+import re
+import tempfile
+from tqdm import tqdm
 
+from slurm_monitor.utils import utcnow
+import slurm_monitor.db_operations as db_ops
+from slurm_monitor.utils.command import Command
 from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.db.v1.query import QueryMaker
 from slurm_monitor.app_settings import AppSettings
@@ -118,6 +122,42 @@ async def nodes_nodename_info(nodename: str, dbi = Depends(db_ops.get_database))
         load_node_infos()
 
     return NODE_INFOS[nodename]
+
+
+@api_router.get("/nodes/{nodename}/topology", response_model=None)
+@cache(expire=3600*24*7)
+def nodes_nodename_topology(nodename: str, output_format: str = 'svg'):
+    filename = Path(tempfile.gettempdir()) / f"slurm-monitor-lstopo-{nodename}.{output_format}"
+    if not Path(filename).exists():
+        user = Command.get_user()
+
+        decode = None if output_format == 'png' else 'UTF-8'
+        write = "wb" if output_format == 'png' else 'w'
+
+        # system setup for user must ensure that lstopo is available, e.g., adding
+        #     module load hwloc
+        # into ~/.profile
+        data = Command.run(
+                f"ssh {user}@{nodename} \"bash -l -c 'lstopo --output-format {output_format} -v'\"",
+                decode=decode
+               )
+        if output_format == 'svg':
+            # fixing viewport - should not have units
+            data = re.sub(r"viewBox='0 0 ([0-9]+)px ([0-9]+)px'", "viewBox='0 0 \\1 \\2'", data)
+
+        with open(filename, write) as f:
+            f.write(data)
+
+    if output_format == 'png':
+        return FileResponse(filename)
+
+    with open(filename, "r") as f:
+        data = f.read()
+
+    if output_format == 'svg':
+        return Response(content=data, media_type="image/svg+xml")
+    else:
+        return data
 
 
 @api_router.get("/partitions", response_model=None)
