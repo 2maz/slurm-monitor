@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
     if "SLURM_MONITOR_JOBS_COLLECTOR" in os.environ:
         if os.environ["SLURM_MONITOR_JOBS_COLLECTOR"].lower() == "false":
             do_collect_jobs = False
-    
+
     jobs_pool = None
     if do_collect_jobs:
         logger.info("Startup of jobs collector")
