@@ -123,15 +123,15 @@ class MessageHandler:
 
 
                 local_indexed_gpus = self.database.fetch_all(LocalIndexedGPUs,
-                                (LocalIndexedGPUs.uuid==uuid) & (LocalIndexedGPUs.end_time > timestamp)
+                                (LocalIndexedGPUs.uuid==uuid)
+                                & (LocalIndexedGPUs.end_time > timestamp)
                 )
-
                 if local_indexed_gpus:
                     local_indexed_gpu = local_indexed_gpus[0]
 
                     if local_indexed_gpu.local_id != x['local_id']:
                         logger.warning(f"Local id of gpu '{uuid}' changed from:"
-                                       f"{x['local_id']} to {local_indexed_gpu.local_id}")
+                                       f"{local_indexed_gpu.local_id} to {x['local_id']}")
 
                         local_indexed_gpu.end_time = timestamp
                         new_index = x['local_id']
@@ -141,19 +141,30 @@ class MessageHandler:
                              start_time=timestamp
                         )
 
-                        # check the uuid that held the local_id before and deactivate
+                        # check other uuids that held the local_id before and deactivate
                         replaced_gpus = self.database.fetch_all(LocalIndexedGPUs,
-                                (LocalIndexedGPUs.node == nodename) & (LocalIndexedGPUs.local_id == new_index)
+                                (LocalIndexedGPUs.node == nodename)
+                                & (LocalIndexedGPUs.local_id == local_indexed_gpu.local_id)
+                                & (LocalIndexedGPUs.uuid != uuid)
                         )
                         if replaced_gpus:
-                           replaced_gpu =  replaced_gpus[0]
+                           replaced_gpu = replaced_gpus[0]
                            replaced_gpu.end_time = timestamp
 
                         self.database.insert_or_update([local_indexed_gpu, new_local_indexed_gpu, replaced_gpu])
                 else:
+                    end_times = self.database.fetch_all(LocalIndexedGPUs,
+                            (LocalIndexedGPUs.uuid==uuid)
+                    )
+
+                    start_time = None
+                    if end_times:
+                        start_time = timestamp
+
                     self.database.insert_or_update(LocalIndexedGPUs(uuid=uuid,
                         node=x['node'],
                         local_id=x['local_id'],
+                        start_time=start_time
                     ))
 
                 gpus[uuid] = GPUs(uuid=uuid,
