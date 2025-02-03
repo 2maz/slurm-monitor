@@ -125,7 +125,6 @@ async def nodes_nodename_info(nodename: str, dbi = Depends(db_ops.get_database))
 
 
 @api_router.get("/nodes/{nodename}/topology", response_model=None)
-@cache(expire=3600*24*7)
 def nodes_nodename_topology(nodename: str, output_format: str = 'svg'):
     filename = Path(tempfile.gettempdir()) / f"slurm-monitor-lstopo-{nodename}.{output_format}"
     if not Path(filename).exists():
