@@ -136,10 +136,19 @@ def nodes_nodename_topology(nodename: str, output_format: str = 'svg'):
         # system setup for user must ensure that lstopo is available, e.g., adding
         #     module load hwloc
         # into ~/.profile
-        data = Command.run(
-                f"ssh {user}@{nodename} \"bash -l -c 'lstopo --output-format {output_format} -v'\"",
-                decode=decode
-               )
+        try:
+            data = Command.run(
+                    f"ssh {user}@{nodename} \"bash -l -c 'lstopo --output-format {output_format} -v'\"",
+                    decode=decode
+                   )
+        except Exception as e:
+            logger.warning(e)
+
+            raise HTTPException(
+                status_code=503, # Service unavailable
+                detail=f"Internal Error: the 'lstopo' command did not succeed for node '{nodename}'."
+            )
+
         if output_format == 'svg':
             # fixing viewport - should not have units
             data = re.sub(r"viewBox='0 0 ([0-9]+)px ([0-9]+)px'", "viewBox='0 0 \\1 \\2'", data)
