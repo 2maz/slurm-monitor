@@ -347,6 +347,21 @@ async def job_system_status(
     data["nodes"] = timeseries_per_node
     return data
 
+
+@api_router.get("/jobs/{job_id}/export")
+async def job_export(
+        job_id: int,
+        refresh: bool = False
+) -> FileResponse:
+    dbi = db_ops.get_database()
+    zip_filename = Path(f"{dbi.get_export_data_dirname(job_id=job_id)}.zip")
+    if refresh or not zip_filename.exists():
+        zip_filename = await dbi.export_data(job_id=job_id)
+
+    logger.info(f"Job Data Export: {zip_filename}")
+    return FileResponse(path=zip_filename, filename=f"job-data-{job_id}.zip")
+
+
 @api_router.get("/queries")
 @api_router.get("/queries/{query_name}")
 async def queries(

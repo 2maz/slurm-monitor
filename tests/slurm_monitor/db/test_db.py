@@ -1,5 +1,8 @@
 import pytest
 import datetime as dt
+from pathlib import Path
+import re
+from zipfile import ZipFile
 
 from slurm_monitor.db.v1.db_tables import (
     GPUStatus,
@@ -164,3 +167,21 @@ async def test_get_jobs(arguments, has_jobs, test_db):
     args = {x: y() for x,y in arguments.items()}
     jobs = await test_db.get_jobs(**args)
     assert (len(jobs) > 0) == has_jobs
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_export_data(tmp_path, test_db):
+    jobs = test_db.fetch_all(JobStatus)
+
+    prepare_dir = Path(tmp_path) / "prepare"
+    prepare_dir.mkdir(parents=True, exist_ok=True)
+
+    for job in jobs[-4:]:
+        zip_file = await test_db.export_data(job_id=job.job_id, base_dir=prepare_dir)
+
+        files_in_zip = ZipFile(zip_file).namelist()
+        for f in files_in_zip:
+            # ensure that only the job related folder will end in the zip
+            assert re.match(rf"job-{job.job_id}/.*", f)
+
+        # Ensure that repeated packaging is possible
+        zip_file = await test_db.export_data(job_id=job.job_id, base_dir=prepare_dir)
