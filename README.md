@@ -178,7 +178,7 @@ The binary is then generated as: dist/&lt;arch&gt;/slurm-monitor
 Note, that there is no cross-compilation support at the moment. So the build is always targeting the architecture the program runs on.
 
 
-One the binary has been installed on the target system run it with:
+Once the binary has been installed on the target system run it with:
 
 ```
     slurm-monitor probe --host my-kafka-broker
@@ -190,7 +190,7 @@ or to make it persist
     nohup slurm-monitor probe --host my-kafka-broker > /tmp/slurm-monitor-probe.log 2>&1 &
 ```
 
-Per default messages are published under under the 'node-status' topic. To change, e.g., for testing use '--publisher-topic node-status-test'
+Per default messages are published under the 'node-status' topic. To customize the topic, e.g., for testing, use the option '--publisher-topic node-status-test'
 
 
 
