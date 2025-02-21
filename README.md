@@ -86,6 +86,28 @@ Once the docker-compose.yaml has been created, start the containers:
 docker compose up -d
 ```
 
+## Installation
+
+First, create a python virtual environment:
+
+```
+python3 -m venv .venv-slurm-monitor
+source .venv-slurm-monitor/bin/activate
+```
+
+Then clone the repo (currently the package is not available via pypi):
+```
+git clone https://github.com/2maz/slurm-monitor.git
+```
+
+Install locally with all dependencies (development and test included, refer to
+pyproject.toml for the optional dependencies):
+
+```
+pip install slurm-monitor/[restapi,dev]
+```
+
+
 ## Listener
 
 Prepare the data collection to record published messages via:
@@ -135,10 +157,20 @@ To run with ssl, get or create a certificate and run as follows:
 Now that the receiving end is in place, the probes can be started.
 (Note, that the probes can also be started independently.)
 
-In case you want to distribute the probe as a single binary, create a platform specific binary with:
+In case you want to distribute the probe as a single binary, create a platform specific binary with the following steps:
+
+1. Ensure that python headers, g++, rust and cargo are available, and `module load` (on HPC system) or install if necessary, e.g., using the following (stick with the defaults):
 
 ```
-tox -e build:nuitka
+    sudo apt install curl g++ python3-dev
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    source $HOME/.cargo/env
+```
+
+2. Run the actual build:
+
+```
+    tox -e build-nuitka
 ```
 
 The binary is then generated as: dist/&lt;arch&gt;/slurm-monitor
@@ -149,13 +181,13 @@ Note, that there is no cross-compilation support at the moment. So the build is 
 One the binary has been installed on the target system run it with:
 
 ```
-slurm-monitor probe --host my-kafka-broker
+    slurm-monitor probe --host my-kafka-broker
 ```
 
 or to make it persist
 
 ```
-nohup slurm-monitor probe --host my-kafka-broker > /tmp/slurm-monitor-probe.log 2>&1 &
+    nohup slurm-monitor probe --host my-kafka-broker > /tmp/slurm-monitor-probe.log 2>&1 &
 ```
 
 Per default messages are published under under the 'node-status' topic. To change, e.g., for testing use '--publisher-topic node-status-test'
@@ -177,7 +209,7 @@ for testing against a timescaledb docker will be required:
 
 # License
 
-Copyright (c) 2024 Thomas Roehr, Simula Research Laboratory
+Copyright (c) 2024-2025 Thomas Roehr, Simula Research Laboratory
 
 This project is licensed under the terms of the [New BSD License](https://opensource.org/license/BSD-3-clause).
 You are free to use, modify, and distribute this work, subject to the
