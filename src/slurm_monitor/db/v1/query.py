@@ -48,9 +48,9 @@ class UserJobResults(Query):
                     THEN 1 END) * 100 / COUNT(*)
             ) AS share_of_successful_jobs,
             COUNT(distinct job_id) AS number_of_jobs,
-            AVG(end_time - start_time) AS avg_time,
-            MIN(end_time - start_time) AS min_time,
-            MAX(end_time - start_time) AS max_time,
+            AVG(EXTRACT(EPOCH FROM(end_time - start_time))) AS avg_time,
+            MIN(EXTRACT(EPOCH FROM(end_time - start_time))) AS min_time,
+            MAX(EXTRACT(EPOCH FROM(end_time - start_time))) AS max_time,
             CAST(AVG(cpus) AS INTEGER) as avg_cpus,
             CAST(AVG(node_count) AS INTEGER) as avg_node_count,
             CAST(AVG(tasks) AS INTEGER) as avg_tasks
