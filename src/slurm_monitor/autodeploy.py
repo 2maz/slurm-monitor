@@ -62,6 +62,10 @@ class AutoDeployer:
         response = Command.run(f"sinfo -n {node} -N -h -o '%t'")
         return response.startswith("drain")
 
+    def is_draining(self, node: str) -> bool:
+        response = Command.run(f"sinfo -n {node} -N -h -o '%t'")
+        return response.startswith("drng")
+
     def deploy(self, node: str) -> str:
         response = Command.run(f"slurm-monitor-probes-ctl -n {node} deploy")
         logger.info(response)
@@ -106,11 +110,13 @@ class AutoDeployer:
                 last_seen_in_s = (now - node_time).total_seconds()
                 msg = f"{node} last seen: {last_seen_in_s:10.1f} s ago"
                 if last_seen_in_s > self._sampling_interval_in_s:
-                    if not self.is_drained(node):
+                    if self.is_drained(node):
+                        print(f"{msg} -- but node is drained")
+                    elif self.is_draining(node):
+                        print(f"{msg} -- but node is draining")
+                    else:
                         print(f"{msg} -- requires redeployment of probe")
                         self.deploy(node)
-                    else:
-                        print(f"{msg} -- but node is drained")
                 else:
                     print(msg)
 
