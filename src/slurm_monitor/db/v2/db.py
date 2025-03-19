@@ -1,5 +1,7 @@
 import os
 from pydantic import BaseModel
+from sqlalchemy.orm import sessionmaker
+from contextlib import contextmanager
 from sqlalchemy.engine.url import URL, make_url
 from sqlalchemy import (
         MetaData,
@@ -45,6 +47,8 @@ class DatabaseSettings(BaseModel):
 
     create_missing: bool = True
 
+def _listify(obj_or_list):
+    return obj_or_list if isinstance(obj_or_list, (tuple, list)) else [obj_or_list]
 
 class Database:
     def __init__(self, db_settings: DatabaseSettings):
@@ -65,7 +69,7 @@ class Database:
                 cursor.execute("CREATE EXTENSION IF NOT EXISTS hstore;")
                 cursor.close()
 
-        #self.session_factory = sessionmaker(self.engine, expire_on_commit=False)
+        self.session_factory = sessionmaker(self.engine, expire_on_commit=False)
 
 
         self._metadata = MetaData()
@@ -81,6 +85,27 @@ class Database:
 
         if db_settings.create_missing:
             self._metadata.create_all(self.engine)
+
+    def insert(self, db_obj):
+        with self.make_writeable_session() as session:
+            session.add_all(_listify(db_obj))
+
+    def insert_or_update(self, db_obj):
+        with self.make_writeable_session() as session:
+            for obj in _listify(db_obj):
+                session.merge(obj)
+
+    @contextmanager
+    def make_writeable_session(self):
+        session = self.session_factory()
+        try:
+            yield session
+            session.commit()
+        except:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
 
 class ClusterDB(Database):

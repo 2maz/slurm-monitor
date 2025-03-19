@@ -5,7 +5,6 @@ import json
 import re
 import numpy as np
 from typing import ClassVar, Any, Callable, TypeVar
-import slurm_monitor.db.timescaledb
 import datetime as dt
 
 from sqlalchemy import (
@@ -19,6 +18,7 @@ from sqlalchemy import (
     Integer,
     inspect,
     types,
+    String,
     Text,
 )
 
@@ -32,7 +32,6 @@ from sqlalchemy.dialects.postgresql import (
 
 from sqlalchemy.sql.functions import GenericFunction
 from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.ext.mutable import MutableDict
 
 
 logger = logging.getLogger(__name__)
@@ -78,27 +77,61 @@ def Column(*args, **kwargs):
 
     return sqlalchemy.Column(*args, **kwargs)
 
-class SoftwareVersion(types.TypeDecorator):
+
+class HStoreModel(types.TypeDecorator):
     impl = HSTORE
+
+    required: ClassVar[list[str]] = []
+    optional: ClassVar[list[str]] = []
+
+    @property
+    def allowed(self):
+        return self.required + self.optional
 
     def process_bind_param(self, value, dialect):
         if value is None or type(value) != dict:
-            raise KeyError("SoftwareVersion: must be dictionary")
+            raise KeyError(f"{self.__class__}: value must be dictionary")
 
-        required = ["key", "version"]
-        for key in required: 
+        for key in self.required:
             if key not in value:
-                raise KeyError(f"SoftwareVersion: misses the required key '{key}'")
+                raise KeyError(f"{self.__class__}: value misses the required key '{key}'")
 
-        allowed = required.extend("name")
         for key in value:
-            if key not in allowed:
-                raise KeyError(f"SoftwareVersion: received an invalid key '{key}'."
+            if key not in self.allowed:
+                raise KeyError(f"{self.__class__}: value contains an invalid key '{key}'."
                     " Permitted are {','.join(allowed)}")
         return value
 
     def process_result_value(self, value, dialect):
         return value
+
+
+# core-model: (index: unsigned, physical: unsigned, model: string)
+class CoreModel(HStoreModel):
+    required: ClassVar[list[str]] = ["index", "physical", "model"]
+
+class SoftwareVersion(HStoreModel):
+    required: ClassVar[list[str]] = ["key", "version"]
+    optional: ClassVar[list[str]] = ["name"]
+
+    #def process_bind_param(self, value, dialect):
+    #    if value is None or type(value) != dict:
+    #        raise KeyError("SoftwareVersion: must be dictionary")
+
+    #    required = ["key", "version"]
+    #    for key in required:
+    #        if key not in value:
+    #            raise KeyError(f"SoftwareVersion: misses the required key '{key}'")
+
+    #    allowed = required.extend("name")
+    #    for key in value:
+    #        if key not in allowed:
+    #            raise KeyError(f"SoftwareVersion: received an invalid key '{key}'."
+    #                " Permitted are {','.join(allowed)}")
+    #    return value
+
+    #def process_result_value(self, value, dialect):
+    #    return value
 
 @as_declarative()
 class TableBase:
@@ -250,9 +283,6 @@ class GPUIdList(types.TypeDecorator):
         if dialect.name in ["default", "sqlite", "postgresql", "timescaledb"]:
             return self.impl
 
-        if dialect.name == "mysql":
-            return dialect.type_descriptor(LONGTEXT)
-
         # TODO: if requiring postgresql check the JSON type:
         # https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#sqlalchemy.dialects.postgresql.JSON
         raise NotImplementedError(
@@ -315,10 +345,12 @@ class Node(TableBase):
     __table_args__ = (
         {}
     )
-    cluster = Column(Text, primary_key=True)
-    name = Column(Text, primary_key=True)
+    cluster = Column(String, primary_key=True)
+    name = Column(String, primary_key=True)
 
-    description = Column(Text)
+    architecture = Column(String)
+
+    description = Column(Text, default='')
 
 class NodeConfig(TableBase):
     __tablename__ = "node_config"
@@ -328,13 +360,13 @@ class NodeConfig(TableBase):
 
     os_name = Column(Text)
     os_release = Column(Text)
-    architecture = Column(Text)
+
     # core-model: (index: unsigned, physical: unsigned, model: string)
     # Could be a separate table or just a text encoded dict
-    cores = Column(Text)
-    # Primary memory in kilobytes
-    memory = Column(BigInteger)
-    topo_svg = Column(Text)
+    cores = Column(ARRAY(CoreModel), desc="list of core models")
+
+    memory = Column(BigInteger, desc="primary memory", unit="kilobyte")
+    topo_svg = Column(Text, nullable=True)
 
     # TBD: array of gpu-card values # considering here uuids
     cards = Column(ARRAY(Text), desc="Array of gpu-card uuid")
@@ -514,10 +546,10 @@ class ProcessStatus(TableBase):
     pid = Column(BigInteger, primary_key=True)
     parent_pid = Column(BigInteger, default=0)
 
-    # private resident memory 
+    # private resident memory
     resident = Column(BigInteger, default=0, unit='kilobyte')
 
-    # virtual data+stack memory 
+    # virtual data+stack memory
     virtual = Column(BigInteger, default=0, unit='kilobyte')
 
     # command (not the command line) - '_unknown_' for zombie processes
@@ -529,7 +561,7 @@ class ProcessStatus(TableBase):
 
     timestamp = Column(DateTime(timezone=True), default=dt.datetime.now, primary_key=True)
     # Consider
-    # rolled_up = 
+    # rolled_up =
 
     __table_args__ = (
         ForeignKeyConstraint([cluster, node], [Node.cluster, Node.name]),
@@ -602,12 +634,13 @@ class SlurmJobStatus(TableBase):
 
     # JobID
     # The number of the job or job step. It is in the form: job.jobstep.
-    # Meanwhile here - we 
+    # Meanwhile here - we
     job_id = Column(BigInteger, index=True, primary_key=True)  # ": 244843,
     job_step = Column(Integer, default=0)
 
     # JobIDRaw
-    # In case of job array print the JobId instead of the ArrayJobId. For non job arrays the output is the JobId in the format job.jobstep.
+    # In case of job array print the JobId instead of the ArrayJobId. For non
+    # job arrays the output is the JobId in the format job.jobstep.
     job_id_raw = Column
 
 
@@ -761,7 +794,3 @@ class SlurmJobStatus(TableBase):
                     mapped_data[k] = v
 
         return cls(**mapped_data)
-
-
-
-

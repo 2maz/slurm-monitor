@@ -35,7 +35,7 @@ class TimescaledbDDLCompiler(PGDDLCompiler):
     def ddl_hypertable(table_name, hypertable):
         time_column_name = hypertable['time_column_name']
         chunk_time_interval = hypertable.get('chunk_time_interval', '7 days')
-        
+
         if isinstance(chunk_time_interval, str):
             if chunk_time_interval.isdigit():
                 chunk_time_interval = int(chunk_time_interval)
