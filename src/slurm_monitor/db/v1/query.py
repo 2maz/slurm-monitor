@@ -35,7 +35,12 @@ class Query:
 
 
     async def execute_async(self) -> Awaitable[pd.DataFrame]:
-        return await self._execute_async(text(self.statement), {})
+        statement = self.statement
+        if self._db.db_url.get_dialect().name == "sqlite":
+            if hasattr(self, "statement_sqlite"):
+                statement = self.statement_sqlite
+
+        return await self._execute_async(text(statement), {})
 
 
 class UserJobResults(Query):
