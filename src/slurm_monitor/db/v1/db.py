@@ -485,7 +485,7 @@ class SlurmMonitorDB(Database):
         async with self.make_async_session() as session:
             accumulated_timeseries = [CPUStatus(
                 node=x[0],
-                local_id=0, # default 
+                local_id=0, # default
                 cpu_percent=x[1],
                 timestamp=x[2],
                 )

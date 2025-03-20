@@ -218,5 +218,5 @@ conditions specified in the [LICENSE](./LICENSE) file.
 
 # Acknowledgement
 
-This work has been supported by the Norwegian Research Council through 
+This work has been supported by the Norwegian Research Council through
 the project [Norwegian Artificial Intelligence Cloud (NAIC)](https://www.naic.no/english/about/) (grant number: 322336).
