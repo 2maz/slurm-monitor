@@ -472,11 +472,33 @@ class SlurmMonitorDB(Database):
             where &= CPUStatus.timestamp < end_time
 
         logger.info(f"SlurmMonitorDB.get_cpu_status: {node=} {start_time=} {end_time=} {resolution_in_s=}")
-        data = await self.fetch_all_async(CPUStatus, where=where, order_by=CPUStatus.timestamp.desc())
+        query = (
+                select(
+                    CPUStatus.node,
+                    func.sum(CPUStatus.cpu_percent).label('cpu_percent_sum'),
+                    CPUStatus.timestamp
+                )
+                .where(where & (CPUStatus.node == node))
+                .group_by(CPUStatus.timestamp, CPUStatus.node)
+                .order_by(CPUStatus.timestamp.desc())
+        )
+        async with self.make_async_session() as session:
+            accumulated_timeseries = [CPUStatus(
+                node=x[0],
+                local_id=0, # default 
+                cpu_percent=x[1],
+                timestamp=x[2],
+                )
+                for x in (await session.execute(query)).all()
+            ]
+
         if resolution_in_s is not None:
-            return TableBase.apply_resolution(data=data, resolution_in_s=resolution_in_s)
-        else:
-            return data
+            accumulated_timeseries = TableBase.apply_resolution(
+                    data=accumulated_timeseries,
+                    resolution_in_s=resolution_in_s
+            )
+        return accumulated_timeseries
+
 
     async def get_cpu_status_timeseries_list(
         self,
