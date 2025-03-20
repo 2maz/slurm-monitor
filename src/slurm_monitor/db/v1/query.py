@@ -41,7 +41,7 @@ class UserJobResults(Query):
         min_time, max_time, avg_cpu
     """
     statement: str = """
-        SELECT user_id,
+        SELECT row_number() OVER(ORDER BY user_id) as anon_user_id, user_id,
             (COUNT
                 (CASE
                     WHEN exit_code = 0 and job_state in ('COMPLETED', 'FAILED', 'CANCELLED')
