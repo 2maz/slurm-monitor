@@ -16,6 +16,7 @@ def test_autodeployer(test_db, test_db_uri, number_of_nodes, monkeypatch):
 
     monkeypatch.setattr(AutoDeployer, "deploy", mock_deploy)
     monkeypatch.setattr(AutoDeployer, "is_drained", lambda x,node: True if node == "node-1" else False)
+    monkeypatch.setattr(AutoDeployer, "is_draining", lambda x,node: True if node == "node-2" else False)
 
     auto_deployer = AutoDeployer(app_settings=app_settings, sampling_interval_in_s=1)
     auto_deployer.start()
@@ -23,5 +24,6 @@ def test_autodeployer(test_db, test_db_uri, number_of_nodes, monkeypatch):
     time.sleep(3)
     auto_deployer.stop()
 
-    assert len(set(redeploy_nodes)) == number_of_nodes - 1
+    assert len(set(redeploy_nodes)) == number_of_nodes - 2
     assert "node-1" not in redeploy_nodes
+    assert "node-2" not in redeploy_nodes
