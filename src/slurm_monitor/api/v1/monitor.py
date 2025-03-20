@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response, FileResponse
 from fastapi_cache.decorator import cache
 from logging import getLogger, Logger
+import json
 import pandas as pd
 from pathlib import Path
 import re
@@ -376,8 +377,8 @@ async def queries(
         query_maker = QueryMaker(db_ops.get_database())
         query = query_maker.create(query_name)
         df = await query.execute_async()
-
-        return df.to_dict(orient="records")
+        json_data = df.to_json(orient="records")
+        return json.loads(json_data)
     except Exception as e:
         raise HTTPException(
                 status_code=404,
