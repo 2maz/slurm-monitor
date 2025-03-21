@@ -1,0 +1,349 @@
+{
+  "meta": {
+    "producer": "sonar",
+    "version": "0.13.0-devel"
+  },
+  "data": {
+    "type": "sysinfo",
+    "attributes": {
+      "time": "2025-03-20T13:18:17+01:00",
+      "node": "ml1.hpc.uio.no",
+      "os_name": "Linux",
+      "os_release": "4.18.0-553.30.1.el8_10.x86_64",
+      "cores": [
+        {
+          "index": 0,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 1,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 2,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 3,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 4,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 5,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 6,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 7,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 8,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 9,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 10,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 11,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 12,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 13,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 14,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 15,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 16,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 17,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 18,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 19,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 20,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 21,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 22,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 23,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 24,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 25,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 26,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 27,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 28,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 29,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 30,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 31,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 32,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 33,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 34,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 35,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 36,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 37,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 38,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 39,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 40,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 41,
+          "physical": 0,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 42,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 43,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 44,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 45,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 46,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 47,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 48,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 49,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 50,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 51,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 52,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 53,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 54,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        },
+        {
+          "index": 55,
+          "physical": 1,
+          "model": "Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz"
+        }
+      ],
+      "memory": 130950188,
+      "description": "2x14 (hyperthreaded) Intel(R) Xeon(R) Gold 5120 CPU @ 2.20GHz, 125 GiB, 3x NVIDIA GeForce RTX 2080 Ti @ 11GiB",
+      "cards": [
+        {
+          "address": "00000000:18:00.0",
+          "index": 0,
+          "uuid": "GPU-35080357-601c-7113-ec05-f6ca1e58a91e",
+          "manufacturer": "NVIDIA",
+          "model": "NVIDIA GeForce RTX 2080 Ti",
+          "architecture": "Turing",
+          "driver": "550.127.08",
+          "firmware": "12.4",
+          "memory": 11534336,
+          "power_limit": 250,
+          "max_power_limit": 100,
+          "min_power_limit": 280,
+          "max_ce_clock": 2100,
+          "max_memory_clock": 7000
+        },
+        {
+          "address": "00000000:3B:00.0",
+          "index": 1,
+          "uuid": "GPU-be013a01-364d-ca23-f871-206fe3f259ba",
+          "manufacturer": "NVIDIA",
+          "model": "NVIDIA GeForce RTX 2080 Ti",
+          "architecture": "Turing",
+          "driver": "550.127.08",
+          "firmware": "12.4",
+          "memory": 11534336,
+          "power_limit": 250,
+          "max_power_limit": 100,
+          "min_power_limit": 280,
+          "max_ce_clock": 2100,
+          "max_memory_clock": 7000
+        },
+        {
+          "address": "00000000:86:00.0",
+          "index": 2,
+          "uuid": "GPU-daa9f6ac-c8bf-87be-8adc-89b1e7d3f38a",
+          "manufacturer": "NVIDIA",
+          "model": "NVIDIA GeForce RTX 2080 Ti",
+          "architecture": "Turing",
+          "driver": "550.127.08",
+          "firmware": "12.4",
+          "memory": 11534336,
+          "power_limit": 250,
+          "max_power_limit": 100,
+          "min_power_limit": 280,
+          "max_ce_clock": 2100,
+          "max_memory_clock": 7000
+        }
+      ]
+    }
+  }
+}

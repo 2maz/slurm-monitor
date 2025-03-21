@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 from .db_tables import (
+    Core,
     GPUCard,
     GPUCardConfig,
     GPUCardStatus,
@@ -23,6 +24,7 @@ from .db_tables import (
     Node,
     NodeConfig,
     ProcessStatus,
+    SoftwareVersion,
     TableMetadata,
     TableBase
 )
@@ -109,6 +111,7 @@ class Database:
 
 
 class ClusterDB(Database):
+    Core = Core
     Node = Node
     NodeConfig = NodeConfig
     GPUCard = GPUCard
@@ -117,4 +120,5 @@ class ClusterDB(Database):
     GPUCardProcessStatus = GPUCardProcessStatus
 
     ProcessStatus = ProcessStatus
+    SoftwareVersion = SoftwareVersion
     #TableMetadata = TableMetadata

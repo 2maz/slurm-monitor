@@ -1,0 +1,1973 @@
+{
+  "meta": {
+    "producer": "sonar",
+    "version": "0.13.0-devel"
+  },
+  "data": {
+    "type": "sample",
+    "attributes": {
+      "time": "2025-03-20T13:20:02+01:00",
+      "node": "ml1.hpc.uio.no",
+      "system": {
+        "cpus": [
+          488146,
+          632804,
+          625005,
+          562309,
+          532193,
+          507037,
+          414910,
+          475538,
+          481563,
+          447477,
+          429101,
+          445471,
+          445563,
+          443373,
+          555612,
+          496283,
+          478367,
+          466910,
+          445257,
+          416000,
+          510891,
+          501638,
+          419292,
+          416565,
+          421203,
+          400849,
+          418585,
+          423317,
+          507445,
+          392245,
+          379299,
+          395113,
+          389104,
+          386050,
+          535859,
+          389778,
+          369195,
+          370402,
+          392003,
+          385143,
+          390794,
+          383529,
+          445916,
+          432721,
+          429484,
+          454610,
+          420248,
+          448729,
+          465228,
+          324616,
+          433526,
+          442544,
+          425614,
+          418808,
+          434672,
+          408112
+        ],
+        "gpus": [
+          {
+            "uuid": "GPU-35080357-601c-7113-ec05-f6ca1e58a91e",
+            "fan": 27,
+            "performance_state": 8,
+            "memory": 1014720,
+            "temperature": 28,
+            "power": 4,
+            "power_limit": 250,
+            "ce_clock": 300,
+            "memory_clock": 405
+          },
+          {
+            "index": 1,
+            "uuid": "GPU-be013a01-364d-ca23-f871-206fe3f259ba",
+            "fan": 28,
+            "performance_state": 8,
+            "memory": 269696,
+            "temperature": 27,
+            "power_limit": 250,
+            "ce_clock": 300,
+            "memory_clock": 405
+          },
+          {
+            "index": 2,
+            "uuid": "GPU-daa9f6ac-c8bf-87be-8adc-89b1e7d3f38a",
+            "fan": 28,
+            "performance_state": 8,
+            "memory": 269696,
+            "temperature": 28,
+            "power": 19,
+            "power_limit": 250,
+            "ce_clock": 300,
+            "memory_clock": 405
+          }
+        ],
+        "used_memory": 26341848
+      },
+      "jobs": [
+        {
+          "job": 2021291,
+          "user": "mohambo",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 524,
+              "virtual": 600,
+              "cmd": "ssh-agent",
+              "pid": 2021291,
+              "ppid": 1
+            }
+          ]
+        },
+        {
+          "job": 4062054,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 9344,
+              "virtual": 128812,
+              "cmd": "code-ddc367ed5c",
+              "pid": 4062112,
+              "ppid": 4062054,
+              "cpu_avg": 0.1,
+              "cpu_time": 12
+            },
+            {
+              "resident": 448,
+              "virtual": 532,
+              "cmd": "sh",
+              "pid": 4062054,
+              "ppid": 4062053
+            },
+            {
+              "resident": 76,
+              "virtual": 316,
+              "cmd": "sleep",
+              "pid": 4170038,
+              "ppid": 4062054
+            }
+          ]
+        },
+        {
+          "job": 4062351,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2232,
+              "virtual": 2324,
+              "cmd": "bash",
+              "pid": 4062351,
+              "ppid": 2322112
+            }
+          ]
+        },
+        {
+          "job": 2347936,
+          "user": "rebecarm",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 3840,
+              "virtual": 4000,
+              "cmd": "tmux: server",
+              "pid": 2347936,
+              "ppid": 1,
+              "cpu_time": 553
+            }
+          ]
+        },
+        {
+          "job": 1284507,
+          "user": "mohambo",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 960,
+              "virtual": 1176,
+              "cmd": "squashfuse_ll",
+              "pid": 1284561,
+              "ppid": 1284507,
+              "cpu_time": 45
+            },
+            {
+              "resident": 16420,
+              "virtual": 110724,
+              "cmd": "starter",
+              "pid": 1284507,
+              "ppid": 1284250
+            }
+          ]
+        },
+        {
+          "job": 4113771,
+          "user": "sagardu",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1408,
+              "virtual": 1296,
+              "cmd": "sshd",
+              "pid": 4113773,
+              "ppid": 4113771,
+              "cpu_time": 3
+            }
+          ]
+        },
+        {
+          "job": 4169938,
+          "user": "larstha",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1588,
+              "virtual": 1220,
+              "cmd": "systemd",
+              "pid": 4169938,
+              "ppid": 1
+            },
+            {
+              "resident": 5652,
+              "virtual": 21848,
+              "cmd": "(sd-pam)",
+              "pid": 4169940,
+              "ppid": 4169938
+            }
+          ]
+        },
+        {
+          "job": 3463088,
+          "user": "chiarast",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1028,
+              "virtual": 1252,
+              "cmd": "tmux: server",
+              "pid": 3463088,
+              "ppid": 1,
+              "cpu_time": 6
+            }
+          ]
+        },
+        {
+          "job": 1900833,
+          "user": "sagardu",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 788,
+              "virtual": 820,
+              "cmd": "bash",
+              "pid": 1900833,
+              "ppid": 1,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 4169933,
+          "user": "larstha",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1288,
+              "virtual": 1160,
+              "cmd": "sshd",
+              "pid": 4169953,
+              "ppid": 4169933
+            }
+          ]
+        },
+        {
+          "job": 4078275,
+          "user": "olekrus",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1452,
+              "virtual": 1276,
+              "cmd": "sshd",
+              "pid": 4078294,
+              "ppid": 4078275,
+              "cpu_avg": 0.2,
+              "cpu_time": 26
+            }
+          ]
+        },
+        {
+          "job": 1283075,
+          "user": "mohambo",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 652,
+              "virtual": 704,
+              "cmd": "bash",
+              "pid": 1283075,
+              "ppid": 1283055,
+              "cpu_time": 4325844
+            }
+          ]
+        },
+        {
+          "job": 1282735,
+          "user": "mohambo",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 68,
+              "virtual": 2088,
+              "cmd": "bash",
+              "pid": 1282735,
+              "ppid": 1282734
+            }
+          ]
+        },
+        {
+          "job": 3214335,
+          "user": "sagardu",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2056,
+              "virtual": 2160,
+              "cmd": "bash",
+              "pid": 3214335,
+              "ppid": 3214251,
+              "cpu_time": 13596
+            }
+          ]
+        },
+        {
+          "job": 4078295,
+          "user": "olekrus",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 823196,
+              "virtual": 955084,
+              "cmd": "node",
+              "pid": 4079871,
+              "ppid": 4078512,
+              "cpu_avg": 0.7,
+              "cpu_time": 81
+            },
+            {
+              "resident": 56152,
+              "virtual": 131572,
+              "cmd": "node",
+              "pid": 4078462,
+              "ppid": 4078456,
+              "cpu_avg": 0.3,
+              "cpu_time": 41
+            },
+            {
+              "resident": 260440,
+              "virtual": 353092,
+              "cmd": "node",
+              "pid": 4078523,
+              "ppid": 4078462,
+              "cpu_avg": 0.9,
+              "cpu_time": 105
+            },
+            {
+              "resident": 444,
+              "virtual": 532,
+              "cmd": "sh",
+              "pid": 4078295,
+              "ppid": 4078294
+            },
+            {
+              "resident": 153956,
+              "virtual": 239920,
+              "cmd": "node",
+              "pid": 4078512,
+              "ppid": 4078462,
+              "cpu_avg": 0.5,
+              "cpu_time": 70
+            },
+            {
+              "resident": 68,
+              "virtual": 316,
+              "cmd": "sleep",
+              "pid": 4170020,
+              "ppid": 4078295
+            },
+            {
+              "resident": 240,
+              "virtual": 400,
+              "cmd": "sh",
+              "pid": 4078456,
+              "ppid": 4078353
+            },
+            {
+              "resident": 5104,
+              "virtual": 124580,
+              "cmd": "code-cd4ee3b1c3",
+              "pid": 4078353,
+              "ppid": 4078295,
+              "cpu_avg": 0.4,
+              "cpu_time": 42
+            },
+            {
+              "resident": 32904,
+              "virtual": 141328,
+              "cmd": "node",
+              "pid": 4078539,
+              "ppid": 4078462,
+              "cpu_avg": 0.4,
+              "cpu_time": 155
+            },
+            {
+              "resident": 836,
+              "virtual": 1196,
+              "cmd": "pet",
+              "pid": 4079714,
+              "ppid": 4078512,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1284249,
+          "user": "mohambo",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 708,
+              "virtual": 976,
+              "cmd": "screen",
+              "pid": 1284249,
+              "ppid": 1,
+              "cpu_time": 12
+            }
+          ]
+        },
+        {
+          "job": 1285453,
+          "user": "mohambo",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2084,
+              "virtual": 2088,
+              "cmd": "bash",
+              "pid": 1285453,
+              "ppid": 1285452
+            }
+          ]
+        },
+        {
+          "job": 2020740,
+          "user": "mohambo",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 516,
+              "virtual": 600,
+              "cmd": "ssh-agent",
+              "pid": 2020740,
+              "ppid": 1
+            }
+          ]
+        },
+        {
+          "job": 3259078,
+          "user": "rebecarm",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 552,
+              "virtual": 2576,
+              "cmd": "bash",
+              "pid": 3259078,
+              "ppid": 2347936,
+              "cpu_time": 200964
+            }
+          ]
+        },
+        {
+          "job": 853805,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 51288,
+              "virtual": 85808,
+              "cmd": "jupyter-lab",
+              "pid": 853805,
+              "ppid": 853319,
+              "cpu_time": 219
+            }
+          ]
+        },
+        {
+          "job": 3491821,
+          "user": "chaoranh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 187720,
+              "virtual": 9076560,
+              "cmd": "MATLAB",
+              "pid": 3491821,
+              "ppid": 3194097,
+              "cpu_avg": 0.7,
+              "cpu_time": 27397,
+              "gpus": [
+                {
+                  "index": 0,
+                  "uuid": "GPU-35080357-601c-7113-ec05-f6ca1e58a91e",
+                  "gpu_memory": 743424
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "job": 4062789,
+          "user": "alsjur",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 5648,
+              "virtual": 21848,
+              "cmd": "(sd-pam)",
+              "pid": 4062790,
+              "ppid": 4062789
+            },
+            {
+              "resident": 1576,
+              "virtual": 1216,
+              "cmd": "systemd",
+              "pid": 4062789,
+              "ppid": 1,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 3194097,
+          "user": "chaoranh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "virtual": 2092,
+              "cmd": "bash",
+              "pid": 3194097,
+              "ppid": 3194096,
+              "cpu_time": 53364
+            }
+          ]
+        },
+        {
+          "job": 2324027,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1772,
+              "virtual": 2068,
+              "cmd": "bash",
+              "pid": 2324027,
+              "ppid": 2322112,
+              "cpu_time": 520
+            }
+          ]
+        },
+        {
+          "job": 3500026,
+          "user": "tsauren",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1672,
+              "virtual": 1320,
+              "cmd": "systemd",
+              "pid": 3500026,
+              "ppid": 1,
+              "cpu_time": 62
+            },
+            {
+              "resident": 4752,
+              "virtual": 22640,
+              "cmd": "(sd-pam)",
+              "pid": 3500028,
+              "ppid": 3500026
+            }
+          ]
+        },
+        {
+          "job": 858561,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 4272,
+              "virtual": 4392,
+              "cmd": "python",
+              "pid": 858561,
+              "ppid": 856275
+            }
+          ]
+        },
+        {
+          "job": 4113774,
+          "user": "sagardu",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 6168,
+              "virtual": 125556,
+              "cmd": "code-ddc367ed5c",
+              "pid": 4113809,
+              "ppid": 4113774,
+              "cpu_avg": 0.1,
+              "cpu_time": 7
+            },
+            {
+              "resident": 68,
+              "virtual": 316,
+              "cmd": "sleep",
+              "pid": 4170821,
+              "ppid": 4113774
+            },
+            {
+              "resident": 412,
+              "virtual": 532,
+              "cmd": "sh",
+              "pid": 4113774,
+              "ppid": 4113773,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1285999,
+          "user": "mohambo",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 18604,
+              "virtual": 110724,
+              "cmd": "starter",
+              "pid": 1285999,
+              "ppid": 1285453
+            },
+            {
+              "resident": 1080,
+              "virtual": 1428,
+              "cmd": "squashfuse_ll",
+              "pid": 1286027,
+              "ppid": 1285999,
+              "cpu_time": 43
+            }
+          ]
+        },
+        {
+          "job": 1900440,
+          "user": "sagardu",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 660,
+              "virtual": 820,
+              "cmd": "bash",
+              "pid": 1900440,
+              "ppid": 1,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 2999107,
+          "user": "sagardu",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 152596,
+              "virtual": 338848,
+              "cmd": "sshfs",
+              "pid": 2999107,
+              "ppid": 1,
+              "cpu_time": 410
+            }
+          ]
+        },
+        {
+          "job": 4079858,
+          "user": "olekrus",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2140,
+              "virtual": 2216,
+              "cmd": "bash",
+              "pid": 4079858,
+              "ppid": 4078539
+            }
+          ]
+        },
+        {
+          "job": 4062803,
+          "user": "alsjur",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 326816,
+              "virtual": 450580,
+              "cmd": "node",
+              "pid": 4063031,
+              "ppid": 4062962,
+              "cpu_avg": 1.2,
+              "cpu_time": 210
+            },
+            {
+              "resident": 45664,
+              "virtual": 147216,
+              "cmd": "node",
+              "pid": 4063014,
+              "ppid": 4062962,
+              "cpu_time": 3
+            },
+            {
+              "resident": 49852,
+              "virtual": 126260,
+              "cmd": "node",
+              "pid": 4062962,
+              "ppid": 4062956,
+              "cpu_avg": 0.1,
+              "cpu_time": 14
+            },
+            {
+              "resident": 5784,
+              "virtual": 125248,
+              "cmd": "code-ddc367ed5c",
+              "pid": 4062879,
+              "ppid": 4062860,
+              "cpu_avg": 0.2,
+              "cpu_time": 24
+            },
+            {
+              "resident": 13956,
+              "virtual": 59160,
+              "cmd": "node",
+              "pid": 4063121,
+              "ppid": 4063031,
+              "cpu_time": 1
+            },
+            {
+              "resident": 576300,
+              "virtual": 804084,
+              "cmd": "python",
+              "pid": 4092430,
+              "ppid": 4063031,
+              "cpu_avg": 0.1,
+              "cpu_time": 6
+            },
+            {
+              "resident": 1537852,
+              "virtual": 1682420,
+              "cmd": "node",
+              "pid": 4063747,
+              "ppid": 4063031,
+              "cpu_avg": 4.4,
+              "cpu_time": 647
+            },
+            {
+              "resident": 72,
+              "virtual": 316,
+              "cmd": "sleep",
+              "pid": 4170824,
+              "ppid": 4062860
+            },
+            {
+              "resident": 768,
+              "virtual": 928,
+              "cmd": "sh",
+              "pid": 4062860,
+              "ppid": 4062803
+            },
+            {
+              "resident": 564,
+              "virtual": 696,
+              "cmd": "bash",
+              "pid": 4062803,
+              "ppid": 4062802
+            },
+            {
+              "resident": 244,
+              "virtual": 400,
+              "cmd": "sh",
+              "pid": 4062956,
+              "ppid": 4062879
+            },
+            {
+              "resident": 1332,
+              "virtual": 1732,
+              "cmd": "pet",
+              "pid": 4063279,
+              "ppid": 4063031,
+              "cpu_time": 3
+            },
+            {
+              "resident": 7916608,
+              "virtual": 8179636,
+              "cmd": "python",
+              "pid": 4098070,
+              "ppid": 4063031,
+              "cpu_avg": 5.8,
+              "cpu_time": 539
+            },
+            {
+              "resident": 24948,
+              "virtual": 131448,
+              "cmd": "node",
+              "pid": 4063045,
+              "ppid": 4062962,
+              "cpu_avg": 0.1,
+              "cpu_time": 14
+            },
+            {
+              "resident": 22224,
+              "virtual": 67972,
+              "cmd": "node",
+              "pid": 4063085,
+              "ppid": 4063031,
+              "cpu_time": 2
+            },
+            {
+              "resident": 325876,
+              "virtual": 567656,
+              "cmd": "python",
+              "pid": 4116504,
+              "ppid": 4063031,
+              "cpu_avg": 0.8,
+              "cpu_time": 59
+            },
+            {
+              "resident": 960340,
+              "virtual": 4949608,
+              "cmd": "julia",
+              "pid": 4063137,
+              "ppid": 4063031,
+              "cpu_avg": 0.3,
+              "cpu_time": 52
+            }
+          ]
+        },
+        {
+          "job": 2322836,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 64,
+              "virtual": 2324,
+              "cmd": "bash",
+              "pid": 2322836,
+              "ppid": 2322112
+            }
+          ]
+        },
+        {
+          "job": 2995650,
+          "user": "sagardu",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 468,
+              "virtual": 1020,
+              "cmd": "ssh",
+              "pid": 2995653,
+              "ppid": 1,
+              "cpu_time": 129
+            }
+          ]
+        },
+        {
+          "job": 1284536,
+          "user": "mohambo",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 648,
+              "virtual": 704,
+              "cmd": "bash",
+              "pid": 1284536,
+              "ppid": 1284507,
+              "cpu_time": 4033738
+            }
+          ]
+        },
+        {
+          "job": 3907274,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2052,
+              "virtual": 2060,
+              "cmd": "bash",
+              "pid": 3907274,
+              "ppid": 2322112,
+              "cpu_time": 21
+            }
+          ]
+        },
+        {
+          "job": 2347855,
+          "user": "rebecarm",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 3480,
+              "virtual": 5992,
+              "cmd": "(sd-pam)",
+              "pid": 2347856,
+              "ppid": 2347855
+            },
+            {
+              "resident": 1400,
+              "virtual": 1420,
+              "cmd": "systemd",
+              "pid": 2347855,
+              "ppid": 1,
+              "cpu_time": 162
+            }
+          ]
+        },
+        {
+          "job": 4062256,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2188,
+              "virtual": 2324,
+              "cmd": "bash",
+              "pid": 4062256,
+              "ppid": 2322112
+            }
+          ]
+        },
+        {
+          "job": 853319,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2384,
+              "virtual": 2448,
+              "cmd": "bash",
+              "pid": 853319,
+              "ppid": 1
+            }
+          ]
+        },
+        {
+          "job": 4170925,
+          "user": "larstha",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 560,
+              "virtual": 672,
+              "cmd": "sonar",
+              "pid": 4170925,
+              "ppid": 4170829,
+              "cpu_avg": 9.2
+            }
+          ]
+        },
+        {
+          "job": 1282734,
+          "user": "mohambo",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 460,
+              "virtual": 976,
+              "cmd": "screen",
+              "pid": 1282734,
+              "ppid": 1,
+              "cpu_time": 12
+            }
+          ]
+        },
+        {
+          "job": 4063435,
+          "user": "alsjur",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2308,
+              "virtual": 2364,
+              "cmd": "bash",
+              "pid": 4063435,
+              "ppid": 4063045
+            }
+          ]
+        },
+        {
+          "job": 686444,
+          "user": "tsauren",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1168,
+              "virtual": 2372,
+              "cmd": "bash",
+              "pid": 686444,
+              "ppid": 686443,
+              "cpu_time": 11052
+            }
+          ]
+        },
+        {
+          "job": 2321756,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 97192,
+              "virtual": 2474448,
+              "cmd": "python",
+              "pid": 4070094,
+              "ppid": 4062195,
+              "cpu_avg": 0.1,
+              "cpu_time": 12
+            },
+            {
+              "resident": 263356,
+              "virtual": 399020,
+              "cmd": "node",
+              "pid": 4062195,
+              "ppid": 2322095,
+              "cpu_avg": 0.8,
+              "cpu_time": 208
+            },
+            {
+              "resident": 50828,
+              "virtual": 129880,
+              "cmd": "node",
+              "pid": 2322095,
+              "ppid": 2322089,
+              "cpu_avg": 0.1,
+              "cpu_time": 1017
+            },
+            {
+              "resident": 92876,
+              "virtual": 2471020,
+              "cmd": "python",
+              "pid": 4138257,
+              "ppid": 4062195,
+              "cpu_avg": 0.2,
+              "cpu_time": 9
+            },
+            {
+              "virtual": 400,
+              "cmd": "sh",
+              "pid": 2322089,
+              "ppid": 1
+            },
+            {
+              "resident": 55204,
+              "virtual": 148812,
+              "cmd": "node",
+              "pid": 4062206,
+              "ppid": 2322095,
+              "cpu_avg": 0.1,
+              "cpu_time": 20
+            },
+            {
+              "resident": 1370952,
+              "virtual": 1515136,
+              "cmd": "node",
+              "pid": 4062325,
+              "ppid": 4062195,
+              "cpu_avg": 4,
+              "cpu_time": 599
+            },
+            {
+              "resident": 14888,
+              "virtual": 56000,
+              "cmd": "node",
+              "pid": 4062527,
+              "ppid": 4062195,
+              "cpu_time": 1
+            },
+            {
+              "resident": 41668,
+              "virtual": 250940,
+              "cmd": "node",
+              "pid": 2322112,
+              "ppid": 2322095,
+              "cpu_avg": 0.1,
+              "cpu_time": 147050
+            }
+          ]
+        },
+        {
+          "job": 2322308,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2156,
+              "virtual": 2316,
+              "cmd": "bash",
+              "pid": 2322308,
+              "ppid": 2322112
+            }
+          ]
+        },
+        {
+          "job": 2832110,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2052,
+              "virtual": 2060,
+              "cmd": "bash",
+              "pid": 2832110,
+              "ppid": 2322112,
+              "cpu_time": 112
+            }
+          ]
+        },
+        {
+          "job": 4133319,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2224,
+              "virtual": 2324,
+              "cmd": "bash",
+              "pid": 4133319,
+              "ppid": 2322112
+            }
+          ]
+        },
+        {
+          "job": 4055658,
+          "user": "sagardu",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 971668,
+              "virtual": 1178712,
+              "cmd": "node",
+              "pid": 4113892,
+              "ppid": 4055773,
+              "cpu_avg": 1.5,
+              "cpu_time": 141
+            },
+            {
+              "resident": 24624,
+              "virtual": 131900,
+              "cmd": "node",
+              "pid": 4055820,
+              "ppid": 4055773,
+              "cpu_avg": 0.1,
+              "cpu_time": 16
+            },
+            {
+              "resident": 1315996,
+              "virtual": 1428856,
+              "cmd": "node",
+              "pid": 4114149,
+              "ppid": 4113892,
+              "cpu_avg": 6.5,
+              "cpu_time": 489
+            },
+            {
+              "resident": 56212,
+              "virtual": 138012,
+              "cmd": "python",
+              "pid": 4146227,
+              "ppid": 4113892,
+              "cpu_time": 1
+            },
+            {
+              "resident": 24632,
+              "virtual": 114540,
+              "cmd": "node",
+              "pid": 4113903,
+              "ppid": 4055773,
+              "cpu_time": 2
+            },
+            {
+              "resident": 54060,
+              "virtual": 130448,
+              "cmd": "node",
+              "pid": 4055773,
+              "ppid": 4055767,
+              "cpu_avg": 0.1,
+              "cpu_time": 152
+            },
+            {
+              "resident": 244,
+              "virtual": 400,
+              "cmd": "sh",
+              "pid": 4055767,
+              "ppid": 1
+            },
+            {
+              "resident": 243428,
+              "virtual": 5019384,
+              "cmd": "python",
+              "pid": 4114234,
+              "ppid": 4113892,
+              "cpu_avg": 0.5,
+              "cpu_time": 36
+            },
+            {
+              "resident": 52200,
+              "virtual": 157604,
+              "cmd": "node",
+              "pid": 4114017,
+              "ppid": 4113892,
+              "cpu_time": 2
+            },
+            {
+              "resident": 14944,
+              "virtual": 57512,
+              "cmd": "node",
+              "pid": 4121058,
+              "ppid": 4113892,
+              "cpu_time": 1
+            },
+            {
+              "resident": 145484,
+              "virtual": 4902968,
+              "cmd": "python",
+              "pid": 4145386,
+              "ppid": 4113892,
+              "cpu_avg": 0.4,
+              "cpu_time": 14
+            }
+          ]
+        },
+        {
+          "job": 1283055,
+          "user": "mohambo",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 18892,
+              "virtual": 110468,
+              "cmd": "starter",
+              "pid": 1283055,
+              "ppid": 1282735
+            },
+            {
+              "resident": 980,
+              "virtual": 1200,
+              "cmd": "squashfuse_ll",
+              "pid": 1283089,
+              "ppid": 1283055,
+              "cpu_time": 48
+            }
+          ]
+        },
+        {
+          "job": 2347937,
+          "user": "rebecarm",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2608,
+              "virtual": 3704,
+              "cmd": "bash",
+              "pid": 2347937,
+              "ppid": 2347936,
+              "cpu_time": 353146
+            }
+          ]
+        },
+        {
+          "job": 4078884,
+          "user": "olekrus",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2436,
+              "virtual": 2476,
+              "cmd": "bash",
+              "pid": 4078884,
+              "ppid": 4078539,
+              "cpu_time": 16279
+            }
+          ]
+        },
+        {
+          "job": 1285452,
+          "user": "mohambo",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 720,
+              "virtual": 976,
+              "cmd": "screen",
+              "pid": 1285452,
+              "ppid": 1,
+              "cpu_time": 12
+            }
+          ]
+        },
+        {
+          "job": 2831447,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2224,
+              "virtual": 2324,
+              "cmd": "bash",
+              "pid": 2831447,
+              "ppid": 2322112
+            }
+          ]
+        },
+        {
+          "job": 1286014,
+          "user": "mohambo",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 652,
+              "virtual": 704,
+              "cmd": "bash",
+              "pid": 1286014,
+              "ppid": 1285999,
+              "cpu_time": 4057416
+            }
+          ]
+        },
+        {
+          "job": 833911,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 4916,
+              "virtual": 22640,
+              "cmd": "(sd-pam)",
+              "pid": 833912,
+              "ppid": 833911
+            },
+            {
+              "resident": 1680,
+              "virtual": 1332,
+              "cmd": "systemd",
+              "pid": 833911,
+              "ppid": 1,
+              "cpu_time": 79
+            }
+          ]
+        },
+        {
+          "job": 2348041,
+          "user": "rebecarm",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 468,
+              "virtual": 8868,
+              "cmd": "dbus-daemon",
+              "pid": 2348041,
+              "ppid": 2347855
+            }
+          ]
+        },
+        {
+          "job": 4133389,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 862240,
+              "virtual": 5436068,
+              "cmd": "python",
+              "pid": 4133389,
+              "ppid": 4133319,
+              "cpu_avg": 5.1,
+              "cpu_time": 260
+            }
+          ]
+        },
+        {
+          "job": 3273026,
+          "user": "chaoranh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 356,
+              "virtual": 2084,
+              "cmd": "bash",
+              "pid": 3273026,
+              "ppid": 3273025,
+              "cpu_time": 42645
+            }
+          ]
+        },
+        {
+          "job": 686443,
+          "user": "tsauren",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1140,
+              "virtual": 1304,
+              "cmd": "tmux: server",
+              "pid": 686443,
+              "ppid": 1,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 3885261,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2232,
+              "virtual": 2324,
+              "cmd": "bash",
+              "pid": 3885261,
+              "ppid": 2322112,
+              "cpu_time": 4
+            }
+          ]
+        },
+        {
+          "job": 973009,
+          "user": "mohambo",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1672,
+              "virtual": 1320,
+              "cmd": "systemd",
+              "pid": 973009,
+              "ppid": 1,
+              "cpu_time": 78
+            },
+            {
+              "resident": 4608,
+              "virtual": 22640,
+              "cmd": "(sd-pam)",
+              "pid": 973010,
+              "ppid": 973009
+            }
+          ]
+        },
+        {
+          "job": 4091592,
+          "user": "alsjur",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2476,
+              "virtual": 2500,
+              "cmd": "bash",
+              "pid": 4091592,
+              "ppid": 4063045,
+              "cpu_time": 3
+            }
+          ]
+        },
+        {
+          "job": 3194096,
+          "user": "chaoranh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 124,
+              "virtual": 1000,
+              "cmd": "screen",
+              "pid": 3194096,
+              "ppid": 1,
+              "cpu_time": 57
+            }
+          ]
+        },
+        {
+          "job": 4114389,
+          "user": "sagardu",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 884,
+              "virtual": 960,
+              "cmd": "bash",
+              "pid": 4114389,
+              "ppid": 4055820,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1916975,
+          "user": "sagardu",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 776,
+              "virtual": 820,
+              "cmd": "bash",
+              "pid": 1916975,
+              "ppid": 1,
+              "cpu_time": 5
+            }
+          ]
+        },
+        {
+          "job": 3214251,
+          "user": "sagardu",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 4612,
+              "virtual": 4404,
+              "cmd": "tmux: server",
+              "pid": 3214251,
+              "ppid": 1,
+              "cpu_time": 48
+            }
+          ]
+        },
+        {
+          "job": 2831298,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2128,
+              "virtual": 2324,
+              "cmd": "bash",
+              "pid": 2831298,
+              "ppid": 2322112
+            }
+          ]
+        },
+        {
+          "job": 4170783,
+          "user": "larstha",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 23348,
+              "virtual": 54004,
+              "cmd": "emacs",
+              "pid": 4170783,
+              "ppid": 4169957,
+              "cpu_avg": 1.2,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1297756,
+          "user": "sagardu",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1676,
+              "virtual": 1304,
+              "cmd": "systemd",
+              "pid": 1297756,
+              "ppid": 1,
+              "cpu_time": 119
+            },
+            {
+              "resident": 2160,
+              "virtual": 22640,
+              "cmd": "(sd-pam)",
+              "pid": 1297757,
+              "ppid": 1297756
+            }
+          ]
+        },
+        {
+          "job": 1298177,
+          "user": "sagardu",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "virtual": 816,
+              "cmd": "bash",
+              "pid": 1298177,
+              "ppid": 1,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 3186827,
+          "user": "chaoranh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1316,
+              "virtual": 1300,
+              "cmd": "systemd",
+              "pid": 3186827,
+              "ppid": 1,
+              "cpu_time": 151
+            },
+            {
+              "resident": 3620,
+              "virtual": 5992,
+              "cmd": "(sd-pam)",
+              "pid": 3186829,
+              "ppid": 3186827
+            }
+          ]
+        },
+        {
+          "job": 3214252,
+          "user": "sagardu",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2056,
+              "virtual": 2160,
+              "cmd": "bash",
+              "pid": 3214252,
+              "ppid": 3214251,
+              "cpu_time": 64398
+            }
+          ]
+        },
+        {
+          "job": 3447836,
+          "user": "chiarast",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 3112,
+              "virtual": 5992,
+              "cmd": "(sd-pam)",
+              "pid": 3447837,
+              "ppid": 3447836
+            },
+            {
+              "resident": 1584,
+              "virtual": 1312,
+              "cmd": "systemd",
+              "pid": 3447836,
+              "ppid": 1,
+              "cpu_time": 198
+            }
+          ]
+        },
+        {
+          "job": 3273025,
+          "user": "chaoranh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 620,
+              "virtual": 836,
+              "cmd": "screen",
+              "pid": 3273025,
+              "ppid": 1,
+              "cpu_time": 45
+            }
+          ]
+        },
+        {
+          "job": 4062048,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1508,
+              "virtual": 1340,
+              "cmd": "sshd",
+              "pid": 4062053,
+              "ppid": 4062048,
+              "cpu_time": 4
+            }
+          ]
+        },
+        {
+          "job": 1990298,
+          "user": "sagardu",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 520,
+              "virtual": 596,
+              "cmd": "ssh-agent",
+              "pid": 1990298,
+              "ppid": 1
+            }
+          ]
+        },
+        {
+          "job": 854469,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1836,
+              "virtual": 2184,
+              "cmd": "bash",
+              "pid": 854469,
+              "ppid": 853805
+            }
+          ]
+        },
+        {
+          "job": 1284250,
+          "user": "mohambo",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2080,
+              "virtual": 2088,
+              "cmd": "bash",
+              "pid": 1284250,
+              "ppid": 1284249
+            }
+          ]
+        },
+        {
+          "job": 856275,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1988,
+              "virtual": 2476,
+              "cmd": "bash",
+              "pid": 856275,
+              "ppid": 853805,
+              "cpu_time": 3
+            }
+          ]
+        },
+        {
+          "job": 4078281,
+          "user": "olekrus",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1584,
+              "virtual": 1220,
+              "cmd": "systemd",
+              "pid": 4078281,
+              "ppid": 1
+            },
+            {
+              "resident": 5652,
+              "virtual": 21848,
+              "cmd": "(sd-pam)",
+              "pid": 4078282,
+              "ppid": 4078281
+            }
+          ]
+        },
+        {
+          "job": 1298414,
+          "user": "sagardu",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 4,
+              "virtual": 816,
+              "cmd": "bash",
+              "pid": 1298414,
+              "ppid": 1,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 3885481,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2232,
+              "virtual": 2324,
+              "cmd": "bash",
+              "pid": 3885481,
+              "ppid": 2322112
+            }
+          ]
+        },
+        {
+          "job": 3885394,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2184,
+              "virtual": 2324,
+              "cmd": "bash",
+              "pid": 3885394,
+              "ppid": 2322112
+            }
+          ]
+        },
+        {
+          "job": 3463089,
+          "user": "chiarast",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2052,
+              "virtual": 3148,
+              "cmd": "bash",
+              "pid": 3463089,
+              "ppid": 3463088,
+              "cpu_time": 5878
+            }
+          ]
+        },
+        {
+          "job": 4062784,
+          "user": "alsjur",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1480,
+              "virtual": 1296,
+              "cmd": "sshd",
+              "pid": 4062802,
+              "ppid": 4062784,
+              "cpu_avg": 0.1,
+              "cpu_time": 8
+            }
+          ]
+        },
+        {
+          "job": 4170829,
+          "user": "larstha",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 356,
+              "virtual": 684,
+              "cmd": "bash",
+              "pid": 4170829,
+              "ppid": 4170783
+            }
+          ]
+        },
+        {
+          "job": 2348771,
+          "user": "rebecarm",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 788,
+              "virtual": 2580,
+              "cmd": "bash",
+              "pid": 2348771,
+              "ppid": 2347936,
+              "cpu_time": 93935
+            }
+          ]
+        },
+        {
+          "job": 854879,
+          "user": "ziyuzh",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 14648,
+              "virtual": 129136,
+              "cmd": "python3.9",
+              "pid": 854879,
+              "ppid": 853805,
+              "cpu_time": 72
+            }
+          ]
+        },
+        {
+          "job": 4063761,
+          "user": "alsjur",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 2372,
+              "virtual": 2368,
+              "cmd": "bash",
+              "pid": 4063761,
+              "ppid": 4063045
+            }
+          ]
+        },
+        {
+          "job": 4169957,
+          "user": "larstha",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 3232,
+              "virtual": 4372,
+              "cmd": "bash",
+              "pid": 4169957,
+              "ppid": 4169953,
+              "cpu_time": 3
+            }
+          ]
+        },
+        {
+          "job": 4113961,
+          "user": "sagardu",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 756,
+              "virtual": 960,
+              "cmd": "bash",
+              "pid": 4113961,
+              "ppid": 4055820,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1056047,
+          "user": "mohambo",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 532,
+              "virtual": 600,
+              "cmd": "ssh-agent",
+              "pid": 1056047,
+              "ppid": 1
+            }
+          ]
+        },
+        {
+          "job": 3495443,
+          "user": "chiarast",
+          "epoch": 155982625,
+          "processes": [
+            {
+              "resident": 1876,
+              "virtual": 2132,
+              "cmd": "bash",
+              "pid": 3495443,
+              "ppid": 3463088
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

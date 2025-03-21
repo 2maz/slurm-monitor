@@ -9,7 +9,6 @@ import datetime as dt
 
 from sqlalchemy import (
     CheckConstraint,
-    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -61,7 +60,15 @@ def compile_sqlite(expr, compiler, **kwargs):
 
 
 def Column(*args, **kwargs):
-    kwargs.setdefault("nullable", False)
+    if "nullable" not in kwargs:
+        kwargs.setdefault("nullable", False)
+
+    column_type = args[0]
+    if 'default' not in kwargs:
+        if column_type in [Integer, BigInteger, Float]:
+            kwargs.setdefault('default', 0)
+        elif column_type in [Text, String]:
+            kwargs.setdefault('default', '')
 
     comment = {}
     if "desc" in kwargs:
@@ -106,32 +113,22 @@ class HStoreModel(types.TypeDecorator):
         return value
 
 
+
+
 # core-model: (index: unsigned, physical: unsigned, model: string)
-class CoreModel(HStoreModel):
-    required: ClassVar[list[str]] = ["index", "physical", "model"]
+#class CoreModel(HStoreModel):
+#    required: ClassVar[list[str]] = ["index", "physical", "model"]
+#
+#class SoftwareVersion(HStoreModel):
+#    required: ClassVar[list[str]] = ["key", "version"]
+#    optional: ClassVar[list[str]] = ["name"]
 
-class SoftwareVersion(HStoreModel):
-    required: ClassVar[list[str]] = ["key", "version"]
-    optional: ClassVar[list[str]] = ["name"]
-
-    #def process_bind_param(self, value, dialect):
-    #    if value is None or type(value) != dict:
-    #        raise KeyError("SoftwareVersion: must be dictionary")
-
-    #    required = ["key", "version"]
-    #    for key in required:
-    #        if key not in value:
-    #            raise KeyError(f"SoftwareVersion: misses the required key '{key}'")
-
-    #    allowed = required.extend("name")
-    #    for key in value:
-    #        if key not in allowed:
-    #            raise KeyError(f"SoftwareVersion: received an invalid key '{key}'."
-    #                " Permitted are {','.join(allowed)}")
-    #    return value
-
-    #def process_result_value(self, value, dialect):
-    #    return value
+#@dataclasses.dataclass
+#class CoreModel:
+#    index: int
+#    physical: int
+#    model: str
+#
 
 @as_declarative()
 class TableBase:
@@ -340,17 +337,19 @@ class GPUIdList(types.TypeDecorator):
             logger.error(f"Processing result value failed: {value} -- {e}")
             raise
 
+class UUID(types.TypeDecorator):
+    impl = String
+
+
 class Node(TableBase):
     __tablename__ = "node"
     __table_args__ = (
         {}
     )
     cluster = Column(String, primary_key=True)
-    name = Column(String, primary_key=True)
+    node = Column(String, primary_key=True)
 
     architecture = Column(String)
-
-    description = Column(Text, default='')
 
 class NodeConfig(TableBase):
     __tablename__ = "node_config"
@@ -361,88 +360,118 @@ class NodeConfig(TableBase):
     os_name = Column(Text)
     os_release = Column(Text)
 
-    # core-model: (index: unsigned, physical: unsigned, model: string)
-    # Could be a separate table or just a text encoded dict
-    cores = Column(ARRAY(CoreModel), desc="list of core models")
+    description = Column(Text)
 
     memory = Column(BigInteger, desc="primary memory", unit="kilobyte")
-    topo_svg = Column(Text, nullable=True)
+    topo_svg = Column(Text, default=None, nullable=True)
 
     # TBD: array of gpu-card values # considering here uuids
-    cards = Column(ARRAY(Text), desc="Array of gpu-card uuid")
-
-    # TBD: array of software-version values, i.e. key-value dict (encoded json?)
-    # (key: string, name: string, version: string)
-    software = Column(ARRAY(SoftwareVersion))
+    cards = Column(ARRAY(UUID), desc="Array of gpu-card uuid", default=[])
 
     timestamp = Column(DateTime(timezone=True), default=dt.datetime.now, primary_key=True)
 
     __table_args__ = (
-        ForeignKeyConstraint([cluster, node], [Node.cluster, Node.name]),
+        ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
         {}
     )
 
+class Core(TableBase):
+    __tablename__ = "core"
+
+    cluster = Column(Text, primary_key=True)
+    node = Column(Text, primary_key=True)
+
+    # core-model: (index: unsigned, physical: unsigned, model: string)
+    index = Column(Integer)
+    physical = Column(Integer)
+    model = Column(String)
+
+    __table_args__ = (
+        ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
+        {}
+    )
+
+class SoftwareVersion(TableBase):
+    __tablename__ = "software_version"
+    cluster = Column(Text, primary_key=True)
+    node = Column(Text, primary_key=True)
+
+    key = Column(String, primary_key=True)
+    name = Column(String)
+    version = Column(String, primary_key=True)
 
 class GPUCard(TableBase):
     __tablename__ = "gpu_card"
     __table_args__ = (
         *[CheckConstraint(f"{x} >= 0", name=f"{x}_is_not_negative") for x in [
             'memory',
-            'max_power_limit',
-            'min_power_limit',
-            'max_ce_clock',
-            'max_mem_clock',
         ]],
         {}
     )
-    uuid = Column(Text, index=True, primary_key=True)
+    uuid = Column(UUID, index=True, primary_key=True)
 
-    address = Column(Text)
     manufacturer = Column(Text)
     model = Column(Text)
     architecture = Column(Text)
     memory = Column(Integer)
-    max_power_limit = Column(Integer)
-    min_power_limit = Column(Integer)
-    max_ce_clock = Column(Integer)
-    max_mem_clock = Column(Integer)
 
 class GPUCardConfig(TableBase):
     """
     Collect dynamic properties of the GPU in this table
     """
     __tablename__ = "gpu_card_config"
-    __table_args__ = (
-        *[CheckConstraint(f"{x} >= 0", name=f"{x}_is_not_negative") for x in [
-            'power_limit',
-        ]],
-        {}
-    )
 
-    uuid = Column(Text, ForeignKey("gpu_card.uuid"), primary_key=True)
+    uuid = Column(UUID, ForeignKey("gpu_card.uuid"), primary_key=True)
 
+    address = Column(Text)
     power_limit = Column(Integer)
+    max_power_limit = Column(Integer)
+    min_power_limit = Column(Integer)
+    max_ce_clock = Column(Integer)
+    max_memory_clock = Column(Integer)
+
     driver = Column(String)
     firmware = Column(String)
 
     # node name the card is attached to
+    cluster = Column(String)
     node = Column(String)
+
     # Card local index
     index = Column(Integer, primary_key=True)
 
     # Validity - since the card might not be present for some intervals
     # TDB: do we need to consider this
-    start_time = Column(DateTime(timezone=True), primary_key=True, default=dt.datetime(2025,1,1))
-    end_time = Column(DateTime(timezone=True), default=dt.datetime(2100,12,31))
+    #start_time = Column(DateTime(timezone=True), primary_key=True, default=dt.datetime(2025,1,1))
+    #end_time = Column(DateTime(timezone=True), default=dt.datetime(2100,12,31))
+
+    timestamp = Column(DateTime(timezone=True), primary_key=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
+        *[CheckConstraint(f"{x} >= 0", name=f"{x}_is_not_negative") for x in [
+            'power_limit',
+            'max_power_limit',
+            'min_power_limit',
+            'max_ce_clock',
+            'max_memory_clock',
+        ]],
+        {}
+    )
+
 
 class GPUCardStatus(TableBase):
     __tablename__ = "gpu_card_status"
     __table_args__ = (
         *[CheckConstraint(f"{x} >= 0", name=f'{x}_is_not_negative') for x in [
+            'index',
             'fan',
+            'failing',
             'memory',
             'ce_util',
-            'mem_util',
+            'ce_clock',
+            'memory_util',
+            'memory_clock',
             'power',
             'power_limit',
             ]
@@ -461,22 +490,22 @@ class GPUCardStatus(TableBase):
 
 
     # local card index, may change at boot
-    index = Column(Integer)
+    index = Column(Integer, nullable=True)
 
     # Card UUI
-    uuid = Column(Text, ForeignKey("gpu_card.uuid"), index=True, primary_key=True)
+    uuid = Column(UUID, ForeignKey("gpu_card.uuid"), index=True, primary_key=True)
 
-    # Indiciate a failure condition, true meaning failure
-    bad = Column(Boolean)
+    # Indicate a failure condition, true meaning failure
+    failing = Column(Integer)
 
     # percent of primary fans' max speed - max exceed 100% on some cards
     fan = Column(Integer)
 
     # current compute mode: card-specific if known at all
-    mode = Column(Text, default='')
+    compute_mode = Column(Text)
 
     # current performance level, card-specific >= 0, or -1 for 'unknown'
-    perf = Column(Integer, default=-1)
+    performance_state = Column(Integer, default=-1)
 
     # kB of memory_use
     memory = Column(Integer)
@@ -485,16 +514,20 @@ class GPUCardStatus(TableBase):
     ce_util = Column(Integer)
 
     # percent of memory used
-    mem_util = Column(Integer)
+    memory_util = Column(Integer)
 
     # degree C card temperature at primary sensor
-    temp = Column(Integer)
+    temperature = Column(Integer)
 
     # current power usage in W
     power = Column(Integer)
 
     # power limit in W
     power_limit = Column(Integer)
+
+    ce_clock = Column(Integer)
+    memory_clock = Column(Integer)
+
 
     timestamp = Column(DateTime(timezone=True), default=dt.datetime.now, primary_key=True)
 
@@ -520,53 +553,75 @@ class GPUCardProcessStatus(TableBase):
     # node = Column(Text)
 
     # Card UUID
-    uuid = Column(Text, ForeignKey('gpu_card.uuid'), index=True, primary_key=True)
+    uuid = Column(UUID, ForeignKey('gpu_card.uuid'), index=True, primary_key=True)
     index = Column(Integer)
 
     gpu_util = Column(Float)
     # in kilobytes
-    gpu_mem = Column(Float)
-    gpu_mem_util = Column(Float)
+    gpu_memory = Column(Float)
+    gpu_memory_util = Column(Float)
 
     timestamp = Column(DateTime(timezone=True), default=dt.datetime.now, primary_key=True)
 
 class ProcessStatus(TableBase):
     __tablename__ = "process_status"
 
-    cluster = Column(Text)
-    node = Column(Text)
+    cluster = Column(String, primary_key=True)
+    node = Column(String, primary_key=True)
 
     job = Column(BigInteger, primary_key=True)
     # Slurm jobs will have epoch = 0
-    epoch = Column(BigInteger, desc="Boottime of node", primary_key=True)
+    epoch = Column(BigInteger,
+            desc="Bootcycle presentation of node - continuously increasing number",
+            primary_key=True)
 
     user = Column(String)
 
     # rest of process sample
     pid = Column(BigInteger, primary_key=True)
-    parent_pid = Column(BigInteger, default=0)
+    ppid = Column(BigInteger)
 
     # private resident memory
-    resident = Column(BigInteger, default=0, unit='kilobyte')
+    resident = Column(BigInteger, unit='kilobyte')
 
     # virtual data+stack memory
-    virtual = Column(BigInteger, default=0, unit='kilobyte')
+    virtual = Column(BigInteger, unit='kilobyte')
 
     # command (not the command line) - '_unknown_' for zombie processes
-    cmd = Column(Text, default=None)
+    cmd = Column(Text)
 
-    cpu_avg = Column(Float)
-    cpu_util = Column(Float)
-    cpu_time = Column(Integer)
+    cpu_avg = Column(Float,
+            desc="""
+            The running average CPU percentage over the true lifetime of the process
+            as reported by the operating system. 100.0 corresponds to 'one full core's
+            worth of computation'
+            """,
+            unit='percent'
+            )
+    cpu_util = Column(Float,
+            desc="""
+            The current  cpu utilization of the process, 100.0 corresponds
+            to 'one full core's worth of computation'
+            """,
+            unit='percent'
+            )
+    cpu_time = Column(BigInteger,
+            desc="""
+            The number of additional process with the same job and cmd and
+            no child processes that have been rolled into this one. That is,
+            if the value is 1, the record represents the sum of the data for two processes
+            """,
+            unit='seconds')
 
     timestamp = Column(DateTime(timezone=True), default=dt.datetime.now, primary_key=True)
     # Consider
     # rolled_up =
 
     __table_args__ = (
-        ForeignKeyConstraint([cluster, node], [Node.cluster, Node.name]),
+        ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
         CheckConstraint("job != 0 or epoch != 0", "job_or_epoch_non_zero"),
         CheckConstraint("job >= 0 and epoch >= 0", "job_or_epoch_non_negative"),
+        CheckConstraint("pid >= 0 and ppid >= 0", "pid_and_ppid_non_negative"),
         {
             'timescaledb_hypertable': {
                 'time_column_name': 'timestamp',
@@ -610,7 +665,7 @@ class TableMetadata(TableBase):
     table = Column(Text, primary_key=True)
     field = Column(Text, primary_key=True)
     description = Column(Text)
-    unit = Column(Text, nullable=True)
+    unit = Column(Text)
 
 
 class SlurmJobStatus(TableBase):
@@ -636,7 +691,7 @@ class SlurmJobStatus(TableBase):
     # The number of the job or job step. It is in the form: job.jobstep.
     # Meanwhile here - we
     job_id = Column(BigInteger, index=True, primary_key=True)  # ": 244843,
-    job_step = Column(Integer, default=0)
+    job_step = Column(Integer)
 
     # JobIDRaw
     # In case of job array print the JobId instead of the ArrayJobId. For non
@@ -650,17 +705,17 @@ class SlurmJobStatus(TableBase):
     start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime, nullable=True)
 
-    account = Column(Text, default='')
-    accrue_time = Column(BigInteger, default=0)
-    admin_comment = Column(Text, default="")
+    account = Column(Text)
+    accrue_time = Column(BigInteger)
+    admin_comment = Column(Text)
     array_job_id = Column(Integer, nullable=True)  # 244843
     array_task_id = Column(Integer, nullable=True)  # 984
-    array_max_tasks = Column(Integer, default=0)  # 20
-    array_task_string = Column(Text, default="")  #
-    association_id = Column(Integer, default=0)  # ": 0,
+    array_max_tasks = Column(Integer)  # 20
+    array_task_string = Column(Text)  #
+    association_id = Column(Integer)  # ": 0,
     # batch_features": "",
     # batch_flag": true,
-    batch_host = Column(Text, default='')
+    batch_host = Column(Text)
     # flags": [],
     # burst_buffer": "",
     # burst_buffer_state": "",
@@ -683,7 +738,7 @@ class SlurmJobStatus(TableBase):
     # deadline": 0,
     # delay_boot": 0,
     # dependency": "",
-    derived_exit_code = Column(BigInteger, default=0)  # ": 256,
+    derived_exit_code = Column(BigInteger)  # ": 256,
     eligible_time = Column(Integer, nullable=True)  # ": 1720736375,
 
     # excluded_nodes": "",
@@ -719,22 +774,22 @@ class SlurmJobStatus(TableBase):
     # mcs_label": "",
     # memory_per_tres": "",
     # name": "seidr",
-    nodes = Column(Text, default='')  # "n042",
+    nodes = Column(Text)  # "n042",
     # nice": null,
     # tasks_per_core": null,
     # tasks_per_node": 0,
     # tasks_per_socket": null,
     # tasks_per_board": 0,
-    cpus = Column(Integer, nullable=True, default=0)  # 1
-    node_count = Column(Integer, default=0)  # 1
-    tasks = Column(Integer, nullable=True, default=0)  # 1,
+    cpus = Column(Integer)  # 1
+    node_count = Column(Integer)  # 1
+    tasks = Column(Integer)  # 1,
     # het_job_id": 0,
     # het_job_id_set": "",
     # het_job_offset": 0,
     partition = Column(Text)  # "slowq",
-    memory_per_node = Column(Integer, nullable=True)
-    memory_per_cpu = Column(Integer, nullable=True)
-    minimum_cpus_per_node = Column(Integer, nullable=True)
+    memory_per_node = Column(Integer)
+    memory_per_cpu = Column(Integer)
+    minimum_cpus_per_node = Column(Integer)
     # minimum_tmp_disk_per_node": 0,
     # preempt_time": 0,
     # pre_sus_time": 0,
@@ -755,13 +810,13 @@ class SlurmJobStatus(TableBase):
     # ,
     # sockets_per_board": 0,
     # sockets_per_node": null,
-    state_description = Column(Text, default='')  # "",
-    state_reason = Column(Text, default='')  # "None",
+    state_description = Column(Text)  # "",
+    state_reason = Column(Text)  # "None",
     # standard_error": "/home/.../scripts/logs/%j-stderr.txt",
     # standard_input": "/dev/null",
     # standard_output": "/home/.../scripts/logs/%j-stdout.txt",
 
-    suspend_time = Column(Integer, default=0)  # 0,
+    suspend_time = Column(Integer)  # 0,
     # system_comment": "",
     time_limit = Column(Integer, nullable=True)  # 7200,
     # time_minimum": 0,
@@ -774,8 +829,8 @@ class SlurmJobStatus(TableBase):
     # tres_per_task": "",
     # tres_req_str": "cpu=1,node=1,billing=1",
     # tres_alloc_str": "cpu=1,billing=1",
-    user_id = Column(Integer, default=0)  # 6500,
-    user_name = Column(Text, default='', nullable=True)
+    user_id = Column(Integer)  # 6500,
+    user_name = Column(Text, nullable=True)
     # wckey": "",
     # current_working_directory": "/global/D1/homes/..."
     # id = Column(Integer) # 244843

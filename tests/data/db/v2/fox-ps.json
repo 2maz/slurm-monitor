@@ -1,0 +1,3041 @@
+{
+  "meta": {
+    "producer": "sonar",
+    "version": "0.13.0-devel"
+  },
+  "data": {
+    "type": "sample",
+    "attributes": {
+      "time": "2025-03-20T13:34:34+01:00",
+      "cluster": "fox.uio.no",
+      "node": "c1-10.fox",
+      "system": {
+        "cpus": [
+          5985619,
+          6160504,
+          6343172,
+          6180418,
+          5782363,
+          6061172,
+          6186118,
+          6243592,
+          5700417,
+          6111772,
+          6029563,
+          6040036,
+          5870438,
+          6138468,
+          6108527,
+          6038497,
+          5820917,
+          6033377,
+          6088462,
+          6137875,
+          5674940,
+          5889280,
+          5813071,
+          5931953,
+          5595058,
+          5961154,
+          5969523,
+          6031884,
+          5747675,
+          5978944,
+          5841148,
+          5885474,
+          6506005,
+          6574691,
+          6755502,
+          6745259,
+          6257712,
+          6498824,
+          6618364,
+          6734942,
+          6395690,
+          6588805,
+          6376090,
+          6131093,
+          5924961,
+          6075675,
+          6111079,
+          6085198,
+          5650307,
+          5881519,
+          6067263,
+          6076935,
+          5680005,
+          5831365,
+          5828886,
+          5841890,
+          5643183,
+          5859091,
+          5858963,
+          5989398,
+          5686226,
+          5851051,
+          5932792,
+          5951975,
+          5657695,
+          5927886,
+          5894554,
+          5897739,
+          5699459,
+          5746789,
+          5821244,
+          5699857,
+          5808545,
+          5703344,
+          5696603,
+          5560163,
+          5523486,
+          5577959,
+          5562189,
+          5646356,
+          5654151,
+          5464040,
+          5587028,
+          5620912,
+          5267648,
+          5596554,
+          5478930,
+          5458157,
+          5159299,
+          5350661,
+          5441715,
+          5463570,
+          4977235,
+          5113354,
+          4915318,
+          4833020,
+          4548896,
+          4673404,
+          4691942,
+          4662440,
+          4626190,
+          4815037,
+          4990182,
+          5151259,
+          5110603,
+          5360500,
+          5293928,
+          5320151,
+          5169005,
+          5265296,
+          5095429,
+          5079188,
+          4727363,
+          4645959,
+          4830892,
+          4904524,
+          4111286,
+          4265859,
+          4299474,
+          4214832,
+          3717890,
+          3802539,
+          3352615,
+          3156327,
+          2775422,
+          3050806,
+          2805496,
+          2749807
+        ],
+        "used_memory": 82982280
+      },
+      "jobs": [
+        {
+          "job": 1421572,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2006765,
+              "ppid": 2006750
+            },
+            {
+              "resident": 60336,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2006777,
+              "ppid": 2006765,
+              "cpu_time": 2
+            },
+            {
+              "resident": 51588,
+              "virtual": 52052,
+              "cmd": "RNALfold",
+              "pid": 2006870,
+              "ppid": 2006867,
+              "cpu_avg": 99.1,
+              "cpu_time": 3275
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2006867,
+              "ppid": 2006847
+            },
+            {
+              "resident": 70200,
+              "virtual": 136460,
+              "cmd": "python",
+              "pid": 2006847,
+              "ppid": 2006777,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1420750,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954075,
+              "ppid": 1953978
+            },
+            {
+              "resident": 42584,
+              "virtual": 44152,
+              "cmd": "RNALfold",
+              "pid": 1954757,
+              "ppid": 1954754,
+              "cpu_avg": 98.8,
+              "cpu_time": 9162
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954754,
+              "ppid": 1954667
+            },
+            {
+              "resident": 60212,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1954121,
+              "ppid": 1954075,
+              "cpu_time": 2
+            },
+            {
+              "resident": 75828,
+              "virtual": 140192,
+              "cmd": "python",
+              "pid": 1954667,
+              "ppid": 1954121,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1420754,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 54860,
+              "virtual": 57756,
+              "cmd": "RNALfold",
+              "pid": 1954784,
+              "ppid": 1954783,
+              "cpu_avg": 98.8,
+              "cpu_time": 9159
+            },
+            {
+              "resident": 71080,
+              "virtual": 136460,
+              "cmd": "python",
+              "pid": 1954687,
+              "ppid": 1954617,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954783,
+              "ppid": 1954687
+            },
+            {
+              "resident": 61680,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1954617,
+              "ppid": 1954610,
+              "cpu_time": 2
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954610,
+              "ppid": 1954574
+            }
+          ]
+        },
+        {
+          "job": 1421435,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 60808,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2005920,
+              "ppid": 2005918,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2005924,
+              "ppid": 2005922
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2005918,
+              "ppid": 2005914
+            },
+            {
+              "resident": 57044,
+              "virtual": 57904,
+              "cmd": "RNALfold",
+              "pid": 2005925,
+              "ppid": 2005924,
+              "cpu_avg": 99.3,
+              "cpu_time": 3432
+            },
+            {
+              "resident": 70340,
+              "virtual": 136460,
+              "cmd": "python",
+              "pid": 2005922,
+              "ppid": 2005920,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1420749,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 44432,
+              "virtual": 45668,
+              "cmd": "RNALfold",
+              "pid": 1954758,
+              "ppid": 1954755,
+              "cpu_avg": 98.8,
+              "cpu_time": 9164
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954095,
+              "ppid": 1954021
+            },
+            {
+              "resident": 60372,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1954151,
+              "ppid": 1954095,
+              "cpu_time": 2
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954755,
+              "ppid": 1954665
+            },
+            {
+              "resident": 72656,
+              "virtual": 140188,
+              "cmd": "python",
+              "pid": 1954665,
+              "ppid": 1954151,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1420855,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 60204,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1999276,
+              "ppid": 1999273,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1999273,
+              "ppid": 1999263
+            },
+            {
+              "resident": 74120,
+              "virtual": 136460,
+              "cmd": "python",
+              "pid": 1999329,
+              "ppid": 1999276,
+              "cpu_time": 1
+            },
+            {
+              "resident": 46020,
+              "virtual": 47200,
+              "cmd": "RNALfold",
+              "pid": 1999342,
+              "ppid": 1999341,
+              "cpu_avg": 99.3,
+              "cpu_time": 5965
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1999341,
+              "ppid": 1999329
+            }
+          ]
+        },
+        {
+          "job": 1421325,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2005324,
+              "ppid": 2005318
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2005306,
+              "ppid": 2005302
+            },
+            {
+              "resident": 56336,
+              "virtual": 57876,
+              "cmd": "RNALfold",
+              "pid": 2005325,
+              "ppid": 2005324,
+              "cpu_avg": 99.3,
+              "cpu_time": 3614
+            },
+            {
+              "resident": 59708,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2005308,
+              "ppid": 2005306,
+              "cpu_time": 1
+            },
+            {
+              "resident": 73892,
+              "virtual": 140192,
+              "cmd": "python",
+              "pid": 2005318,
+              "ppid": 2005308,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 2010417,
+          "user": "ec-larstha",
+          "epoch": 152273092,
+          "processes": [
+            {
+              "virtual": 800,
+              "cmd": "sonar",
+              "pid": 2010417,
+              "ppid": 2010327,
+              "cpu_avg": 800
+            }
+          ]
+        },
+        {
+          "job": 1420752,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 44012,
+              "virtual": 44888,
+              "cmd": "RNALfold",
+              "pid": 1954804,
+              "ppid": 1954803,
+              "cpu_avg": 98.8,
+              "cpu_time": 9162
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954609,
+              "ppid": 1954569
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954803,
+              "ppid": 1954711
+            },
+            {
+              "resident": 73908,
+              "virtual": 140184,
+              "cmd": "python",
+              "pid": 1954711,
+              "ppid": 1954618,
+              "cpu_time": 1
+            },
+            {
+              "resident": 60548,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1954618,
+              "ppid": 1954609,
+              "cpu_time": 2
+            }
+          ]
+        },
+        {
+          "job": 1420234,
+          "user": "ec-anarg",
+          "processes": [
+            {
+              "resident": 833652,
+              "virtual": 1020184,
+              "cmd": "python",
+              "pid": 1948703,
+              "ppid": 1948417,
+              "cpu_avg": 98.3,
+              "cpu_time": 13505
+            },
+            {
+              "resident": 822204,
+              "virtual": 1012140,
+              "cmd": "python",
+              "pid": 1948713,
+              "ppid": 1948417,
+              "cpu_avg": 98.7,
+              "cpu_time": 13559
+            },
+            {
+              "resident": 834892,
+              "virtual": 1023372,
+              "cmd": "python",
+              "pid": 1948731,
+              "ppid": 1948417,
+              "cpu_avg": 98.1,
+              "cpu_time": 13484
+            },
+            {
+              "resident": 760856,
+              "virtual": 948636,
+              "cmd": "python",
+              "pid": 1948692,
+              "ppid": 1948417,
+              "cpu_avg": 98.7,
+              "cpu_time": 13558
+            },
+            {
+              "resident": 724552,
+              "virtual": 916672,
+              "cmd": "python",
+              "pid": 1948707,
+              "ppid": 1948417,
+              "cpu_avg": 98.5,
+              "cpu_time": 13527
+            },
+            {
+              "resident": 759284,
+              "virtual": 951196,
+              "cmd": "python",
+              "pid": 1948724,
+              "ppid": 1948417,
+              "cpu_avg": 97.9,
+              "cpu_time": 13446
+            },
+            {
+              "resident": 829592,
+              "virtual": 1026400,
+              "cmd": "python",
+              "pid": 1948738,
+              "ppid": 1948417,
+              "cpu_avg": 97.7,
+              "cpu_time": 13418
+            },
+            {
+              "resident": 886312,
+              "virtual": 1069360,
+              "cmd": "python",
+              "pid": 1948679,
+              "ppid": 1948417,
+              "cpu_avg": 96.9,
+              "cpu_time": 13312
+            },
+            {
+              "resident": 739784,
+              "virtual": 930828,
+              "cmd": "python",
+              "pid": 1948728,
+              "ppid": 1948417,
+              "cpu_avg": 98.5,
+              "cpu_time": 13531
+            },
+            {
+              "resident": 678244,
+              "virtual": 862964,
+              "cmd": "python",
+              "pid": 1948677,
+              "ppid": 1948417,
+              "cpu_avg": 98.5,
+              "cpu_time": 13526
+            },
+            {
+              "virtual": 760,
+              "cmd": "slurm_script",
+              "pid": 1948403,
+              "ppid": 1948399,
+              "cpu_time": 1
+            },
+            {
+              "resident": 767612,
+              "virtual": 956092,
+              "cmd": "python",
+              "pid": 1948697,
+              "ppid": 1948417,
+              "cpu_avg": 97.1,
+              "cpu_time": 13334
+            },
+            {
+              "resident": 825892,
+              "virtual": 1017824,
+              "cmd": "python",
+              "pid": 1948715,
+              "ppid": 1948417,
+              "cpu_avg": 98,
+              "cpu_time": 13465
+            },
+            {
+              "resident": 753876,
+              "virtual": 942632,
+              "cmd": "python",
+              "pid": 1948700,
+              "ppid": 1948417,
+              "cpu_avg": 98.8,
+              "cpu_time": 13576
+            },
+            {
+              "resident": 706800,
+              "virtual": 901700,
+              "cmd": "python",
+              "pid": 1948722,
+              "ppid": 1948417,
+              "cpu_avg": 97.9,
+              "cpu_time": 13454
+            },
+            {
+              "resident": 687052,
+              "virtual": 884396,
+              "cmd": "python",
+              "pid": 1948705,
+              "ppid": 1948417,
+              "cpu_avg": 97.8,
+              "cpu_time": 13440
+            },
+            {
+              "resident": 703320,
+              "virtual": 899312,
+              "cmd": "python",
+              "pid": 1948730,
+              "ppid": 1948417,
+              "cpu_avg": 98.4,
+              "cpu_time": 13522
+            },
+            {
+              "resident": 871112,
+              "virtual": 1054692,
+              "cmd": "python",
+              "pid": 1948736,
+              "ppid": 1948417,
+              "cpu_avg": 97.5,
+              "cpu_time": 13390
+            },
+            {
+              "resident": 829752,
+              "virtual": 1018588,
+              "cmd": "python",
+              "pid": 1948737,
+              "ppid": 1948417,
+              "cpu_avg": 98.1,
+              "cpu_time": 13476
+            },
+            {
+              "resident": 723708,
+              "virtual": 921280,
+              "cmd": "python",
+              "pid": 1948710,
+              "ppid": 1948417,
+              "cpu_avg": 98.3,
+              "cpu_time": 13511
+            },
+            {
+              "resident": 736920,
+              "virtual": 925312,
+              "cmd": "python",
+              "pid": 1948701,
+              "ppid": 1948417,
+              "cpu_avg": 98.4,
+              "cpu_time": 13513
+            },
+            {
+              "resident": 825168,
+              "virtual": 1020540,
+              "cmd": "python",
+              "pid": 1948719,
+              "ppid": 1948417,
+              "cpu_avg": 97.7,
+              "cpu_time": 13428
+            },
+            {
+              "resident": 804744,
+              "virtual": 997228,
+              "cmd": "python",
+              "pid": 1948682,
+              "ppid": 1948417,
+              "cpu_avg": 98.4,
+              "cpu_time": 13516
+            },
+            {
+              "resident": 1021244,
+              "virtual": 1208256,
+              "cmd": "python",
+              "pid": 1948727,
+              "ppid": 1948417,
+              "cpu_avg": 97.7,
+              "cpu_time": 13426
+            },
+            {
+              "resident": 729512,
+              "virtual": 924396,
+              "cmd": "python",
+              "pid": 1948739,
+              "ppid": 1948417,
+              "cpu_avg": 98.4,
+              "cpu_time": 13521
+            },
+            {
+              "resident": 771168,
+              "virtual": 963992,
+              "cmd": "python",
+              "pid": 1948690,
+              "ppid": 1948417,
+              "cpu_avg": 98,
+              "cpu_time": 13467
+            },
+            {
+              "resident": 797768,
+              "virtual": 986324,
+              "cmd": "python",
+              "pid": 1948740,
+              "ppid": 1948417,
+              "cpu_avg": 98.4,
+              "cpu_time": 13525
+            },
+            {
+              "resident": 719004,
+              "virtual": 909028,
+              "cmd": "python",
+              "pid": 1948678,
+              "ppid": 1948417,
+              "cpu_avg": 97.8,
+              "cpu_time": 13441
+            },
+            {
+              "resident": 811288,
+              "virtual": 998880,
+              "cmd": "python",
+              "pid": 1948723,
+              "ppid": 1948417,
+              "cpu_avg": 98.3,
+              "cpu_time": 13504
+            },
+            {
+              "resident": 741192,
+              "virtual": 924672,
+              "cmd": "python",
+              "pid": 1948691,
+              "ppid": 1948417,
+              "cpu_avg": 98.2,
+              "cpu_time": 13492
+            },
+            {
+              "resident": 724040,
+              "virtual": 920444,
+              "cmd": "python",
+              "pid": 1948712,
+              "ppid": 1948417,
+              "cpu_avg": 98.5,
+              "cpu_time": 13526
+            },
+            {
+              "resident": 725244,
+              "virtual": 915040,
+              "cmd": "python",
+              "pid": 1948718,
+              "ppid": 1948417,
+              "cpu_avg": 97.9,
+              "cpu_time": 13444
+            },
+            {
+              "resident": 748168,
+              "virtual": 934356,
+              "cmd": "python",
+              "pid": 1948687,
+              "ppid": 1948417,
+              "cpu_avg": 98.5,
+              "cpu_time": 13535
+            },
+            {
+              "resident": 895672,
+              "virtual": 1084660,
+              "cmd": "python",
+              "pid": 1948709,
+              "ppid": 1948417,
+              "cpu_avg": 98.4,
+              "cpu_time": 13519
+            },
+            {
+              "resident": 836428,
+              "virtual": 1031648,
+              "cmd": "python",
+              "pid": 1948721,
+              "ppid": 1948417,
+              "cpu_avg": 98.6,
+              "cpu_time": 13549
+            },
+            {
+              "resident": 784896,
+              "virtual": 978776,
+              "cmd": "python",
+              "pid": 1948699,
+              "ppid": 1948417,
+              "cpu_avg": 98.3,
+              "cpu_time": 13500
+            },
+            {
+              "resident": 759016,
+              "virtual": 954468,
+              "cmd": "python",
+              "pid": 1948706,
+              "ppid": 1948417,
+              "cpu_avg": 98.4,
+              "cpu_time": 13518
+            },
+            {
+              "resident": 865580,
+              "virtual": 1055992,
+              "cmd": "python",
+              "pid": 1948708,
+              "ppid": 1948417,
+              "cpu_avg": 98.3,
+              "cpu_time": 13505
+            },
+            {
+              "resident": 991368,
+              "virtual": 1183344,
+              "cmd": "python",
+              "pid": 1948733,
+              "ppid": 1948417,
+              "cpu_avg": 98,
+              "cpu_time": 13468
+            },
+            {
+              "resident": 789100,
+              "virtual": 955920,
+              "cmd": "python",
+              "pid": 2006113,
+              "ppid": 1948417,
+              "cpu_avg": 98.3,
+              "cpu_time": 3321
+            },
+            {
+              "resident": 736140,
+              "virtual": 920420,
+              "cmd": "python",
+              "pid": 1948695,
+              "ppid": 1948417,
+              "cpu_avg": 98.2,
+              "cpu_time": 13498
+            },
+            {
+              "resident": 760692,
+              "virtual": 953176,
+              "cmd": "python",
+              "pid": 1948732,
+              "ppid": 1948417,
+              "cpu_avg": 97.1,
+              "cpu_time": 13335
+            },
+            {
+              "resident": 722640,
+              "virtual": 913888,
+              "cmd": "python",
+              "pid": 1948698,
+              "ppid": 1948417,
+              "cpu_avg": 98.4,
+              "cpu_time": 13515
+            },
+            {
+              "resident": 839532,
+              "virtual": 1033724,
+              "cmd": "python",
+              "pid": 1948711,
+              "ppid": 1948417,
+              "cpu_avg": 97.7,
+              "cpu_time": 13422
+            },
+            {
+              "resident": 771360,
+              "virtual": 945008,
+              "cmd": "python",
+              "pid": 2006114,
+              "ppid": 1948417,
+              "cpu_avg": 98.9,
+              "cpu_time": 3342
+            },
+            {
+              "resident": 786780,
+              "virtual": 976736,
+              "cmd": "python",
+              "pid": 1948686,
+              "ppid": 1948417,
+              "cpu_avg": 98.3,
+              "cpu_time": 13502
+            },
+            {
+              "resident": 730184,
+              "virtual": 930304,
+              "cmd": "python",
+              "pid": 1948735,
+              "ppid": 1948417,
+              "cpu_avg": 98.7,
+              "cpu_time": 13554
+            },
+            {
+              "resident": 706120,
+              "virtual": 903248,
+              "cmd": "python",
+              "pid": 1948726,
+              "ppid": 1948417,
+              "cpu_avg": 97.9,
+              "cpu_time": 13443
+            },
+            {
+              "resident": 743968,
+              "virtual": 929972,
+              "cmd": "python",
+              "pid": 1948696,
+              "ppid": 1948417,
+              "cpu_avg": 98.4,
+              "cpu_time": 13520
+            },
+            {
+              "resident": 883044,
+              "virtual": 1063512,
+              "cmd": "python",
+              "pid": 1948694,
+              "ppid": 1948417,
+              "cpu_avg": 98.6,
+              "cpu_time": 13546
+            },
+            {
+              "resident": 720012,
+              "virtual": 907672,
+              "cmd": "python",
+              "pid": 1948704,
+              "ppid": 1948417,
+              "cpu_avg": 98.6,
+              "cpu_time": 13544
+            },
+            {
+              "resident": 781752,
+              "virtual": 973852,
+              "cmd": "python",
+              "pid": 1948734,
+              "ppid": 1948417,
+              "cpu_avg": 98.5,
+              "cpu_time": 13537
+            },
+            {
+              "resident": 26008,
+              "virtual": 2310456,
+              "cmd": "python",
+              "pid": 1948546,
+              "ppid": 1948417,
+              "cpu_avg": 0.1,
+              "cpu_time": 8
+            },
+            {
+              "resident": 740784,
+              "virtual": 927820,
+              "cmd": "python",
+              "pid": 1948729,
+              "ppid": 1948417,
+              "cpu_avg": 97.2,
+              "cpu_time": 13356
+            },
+            {
+              "resident": 10240,
+              "virtual": 73124,
+              "cmd": "python",
+              "pid": 1948547,
+              "ppid": 1948417
+            },
+            {
+              "resident": 877304,
+              "virtual": 1063000,
+              "cmd": "python",
+              "pid": 1948689,
+              "ppid": 1948417,
+              "cpu_avg": 98.2,
+              "cpu_time": 13489
+            },
+            {
+              "resident": 842436,
+              "virtual": 1034796,
+              "cmd": "python",
+              "pid": 1948702,
+              "ppid": 1948417,
+              "cpu_avg": 98.8,
+              "cpu_time": 13574
+            },
+            {
+              "resident": 781088,
+              "virtual": 967884,
+              "cmd": "python",
+              "pid": 1948693,
+              "ppid": 1948417,
+              "cpu_avg": 98.6,
+              "cpu_time": 13545
+            },
+            {
+              "resident": 732992,
+              "virtual": 918976,
+              "cmd": "python",
+              "pid": 1948680,
+              "ppid": 1948417,
+              "cpu_avg": 98.6,
+              "cpu_time": 13550
+            },
+            {
+              "resident": 874048,
+              "virtual": 1062904,
+              "cmd": "python",
+              "pid": 1948681,
+              "ppid": 1948417,
+              "cpu_avg": 98.1,
+              "cpu_time": 13477
+            },
+            {
+              "resident": 736208,
+              "virtual": 932448,
+              "cmd": "python",
+              "pid": 1948714,
+              "ppid": 1948417,
+              "cpu_avg": 98.5,
+              "cpu_time": 13536
+            },
+            {
+              "resident": 2518420,
+              "virtual": 6811268,
+              "cmd": "python",
+              "pid": 1948417,
+              "ppid": 1948403,
+              "cpu_avg": 0.6,
+              "cpu_time": 20003
+            },
+            {
+              "resident": 736744,
+              "virtual": 930300,
+              "cmd": "python",
+              "pid": 1948717,
+              "ppid": 1948417,
+              "cpu_avg": 98.7,
+              "cpu_time": 13559
+            },
+            {
+              "resident": 728200,
+              "virtual": 919208,
+              "cmd": "python",
+              "pid": 1948683,
+              "ppid": 1948417,
+              "cpu_avg": 98.6,
+              "cpu_time": 13546
+            },
+            {
+              "resident": 753332,
+              "virtual": 945628,
+              "cmd": "python",
+              "pid": 1948716,
+              "ppid": 1948417,
+              "cpu_avg": 98,
+              "cpu_time": 13466
+            },
+            {
+              "resident": 884664,
+              "virtual": 1069424,
+              "cmd": "python",
+              "pid": 1948688,
+              "ppid": 1948417,
+              "cpu_avg": 98.2,
+              "cpu_time": 13497
+            },
+            {
+              "resident": 879428,
+              "virtual": 1070440,
+              "cmd": "python",
+              "pid": 1948685,
+              "ppid": 1948417,
+              "cpu_avg": 96.8,
+              "cpu_time": 13305
+            },
+            {
+              "resident": 843444,
+              "virtual": 1028892,
+              "cmd": "python",
+              "pid": 1948725,
+              "ppid": 1948417,
+              "cpu_avg": 97,
+              "cpu_time": 13331
+            }
+          ]
+        },
+        {
+          "job": 1421522,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 59964,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2006195,
+              "ppid": 2006193,
+              "cpu_time": 1
+            },
+            {
+              "resident": 70060,
+              "virtual": 136460,
+              "cmd": "python",
+              "pid": 2006203,
+              "ppid": 2006195,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2006193,
+              "ppid": 2006189
+            },
+            {
+              "resident": 56756,
+              "virtual": 57888,
+              "cmd": "RNALfold",
+              "pid": 2006207,
+              "ppid": 2006206,
+              "cpu_avg": 99.3,
+              "cpu_time": 3339
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2006206,
+              "ppid": 2006203
+            }
+          ]
+        },
+        {
+          "job": 1421574,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2006757,
+              "ppid": 2006723
+            },
+            {
+              "resident": 75836,
+              "virtual": 140184,
+              "cmd": "python",
+              "pid": 2006844,
+              "ppid": 2006759,
+              "cpu_time": 1
+            },
+            {
+              "resident": 56952,
+              "virtual": 57896,
+              "cmd": "RNALfold",
+              "pid": 2006877,
+              "ppid": 2006875,
+              "cpu_avg": 99.4,
+              "cpu_time": 3282
+            },
+            {
+              "resident": 61684,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2006759,
+              "ppid": 2006757,
+              "cpu_time": 2
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2006875,
+              "ppid": 2006844
+            }
+          ]
+        },
+        {
+          "job": 1421571,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 59708,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2006774,
+              "ppid": 2006760,
+              "cpu_time": 2
+            },
+            {
+              "resident": 47584,
+              "virtual": 48536,
+              "cmd": "RNALfold",
+              "pid": 2006874,
+              "ppid": 2006872,
+              "cpu_avg": 99.1,
+              "cpu_time": 3274
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2006872,
+              "ppid": 2006850
+            },
+            {
+              "resident": 72084,
+              "virtual": 136456,
+              "cmd": "python",
+              "pid": 2006850,
+              "ppid": 2006774,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2006760,
+              "ppid": 2006726
+            }
+          ]
+        },
+        {
+          "job": 1420759,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954765,
+              "ppid": 1954675
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954311,
+              "ppid": 1954208
+            },
+            {
+              "resident": 73228,
+              "virtual": 140188,
+              "cmd": "python",
+              "pid": 1954675,
+              "ppid": 1954385,
+              "cpu_time": 1
+            },
+            {
+              "resident": 62524,
+              "virtual": 126896,
+              "cmd": "python3.12",
+              "pid": 1954385,
+              "ppid": 1954311,
+              "cpu_time": 2
+            },
+            {
+              "resident": 41736,
+              "virtual": 42128,
+              "cmd": "RNALfold",
+              "pid": 1954766,
+              "ppid": 1954765,
+              "cpu_avg": 98.8,
+              "cpu_time": 9162
+            }
+          ]
+        },
+        {
+          "job": 1421332,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 53760,
+              "virtual": 54000,
+              "cmd": "RNALfold",
+              "pid": 2005499,
+              "ppid": 2005498,
+              "cpu_avg": 99.3,
+              "cpu_time": 3587
+            },
+            {
+              "resident": 67912,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2005447,
+              "ppid": 2005445,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2005445,
+              "ppid": 2005441
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2005498,
+              "ppid": 2005496
+            },
+            {
+              "resident": 70320,
+              "virtual": 136464,
+              "cmd": "python",
+              "pid": 2005496,
+              "ppid": 2005447,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1420743,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954271,
+              "ppid": 1954164
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954767,
+              "ppid": 1954673
+            },
+            {
+              "resident": 73480,
+              "virtual": 140188,
+              "cmd": "python",
+              "pid": 1954673,
+              "ppid": 1954313,
+              "cpu_time": 1
+            },
+            {
+              "resident": 59704,
+              "virtual": 126904,
+              "cmd": "python3.12",
+              "pid": 1954313,
+              "ppid": 1954271,
+              "cpu_time": 2
+            },
+            {
+              "resident": 42856,
+              "virtual": 44196,
+              "cmd": "RNALfold",
+              "pid": 1954768,
+              "ppid": 1954767,
+              "cpu_avg": 99.2,
+              "cpu_time": 9195
+            }
+          ]
+        },
+        {
+          "job": 1420998,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 73468,
+              "virtual": 140188,
+              "cmd": "python",
+              "pid": 2001994,
+              "ppid": 2001986,
+              "cpu_time": 1
+            },
+            {
+              "resident": 45468,
+              "virtual": 46320,
+              "cmd": "RNALfold",
+              "pid": 2001999,
+              "ppid": 2001998,
+              "cpu_avg": 99.2,
+              "cpu_time": 4821
+            },
+            {
+              "resident": 59708,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2001986,
+              "ppid": 2001984,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2001998,
+              "ppid": 2001994
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2001984,
+              "ppid": 2001980
+            }
+          ]
+        },
+        {
+          "job": 1421573,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2006834,
+              "ppid": 2006830
+            },
+            {
+              "resident": 61344,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2006836,
+              "ppid": 2006834,
+              "cpu_time": 1
+            },
+            {
+              "resident": 70372,
+              "virtual": 136588,
+              "cmd": "python",
+              "pid": 2006854,
+              "ppid": 2006836,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2006865,
+              "ppid": 2006854
+            },
+            {
+              "resident": 44680,
+              "virtual": 46076,
+              "cmd": "RNALfold",
+              "pid": 2006866,
+              "ppid": 2006865,
+              "cpu_avg": 99.1,
+              "cpu_time": 3274
+            }
+          ]
+        },
+        {
+          "job": 1420744,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 46768,
+              "virtual": 48112,
+              "cmd": "RNALfold",
+              "pid": 1954790,
+              "ppid": 1954788,
+              "cpu_avg": 99.2,
+              "cpu_time": 9196
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954500,
+              "ppid": 1954374
+            },
+            {
+              "resident": 71768,
+              "virtual": 136460,
+              "cmd": "python",
+              "pid": 1954703,
+              "ppid": 1954542,
+              "cpu_time": 1
+            },
+            {
+              "resident": 60516,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1954542,
+              "ppid": 1954500,
+              "cpu_time": 2
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954788,
+              "ppid": 1954703
+            }
+          ]
+        },
+        {
+          "job": 1420751,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 59704,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1954512,
+              "ppid": 1954471,
+              "cpu_time": 2
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954801,
+              "ppid": 1954713
+            },
+            {
+              "resident": 47672,
+              "virtual": 49168,
+              "cmd": "RNALfold",
+              "pid": 1954802,
+              "ppid": 1954801,
+              "cpu_avg": 98.8,
+              "cpu_time": 9161
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954471,
+              "ppid": 1954368
+            },
+            {
+              "resident": 76024,
+              "virtual": 140184,
+              "cmd": "python",
+              "pid": 1954713,
+              "ppid": 1954512,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1420745,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954779,
+              "ppid": 1954681
+            },
+            {
+              "resident": 70476,
+              "virtual": 136464,
+              "cmd": "python",
+              "pid": 1954681,
+              "ppid": 1954365,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954306,
+              "ppid": 1954207
+            },
+            {
+              "resident": 50784,
+              "virtual": 52960,
+              "cmd": "RNALfold",
+              "pid": 1954780,
+              "ppid": 1954779,
+              "cpu_avg": 99.2,
+              "cpu_time": 9197
+            },
+            {
+              "resident": 62432,
+              "virtual": 126904,
+              "cmd": "python3.12",
+              "pid": 1954365,
+              "ppid": 1954306,
+              "cpu_time": 2
+            }
+          ]
+        },
+        {
+          "job": 1421119,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2003586,
+              "ppid": 2003576
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2003599,
+              "ppid": 2003593
+            },
+            {
+              "resident": 56836,
+              "virtual": 58024,
+              "cmd": "RNALfold",
+              "pid": 2003600,
+              "ppid": 2003599,
+              "cpu_avg": 99.3,
+              "cpu_time": 4284
+            },
+            {
+              "resident": 60528,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2003589,
+              "ppid": 2003586,
+              "cpu_time": 1
+            },
+            {
+              "resident": 70908,
+              "virtual": 136456,
+              "cmd": "python",
+              "pid": 2003593,
+              "ppid": 2003589,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1420756,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 48824,
+              "virtual": 50084,
+              "cmd": "RNALfold",
+              "pid": 1954762,
+              "ppid": 1954761,
+              "cpu_avg": 98.8,
+              "cpu_time": 9162
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954761,
+              "ppid": 1954669
+            },
+            {
+              "resident": 59180,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1954254,
+              "ppid": 1954209,
+              "cpu_time": 2
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954209,
+              "ppid": 1954086
+            },
+            {
+              "resident": 72640,
+              "virtual": 140192,
+              "cmd": "python",
+              "pid": 1954669,
+              "ppid": 1954254,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1421575,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2006879,
+              "ppid": 2006846
+            },
+            {
+              "resident": 60520,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2006775,
+              "ppid": 2006763,
+              "cpu_avg": 0.1,
+              "cpu_time": 2
+            },
+            {
+              "resident": 44620,
+              "virtual": 46064,
+              "cmd": "RNALfold",
+              "pid": 2006882,
+              "ppid": 2006879,
+              "cpu_avg": 99.3,
+              "cpu_time": 3282
+            },
+            {
+              "resident": 73608,
+              "virtual": 140188,
+              "cmd": "python",
+              "pid": 2006846,
+              "ppid": 2006775,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2006763,
+              "ppid": 2006736
+            }
+          ]
+        },
+        {
+          "job": 1420747,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 60916,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1954596,
+              "ppid": 1954567,
+              "cpu_time": 2
+            },
+            {
+              "resident": 48768,
+              "virtual": 50440,
+              "cmd": "RNALfold",
+              "pid": 1954800,
+              "ppid": 1954798,
+              "cpu_avg": 98.8,
+              "cpu_time": 9160
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954567,
+              "ppid": 1954487
+            },
+            {
+              "resident": 70060,
+              "virtual": 136456,
+              "cmd": "python",
+              "pid": 1954709,
+              "ppid": 1954596,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954798,
+              "ppid": 1954709
+            }
+          ]
+        },
+        {
+          "job": 1420760,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 73352,
+              "virtual": 140192,
+              "cmd": "python",
+              "pid": 1954693,
+              "ppid": 1954620,
+              "cpu_time": 1
+            },
+            {
+              "resident": 53844,
+              "virtual": 54748,
+              "cmd": "RNALfold",
+              "pid": 1954792,
+              "ppid": 1954791,
+              "cpu_avg": 98.8,
+              "cpu_time": 9162
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954791,
+              "ppid": 1954693
+            },
+            {
+              "resident": 59712,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1954620,
+              "ppid": 1954611,
+              "cpu_time": 2
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954611,
+              "ppid": 1954583
+            }
+          ]
+        },
+        {
+          "job": 1421381,
+          "user": "ec-yuanyuaj",
+          "processes": [
+            {
+              "resident": 85892,
+              "virtual": 252152,
+              "cmd": "jupyter-lab",
+              "pid": 1980088,
+              "ppid": 1978659,
+              "cpu_avg": 0.4,
+              "cpu_time": 35
+            },
+            {
+              "resident": 1024,
+              "virtual": 2736,
+              "cmd": "bash",
+              "pid": 1989286,
+              "ppid": 1980088,
+              "cpu_time": 1
+            },
+            {
+              "resident": 2048,
+              "virtual": 2732,
+              "cmd": "bash",
+              "pid": 1983646,
+              "ppid": 1980088
+            },
+            {
+              "virtual": 700,
+              "cmd": "slurm_script",
+              "pid": 1978574,
+              "ppid": 1978558,
+              "cpu_time": 2
+            },
+            {
+              "resident": 1024,
+              "virtual": 1928,
+              "cmd": "bash",
+              "pid": 1978659,
+              "ppid": 1978574,
+              "cpu_time": 7
+            }
+          ]
+        },
+        {
+          "job": 1420742,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954528,
+              "ppid": 1954402
+            },
+            {
+              "resident": 61356,
+              "virtual": 126896,
+              "cmd": "python3.12",
+              "pid": 1954570,
+              "ppid": 1954528,
+              "cpu_time": 2
+            },
+            {
+              "resident": 44000,
+              "virtual": 44688,
+              "cmd": "RNALfold",
+              "pid": 1954796,
+              "ppid": 1954795,
+              "cpu_avg": 99.2,
+              "cpu_time": 9195
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954795,
+              "ppid": 1954697
+            },
+            {
+              "resident": 74888,
+              "virtual": 140320,
+              "cmd": "python",
+              "pid": 1954697,
+              "ppid": 1954570,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1421978,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 71932,
+              "virtual": 136460,
+              "cmd": "python",
+              "pid": 2007569,
+              "ppid": 2007567,
+              "cpu_time": 1
+            },
+            {
+              "resident": 45976,
+              "virtual": 46892,
+              "cmd": "RNALfold",
+              "pid": 2007572,
+              "ppid": 2007571,
+              "cpu_avg": 99.3,
+              "cpu_time": 2675
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2007565,
+              "ppid": 2007561
+            },
+            {
+              "resident": 62528,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2007567,
+              "ppid": 2007565,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2007571,
+              "ppid": 2007569
+            }
+          ]
+        },
+        {
+          "job": 1420854,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 60524,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1999277,
+              "ppid": 1999272,
+              "cpu_time": 1
+            },
+            {
+              "resident": 70460,
+              "virtual": 136460,
+              "cmd": "python",
+              "pid": 1999330,
+              "ppid": 1999277,
+              "cpu_time": 1
+            },
+            {
+              "resident": 43972,
+              "virtual": 44368,
+              "cmd": "RNALfold",
+              "pid": 1999340,
+              "ppid": 1999339,
+              "cpu_avg": 99.2,
+              "cpu_time": 5959
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1999339,
+              "ppid": 1999330
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1999272,
+              "ppid": 1999265
+            }
+          ]
+        },
+        {
+          "job": 1420753,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 41884,
+              "virtual": 42680,
+              "cmd": "RNALfold",
+              "pid": 1954794,
+              "ppid": 1954793,
+              "cpu_avg": 98.8,
+              "cpu_time": 9160
+            },
+            {
+              "resident": 62452,
+              "virtual": 126904,
+              "cmd": "python3.12",
+              "pid": 1954571,
+              "ppid": 1954534,
+              "cpu_time": 2
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954534,
+              "ppid": 1954427
+            },
+            {
+              "resident": 70428,
+              "virtual": 136464,
+              "cmd": "python",
+              "pid": 1954705,
+              "ppid": 1954571,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954793,
+              "ppid": 1954705
+            }
+          ]
+        },
+        {
+          "job": 2010327,
+          "user": "ec-larstha",
+          "epoch": 152273092,
+          "processes": [
+            {
+              "virtual": 1100,
+              "cmd": "bash",
+              "pid": 2010327,
+              "ppid": 2010326
+            }
+          ]
+        },
+        {
+          "job": 1420762,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 73560,
+              "virtual": 140184,
+              "cmd": "python",
+              "pid": 1954689,
+              "ppid": 1954585,
+              "cpu_time": 1
+            },
+            {
+              "resident": 59936,
+              "virtual": 126896,
+              "cmd": "python3.12",
+              "pid": 1954585,
+              "ppid": 1954554,
+              "cpu_time": 2
+            },
+            {
+              "resident": 47336,
+              "virtual": 49920,
+              "cmd": "RNALfold",
+              "pid": 1954778,
+              "ppid": 1954777,
+              "cpu_avg": 98.7,
+              "cpu_time": 9154
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954554,
+              "ppid": 1954444
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954777,
+              "ppid": 1954689
+            }
+          ]
+        },
+        {
+          "job": 1421570,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 60548,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2006772,
+              "ppid": 2006761,
+              "cpu_time": 2
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2006761,
+              "ppid": 2006729
+            },
+            {
+              "resident": 46728,
+              "virtual": 47848,
+              "cmd": "RNALfold",
+              "pid": 2006880,
+              "ppid": 2006876,
+              "cpu_avg": 99.1,
+              "cpu_time": 3273
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2006876,
+              "ppid": 2006848
+            },
+            {
+              "resident": 73520,
+              "virtual": 140188,
+              "cmd": "python",
+              "pid": 2006848,
+              "ppid": 2006772,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1420740,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 41832,
+              "virtual": 43368,
+              "cmd": "RNALfold",
+              "pid": 1954764,
+              "ppid": 1954763,
+              "cpu_avg": 99.2,
+              "cpu_time": 9195
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954210,
+              "ppid": 1954080
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954763,
+              "ppid": 1954671
+            },
+            {
+              "resident": 60524,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1954252,
+              "ppid": 1954210,
+              "cpu_time": 2
+            },
+            {
+              "resident": 74860,
+              "virtual": 140188,
+              "cmd": "python",
+              "pid": 1954671,
+              "ppid": 1954252,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1421113,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 49860,
+              "virtual": 50348,
+              "cmd": "RNALfold",
+              "pid": 2003442,
+              "ppid": 2003440,
+              "cpu_avg": 99.4,
+              "cpu_time": 4310
+            },
+            {
+              "resident": 59716,
+              "virtual": 126904,
+              "cmd": "python3.12",
+              "pid": 2003379,
+              "ppid": 2003375,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2003375,
+              "ppid": 2003365
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2003440,
+              "ppid": 2003436
+            },
+            {
+              "resident": 74084,
+              "virtual": 136460,
+              "cmd": "python",
+              "pid": 2003436,
+              "ppid": 2003379,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1420758,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 44244,
+              "virtual": 45556,
+              "cmd": "RNALfold",
+              "pid": 1954756,
+              "ppid": 1954753,
+              "cpu_avg": 98.8,
+              "cpu_time": 9163
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954113,
+              "ppid": 1954016
+            },
+            {
+              "resident": 60532,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1954149,
+              "ppid": 1954113,
+              "cpu_time": 2
+            },
+            {
+              "resident": 73144,
+              "virtual": 136456,
+              "cmd": "python",
+              "pid": 1954663,
+              "ppid": 1954149,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954753,
+              "ppid": 1954663
+            }
+          ]
+        },
+        {
+          "job": 1420741,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 75456,
+              "virtual": 140188,
+              "cmd": "python",
+              "pid": 1954707,
+              "ppid": 1954622,
+              "cpu_time": 1
+            },
+            {
+              "resident": 60300,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1954622,
+              "ppid": 1954615,
+              "cpu_time": 2
+            },
+            {
+              "resident": 42604,
+              "virtual": 43108,
+              "cmd": "RNALfold",
+              "pid": 1954799,
+              "ppid": 1954797,
+              "cpu_avg": 99.1,
+              "cpu_time": 9192
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954615,
+              "ppid": 1954597
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954797,
+              "ppid": 1954707
+            }
+          ]
+        },
+        {
+          "job": 1421576,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2006764,
+              "ppid": 2006733
+            },
+            {
+              "resident": 60512,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2006776,
+              "ppid": 2006764,
+              "cpu_time": 2
+            },
+            {
+              "resident": 55404,
+              "virtual": 57752,
+              "cmd": "RNALfold",
+              "pid": 2006881,
+              "ppid": 2006878,
+              "cpu_avg": 99.3,
+              "cpu_time": 3280
+            },
+            {
+              "resident": 75856,
+              "virtual": 140184,
+              "cmd": "python",
+              "pid": 2006843,
+              "ppid": 2006776,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2006878,
+              "ppid": 2006843
+            }
+          ]
+        },
+        {
+          "job": 1421165,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 72588,
+              "virtual": 136460,
+              "cmd": "python",
+              "pid": 2004119,
+              "ppid": 2004117,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2004115,
+              "ppid": 2004111
+            },
+            {
+              "resident": 59952,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2004117,
+              "ppid": 2004115,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2004121,
+              "ppid": 2004119
+            },
+            {
+              "resident": 48860,
+              "virtual": 49908,
+              "cmd": "RNALfold",
+              "pid": 2004122,
+              "ppid": 2004121,
+              "cpu_avg": 99.4,
+              "cpu_time": 4101
+            }
+          ]
+        },
+        {
+          "job": 1420757,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 44188,
+              "virtual": 45384,
+              "cmd": "RNALfold",
+              "pid": 1954786,
+              "ppid": 1954785,
+              "cpu_avg": 98.8,
+              "cpu_time": 9162
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954360,
+              "ppid": 1954266
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954785,
+              "ppid": 1954699
+            },
+            {
+              "resident": 60908,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1954400,
+              "ppid": 1954360,
+              "cpu_time": 2
+            },
+            {
+              "resident": 73820,
+              "virtual": 140192,
+              "cmd": "python",
+              "pid": 1954699,
+              "ppid": 1954400,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1420746,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 73012,
+              "virtual": 140192,
+              "cmd": "python",
+              "pid": 1954691,
+              "ppid": 1954439,
+              "cpu_time": 1
+            },
+            {
+              "resident": 46556,
+              "virtual": 47448,
+              "cmd": "RNALfold",
+              "pid": 1954782,
+              "ppid": 1954781,
+              "cpu_avg": 99.2,
+              "cpu_time": 9195
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954404,
+              "ppid": 1954326
+            },
+            {
+              "resident": 59184,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1954439,
+              "ppid": 1954404,
+              "cpu_time": 2
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954781,
+              "ppid": 1954691
+            }
+          ]
+        },
+        {
+          "job": 1420755,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 56344,
+              "virtual": 57908,
+              "cmd": "RNALfold",
+              "pid": 1954789,
+              "ppid": 1954787,
+              "cpu_avg": 98.8,
+              "cpu_time": 9158
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954787,
+              "ppid": 1954695
+            },
+            {
+              "resident": 62428,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1954608,
+              "ppid": 1954606,
+              "cpu_time": 2
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954606,
+              "ppid": 1954555
+            },
+            {
+              "resident": 77200,
+              "virtual": 140184,
+              "cmd": "python",
+              "pid": 1954695,
+              "ppid": 1954608,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1421127,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 60684,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2003590,
+              "ppid": 2003585,
+              "cpu_time": 1
+            },
+            {
+              "resident": 72628,
+              "virtual": 136464,
+              "cmd": "python",
+              "pid": 2003594,
+              "ppid": 2003590,
+              "cpu_time": 1
+            },
+            {
+              "resident": 44688,
+              "virtual": 45832,
+              "cmd": "RNALfold",
+              "pid": 2003598,
+              "ppid": 2003597,
+              "cpu_avg": 99.3,
+              "cpu_time": 4281
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2003585,
+              "ppid": 2003578
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2003597,
+              "ppid": 2003594
+            }
+          ]
+        },
+        {
+          "job": 1420739,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954277,
+              "ppid": 1954171
+            },
+            {
+              "resident": 60764,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1954353,
+              "ppid": 1954277,
+              "cpu_time": 2
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954774,
+              "ppid": 1954677
+            },
+            {
+              "resident": 70976,
+              "virtual": 136460,
+              "cmd": "python",
+              "pid": 1954677,
+              "ppid": 1954353,
+              "cpu_time": 1
+            },
+            {
+              "resident": 47368,
+              "virtual": 47872,
+              "cmd": "RNALfold",
+              "pid": 1954775,
+              "ppid": 1954774,
+              "cpu_avg": 99.1,
+              "cpu_time": 9194
+            }
+          ]
+        },
+        {
+          "job": 1421244,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2004749,
+              "ppid": 2004747
+            },
+            {
+              "resident": 71100,
+              "virtual": 136460,
+              "cmd": "python",
+              "pid": 2004747,
+              "ppid": 2004742,
+              "cpu_time": 1
+            },
+            {
+              "resident": 48732,
+              "virtual": 49320,
+              "cmd": "RNALfold",
+              "pid": 2004750,
+              "ppid": 2004749,
+              "cpu_avg": 99.3,
+              "cpu_time": 3856
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2004740,
+              "ppid": 2004736
+            },
+            {
+              "resident": 60520,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2004742,
+              "ppid": 2004740,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1420949,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2001480,
+              "ppid": 2001476
+            },
+            {
+              "resident": 59704,
+              "virtual": 126904,
+              "cmd": "python3.12",
+              "pid": 2001485,
+              "ppid": 2001480,
+              "cpu_time": 1
+            },
+            {
+              "resident": 73328,
+              "virtual": 140180,
+              "cmd": "python",
+              "pid": 2001504,
+              "ppid": 2001485,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2001506,
+              "ppid": 2001504
+            },
+            {
+              "resident": 46932,
+              "virtual": 48392,
+              "cmd": "RNALfold",
+              "pid": 2001507,
+              "ppid": 2001506,
+              "cpu_avg": 99.2,
+              "cpu_time": 5026
+            }
+          ]
+        },
+        {
+          "job": 1420748,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 61676,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 1954150,
+              "ppid": 1954082,
+              "cpu_time": 2
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954082,
+              "ppid": 1954009
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954759,
+              "ppid": 1954661
+            },
+            {
+              "resident": 71160,
+              "virtual": 136464,
+              "cmd": "python",
+              "pid": 1954661,
+              "ppid": 1954150,
+              "cpu_time": 1
+            },
+            {
+              "resident": 47572,
+              "virtual": 49400,
+              "cmd": "RNALfold",
+              "pid": 1954760,
+              "ppid": 1954759,
+              "cpu_avg": 98.8,
+              "cpu_time": 9162
+            }
+          ]
+        },
+        {
+          "job": 1421114,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 60768,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2003378,
+              "ppid": 2003374,
+              "cpu_time": 1
+            },
+            {
+              "resident": 44216,
+              "virtual": 45748,
+              "cmd": "RNALfold",
+              "pid": 2003441,
+              "ppid": 2003439,
+              "cpu_avg": 99.4,
+              "cpu_time": 4310
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2003374,
+              "ppid": 2003367
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2003439,
+              "ppid": 2003435
+            },
+            {
+              "resident": 73036,
+              "virtual": 136460,
+              "cmd": "python",
+              "pid": 2003435,
+              "ppid": 2003378,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1420761,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 1954363,
+              "ppid": 1954268
+            },
+            {
+              "resident": 71136,
+              "virtual": 136460,
+              "cmd": "python",
+              "pid": 1954679,
+              "ppid": 1954409,
+              "cpu_time": 1
+            },
+            {
+              "resident": 60524,
+              "virtual": 126904,
+              "cmd": "python3.12",
+              "pid": 1954409,
+              "ppid": 1954363,
+              "cpu_time": 2
+            },
+            {
+              "resident": 43996,
+              "virtual": 44988,
+              "cmd": "RNALfold",
+              "pid": 1954773,
+              "ppid": 1954772,
+              "cpu_avg": 98.8,
+              "cpu_time": 9162
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 1954772,
+              "ppid": 1954679
+            }
+          ]
+        },
+        {
+          "job": 1421473,
+          "user": "ec-yannich",
+          "processes": [
+            {
+              "resident": 55520,
+              "virtual": 126972,
+              "cmd": "python",
+              "pid": 1993260,
+              "ppid": 1993051,
+              "cpu_time": 2
+            },
+            {
+              "resident": 52324,
+              "virtual": 127120,
+              "cmd": "python",
+              "pid": 2003079,
+              "ppid": 1993051,
+              "cpu_time": 1
+            },
+            {
+              "resident": 46748,
+              "virtual": 126972,
+              "cmd": "python",
+              "pid": 1993265,
+              "ppid": 1993051,
+              "cpu_time": 2
+            },
+            {
+              "resident": 54864,
+              "virtual": 126988,
+              "cmd": "python",
+              "pid": 1993267,
+              "ppid": 1993051,
+              "cpu_time": 2
+            },
+            {
+              "resident": 148152,
+              "virtual": 320740,
+              "cmd": "jupyter-lab",
+              "pid": 1993051,
+              "ppid": 1992952,
+              "cpu_avg": 0.2,
+              "cpu_time": 12
+            },
+            {
+              "resident": 48116,
+              "virtual": 127200,
+              "cmd": "python",
+              "pid": 1993269,
+              "ppid": 1993051,
+              "cpu_time": 2
+            },
+            {
+              "resident": 47004,
+              "virtual": 126892,
+              "cmd": "python",
+              "pid": 2007787,
+              "ppid": 1993051,
+              "cpu_time": 1
+            },
+            {
+              "resident": 45816,
+              "virtual": 126972,
+              "cmd": "python",
+              "pid": 1993264,
+              "ppid": 1993051,
+              "cpu_time": 2
+            },
+            {
+              "resident": 47256,
+              "virtual": 126892,
+              "cmd": "python",
+              "pid": 2007792,
+              "ppid": 1993051,
+              "cpu_time": 1
+            },
+            {
+              "resident": 55436,
+              "virtual": 131104,
+              "cmd": "python",
+              "pid": 1993268,
+              "ppid": 1993051,
+              "cpu_time": 2
+            },
+            {
+              "resident": 48728,
+              "virtual": 126860,
+              "cmd": "python",
+              "pid": 2007938,
+              "ppid": 1993051,
+              "cpu_time": 1
+            },
+            {
+              "resident": 1024,
+              "virtual": 2136,
+              "cmd": "bash",
+              "pid": 1992952,
+              "ppid": 1992925,
+              "cpu_time": 6
+            },
+            {
+              "resident": 2048,
+              "virtual": 2852,
+              "cmd": "bash",
+              "pid": 1993192,
+              "ppid": 1993051
+            },
+            {
+              "resident": 55344,
+              "virtual": 126988,
+              "cmd": "python",
+              "pid": 1993263,
+              "ppid": 1993051,
+              "cpu_time": 2
+            },
+            {
+              "virtual": 700,
+              "cmd": "slurm_script",
+              "pid": 1992925,
+              "ppid": 1992921,
+              "cpu_time": 1
+            },
+            {
+              "resident": 49708,
+              "virtual": 126940,
+              "cmd": "python",
+              "pid": 2007961,
+              "ppid": 1993051,
+              "cpu_time": 1
+            },
+            {
+              "resident": 48704,
+              "virtual": 126972,
+              "cmd": "python",
+              "pid": 1993266,
+              "ppid": 1993051,
+              "cpu_time": 2
+            }
+          ]
+        },
+        {
+          "job": 1421567,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2006818,
+              "ppid": 2006802
+            },
+            {
+              "resident": 54532,
+              "virtual": 57628,
+              "cmd": "RNALfold",
+              "pid": 2006873,
+              "ppid": 2006869,
+              "cpu_avg": 99,
+              "cpu_time": 3272
+            },
+            {
+              "resident": 60812,
+              "virtual": 127028,
+              "cmd": "python3.12",
+              "pid": 2006829,
+              "ppid": 2006818,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2006869,
+              "ppid": 2006852
+            },
+            {
+              "resident": 73360,
+              "virtual": 140188,
+              "cmd": "python",
+              "pid": 2006852,
+              "ppid": 2006829,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1421569,
+          "user": "ec-havardtl",
+          "processes": [
+            {
+              "resident": 45056,
+              "virtual": 45924,
+              "cmd": "RNALfold",
+              "pid": 2006871,
+              "ppid": 2006868,
+              "cpu_avg": 99.1,
+              "cpu_time": 3274
+            },
+            {
+              "virtual": 572,
+              "cmd": "slurm_script",
+              "pid": 2006762,
+              "ppid": 2006728
+            },
+            {
+              "resident": 60624,
+              "virtual": 126900,
+              "cmd": "python3.12",
+              "pid": 2006773,
+              "ppid": 2006762,
+              "cpu_time": 2
+            },
+            {
+              "resident": 73996,
+              "virtual": 140184,
+              "cmd": "python",
+              "pid": 2006845,
+              "ppid": 2006773,
+              "cpu_time": 1
+            },
+            {
+              "virtual": 572,
+              "cmd": "sh",
+              "pid": 2006868,
+              "ppid": 2006845
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
