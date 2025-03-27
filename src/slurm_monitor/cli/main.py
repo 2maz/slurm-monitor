@@ -9,6 +9,7 @@ from slurm_monitor.cli.listen import ListenParser
 from slurm_monitor.cli.system_info import SystemInfoParser
 from slurm_monitor.cli.autodeploy import AutoDeployParser
 from slurm_monitor.cli.query import QueryParser
+from slurm_monitor.cli.data_import import ImportParser
 from slurm_monitor import __version__
 
 logger = getLogger(__name__)
@@ -40,30 +41,39 @@ def run():
     main_parser = MainParser()
 
     main_parser.attach_subcommand_parser(
-        subcommand="probe",
-        help="Probe/monitor system",
-        parser_klass=ProbeParser
-    )
-    main_parser.attach_subcommand_parser(
-        subcommand="listen",
-        help="Listen to monitor messages",
-        parser_klass=ListenParser
-    )
-    main_parser.attach_subcommand_parser(
-        subcommand="system-info",
-        help="Extract system information",
-        parser_klass=SystemInfoParser
-    )
-    main_parser.attach_subcommand_parser(
         subcommand="auto-deploy",
         help="Watch status messages and auto-deploy nodes if needed",
         parser_klass=AutoDeployParser
     )
 
     main_parser.attach_subcommand_parser(
+        subcommand="import",
+        help="Import data into the database",
+        parser_klass=ImportParser
+    )
+
+    main_parser.attach_subcommand_parser(
+        subcommand="listen",
+        help="Listen to monitor messages",
+        parser_klass=ListenParser
+    )
+
+    main_parser.attach_subcommand_parser(
+        subcommand="probe",
+        help="Probe/monitor system",
+        parser_klass=ProbeParser
+    )
+
+    main_parser.attach_subcommand_parser(
         subcommand="query",
         help="Query the database",
         parser_klass=QueryParser
+    )
+
+    main_parser.attach_subcommand_parser(
+        subcommand="system-info",
+        help="Extract system information",
+        parser_klass=SystemInfoParser
     )
 
     args = main_parser.parse_args()
