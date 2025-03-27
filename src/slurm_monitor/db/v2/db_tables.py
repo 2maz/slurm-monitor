@@ -339,6 +339,7 @@ class GPUIdList(types.TypeDecorator):
 
 class UUID(types.TypeDecorator):
     impl = String
+    cache_ok = True
 
 
 class Node(TableBase):
@@ -359,6 +360,11 @@ class NodeConfig(TableBase):
 
     os_name = Column(Text)
     os_release = Column(Text)
+    sockets = Column(Integer)
+    cores_per_socket = Column(Integer)
+    threads_per_core = Column(Integer)
+    cpu_model = Column(String)
+    architecture = Column(String)
 
     description = Column(Text)
 
@@ -369,22 +375,6 @@ class NodeConfig(TableBase):
     cards = Column(ARRAY(UUID), desc="Array of gpu-card uuid", default=[])
 
     timestamp = Column(DateTime(timezone=True), default=dt.datetime.now, primary_key=True)
-
-    __table_args__ = (
-        ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
-        {}
-    )
-
-class Core(TableBase):
-    __tablename__ = "core"
-
-    cluster = Column(Text, primary_key=True)
-    node = Column(Text, primary_key=True)
-
-    # core-model: (index: unsigned, physical: unsigned, model: string)
-    index = Column(Integer)
-    physical = Column(Integer)
-    model = Column(String)
 
     __table_args__ = (
         ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),

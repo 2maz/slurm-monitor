@@ -1,5 +1,4 @@
 from slurm_monitor.db.v2.db_tables import (
-    Core,
     GPUCard,
     GPUCardConfig,
     GPUCardStatus,
@@ -70,16 +69,15 @@ class DBJsonImporter:
         timestamp = dt.fromisoformat(attributes["time"])
         del attributes['time']
 
-        cores = attributes['cores']
-        del attributes['cores']
-
+        gpu_uuids = []
         gpu_info = []
         if 'cards' in attributes:
-            gpu_cards = []
-            gpu_card_configs = []
 
             cards = attributes['cards']
             del attributes['cards']
+
+            gpu_cards = []
+            gpu_card_configs = []
 
             for card in cards:
                 data = {}
@@ -88,11 +86,13 @@ class DBJsonImporter:
                         data[field] = card[field]
                         del card[field]
 
+                gpu_uuid = card['uuid'],
                 gpu_cards.append(GPUCard(
-                        uuid=card["uuid"],
+                        uuid=gpu_uuid,
                         **data
                     )
                 )
+                gpu_uuids.append(gpu_uuid)
 
                 gpu_card_configs.append(
                         GPUCardConfig(
@@ -105,8 +105,15 @@ class DBJsonImporter:
             gpu_info.append(gpu_cards)
             gpu_info.append(gpu_card_configs)
        
-        node = Node(cluster=attributes.get('cluster', ''), node=attributes['node'])
-        node_config = NodeConfig(timestamp=timestamp, **attributes)
+        node = Node(
+                    cluster=attributes.get('cluster', ''),
+                    node=attributes['node']
+               )
+        node_config = NodeConfig(
+                    timestamp=timestamp,
+                    cards=gpu_uuids,
+                    **attributes
+                )
 
         return [node, node_config] + gpu_info
 

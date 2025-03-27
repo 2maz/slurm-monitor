@@ -16,10 +16,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from slurm_monitor.utils.slurm import Slurm
-from slurm_monitor.app_settings import AppSettings
+from slurm_monitor.app_settings import AppSettings, AppSettingsV2
 from slurm_monitor.api.v1.router import app as api_v1_app
 from slurm_monitor.db.v1.data_collector import start_jobs_collection
 from slurm_monitor.db.v1.db import SlurmMonitorDB
+
+from slurm_monitor.api.v2.router import app as api_v2_app
+from slurm_monitor.db.v2.db import ClusterDB
 
 import logging
 from logging import getLogger
@@ -40,10 +43,18 @@ async def lifespan(app: FastAPI):
 
     logger.info("Setting up database ...")
     app_settings = AppSettings.initialize()
+    app_settings_v2 = AppSettingsV2.initialize()
+
     database = SlurmMonitorDB(app_settings.database)
 
     # First make sure that this runs on a slurm system
-    Slurm.ensure_commands()
+    do_use_slurm = True
+    if "SLURM_MONITOR_USE_SLURM" in os.environ:
+        if os.environ["SLURM_MONITOR_USE_SLURM"].lower() == "false":
+            do_use_slurm = False
+
+    if do_use_slurm:
+        Slurm.ensure_commands()
 
     do_collect_jobs = True
     if "SLURM_MONITOR_JOBS_COLLECTOR" in os.environ:
@@ -102,3 +113,4 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 # Serve API. We want the API to take full charge of its prefix, not involve the SPA mount
 # at all, hence we use a submount rather than subrouter.
 app.mount(api_v1_app.root_path, api_v1_app)
+app.mount(api_v2_app.root_path, api_v2_app)

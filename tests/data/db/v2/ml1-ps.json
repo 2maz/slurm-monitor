@@ -7,6 +7,7 @@
     "type": "sample",
     "attributes": {
       "time": "2025-03-20T13:20:02+01:00",
+      "cluster": "hpc.uio.no",
       "node": "ml1.hpc.uio.no",
       "system": {
         "cpus": [
