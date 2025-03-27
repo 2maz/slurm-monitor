@@ -155,6 +155,9 @@ class DBJsonImporter:
                         gpu_card_process_stati.append(
                             GPUCardProcessStatus(
                                 pid=pid,
+                                job=job_id,
+                                user=user,
+                                epoch=epoch,
                                 timestamp=timestamp,
                                 **gpu_data
                             )

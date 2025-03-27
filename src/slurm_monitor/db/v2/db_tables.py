@@ -494,8 +494,8 @@ class GPUCardStatus(TableBase):
     # current compute mode: card-specific if known at all
     compute_mode = Column(Text)
 
-    # current performance level, card-specific >= 0, or -1 for 'unknown'
-    performance_state = Column(Integer, default=-1)
+    # current performance level, card-specific >= 0, 0 for 'unknown'
+    performance_state = Column(Integer)
 
     # kB of memory_use
     memory = Column(Integer)
@@ -539,6 +539,13 @@ class GPUCardProcessStatus(TableBase):
     )
 
     pid = Column(BigInteger, primary_key=True)
+
+    job = Column(BigInteger, primary_key=True)
+    epoch = Column(BigInteger,
+            desc="Bootcycle presentation of node - continuously increasing number",
+            primary_key=True)
+    user = Column(String)
+
     # TBD: Could consider 'node' as redundant entry in here
     # node = Column(Text)
 

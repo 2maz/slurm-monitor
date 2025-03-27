@@ -10,7 +10,7 @@ if [ "$1" == "" ]; then
         done
 
         # ex3
-        for node_id in "g001"; do
+        for node_id in "g001" "g002"; do
             json_files=$(ls $TESTS_DIR/data/db/v2/ex3/ex3-$node_id-$suffix*.json)
             IMPORT_FILES="$IMPORT_FILES $json_files"
         done

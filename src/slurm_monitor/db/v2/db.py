@@ -1,4 +1,6 @@
+import asyncio
 import os
+from collections.abc import Awaitable
 import datetime as dt
 from pydantic import BaseModel
 from sqlalchemy.orm import sessionmaker
@@ -21,6 +23,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 import logging
+from slurm_monitor.utils import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -263,13 +266,13 @@ class ClusterDB(Database):
         elif type(nodelist) == str:
             nodelist = [nodelist]
 
-        node_configs = await self.fetch_all_async(NodeConfig, 
+        node_configs = await self.fetch_all_async(NodeConfig,
                     (NodeConfig.cluster == cluster) & (NodeConfig.node.in_(nodelist)),
                     order_by=NodeConfig.node
                 )
 
         nodeinfo = {}
-        for node_config in sorted(node_configs):
+        for node_config in node_configs:
             nodename = node_config.node
 
             nodeinfo[nodename] = dict(node_config)
@@ -281,7 +284,8 @@ class ClusterDB(Database):
         return nodeinfo
 
     async def get_last_node_configs(self, cluster: str, node: str | list[str] | None = None,
-            from_time: dt.datetime | None = None , to_time: dt.datetime | None = None ) -> NodeConfig:
+            start_time_in_s: int | None = None ,
+            end_time_in_s: int | None = None ) -> NodeConfig:
 
         nodelist = node
         if node is None:
@@ -302,13 +306,14 @@ class ClusterDB(Database):
                          NodeConfig.node.in_(node)
                        )
 
-            if from_time:
+            if start_time_in_s:
                 subquery = subquery.filter(
-                            NodeConfig.timestamp >= from_time
+                            NodeConfig.timestamp >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
+
                         )
-            if to_time:
+            if end_time_in_s:
                 subquery = subquery.filter(
-                            NodeConfig.timestamp <= to_time
+                            NodeConfig.timestamp <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
                         )
 
             subquery = subquery.group_by(
@@ -337,7 +342,8 @@ class ClusterDB(Database):
 
 
     async def get_gpu_infos(self, cluster: str, node: str,
-            from_time: dt.datetime | None = None , to_time: dt.datetime | None = None ) -> list[dict[str, any]]:
+            start_time_in_s: int | None = None ,
+            end_time_in_s: int | None = None ) -> Awaitable[list[dict[str, any]]]:
         """
         Get an array of GPUCard + GPUCardConfig information for the given cluster and node
         """
@@ -346,7 +352,8 @@ class ClusterDB(Database):
 
             node_config = await self.get_last_node_configs(
                                     cluster=cluster, node=node,
-                                    from_time=from_time, to_time=to_time
+                                    start_time_in_s=start_time_in_s,
+                                    end_time_in_s=end_time_in_s
                             )
 
             if node_config:
@@ -363,13 +370,13 @@ class ClusterDB(Database):
                             GPUCardConfig.uuid.in_(cards)
                        )
 
-            if from_time:
+            if start_time_in_s:
                 subquery = subquery.filter(
-                            GPUCardConfig.timestamp >= from_time
+                            GPUCardConfig.timestamp >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
                         )
-            if to_time:
+            if end_time_in_s:
                 subquery = subquery.filter(
-                            GPUCardConfig.timestamp <= to_time
+                            GPUCardConfig.timestamp <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
                         )
 
             subquery = subquery.group_by(
@@ -391,15 +398,346 @@ class ClusterDB(Database):
             async with self.make_async_session() as session:
                 gpus = (await session.execute(query)).all()
                 if gpus:
-                    # result: 
+                    # result:
                     #   list of tuple - (GPUCard, GPUCardConfig)
                     #   merge into a single dictionary
                     gpus = [dict(x[0]) | dict(x[1]) for x in gpus]
-                
+
                 return gpus
         except Exception as e:
             logger.warning(e)
             raise
 
         return {}
+
+    async def get_last_probe_timestamp(self, cluster: str) -> Awaitable[dict[str, dt.datetime]]:
+        """
+        Get the timestamp of the lastest sample for all nodes in this cluster
+        """
+        query = select(
+                     ProcessStatus.node,
+                     func.max(ProcessStatus.timestamp).label('max_timestamp')
+                   ).filter(
+                     ProcessStatus.cluster == cluster
+                   ).group_by(
+                     ProcessStatus.node
+                   )
+
+        async with self.make_async_session() as session:
+            timestamps = (await session.execute(query)).all()
+            if timestamps:
+                # result:
+                #   list of tuple - (node, max_timestamp)
+                #   merge into a single dictionary
+                return {x[0]: x[1] for x in timestamps}
+
+        return {}
+
+
+    async def get_nodes_gpu_process_status_timeseries(
+            self,
+            cluster: str,
+            nodes: list[str],
+            start_time_in_s: int,
+            end_time_in_s: int,
+            resolution_in_s: int
+            ):
+        """
+        return:
+            nodename:
+                gpu_uuid:
+                    job_id+_+epoch:
+                        pid: Array[GPUCardProcessStatus]
+
+        """
+
+        node_configs = await self.get_last_node_configs(
+                           cluster=cluster,
+                           node=nodes,
+                           start_time_in_s=start_time_in_s,
+                           end_time_in_s=end_time_in_s,
+                        )
+
+        if not node_configs:
+            raise RuntimeError(f"gpu_process_status: {nodes=} on {cluster=} are not available")
+
+        nodes_gpu_process_status = {}
+        for node_config in node_configs:
+            cards = [x[0] for x in node_config.cards]
+
+            # Identifiable processes in the time window
+            subquery = select(
+                        GPUCardProcessStatus.job,
+                        GPUCardProcessStatus.epoch,
+                        GPUCardProcessStatus.pid,
+                        GPUCardProcessStatus.uuid
+                    ).where(
+                        GPUCardProcessStatus.uuid.in_(cards)
+                    )
+
+            if start_time_in_s:
+                subquery = subquery.filter(
+                    GPUCardProcessStatus.timestamp >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
+                )
+
+            if end_time_in_s:
+                subquery = subquery.filter(
+                    GPUCardProcessStatus.timestamp <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
+                )
+            subquery = subquery.distinct()
+
+            async with self.make_async_session() as session:
+                process_ids = (await session.execute(subquery)).all()
+
+            processes = {}
+            for process_id in process_ids:
+                job, epoch, pid, uuid = process_id
+                timeseries_data = await self.get_gpu_process_status_timeseries(
+                        uuid=uuid,
+                        job=job,
+                        epoch=epoch,
+                        start_time_in_s=start_time_in_s,
+                        end_time_in_s=end_time_in_s,
+                        resolution_in_s=resolution_in_s
+                )
+
+                if uuid not in processes:
+                    processes[uuid] = []
+
+                processes[uuid].append(
+                    {
+                      "job": job,
+                      "epoch": epoch,
+                      "data": timeseries_data
+                    }
+                )
+
+            nodes_gpu_process_status[node_config.node] = processes
+
+        return nodes_gpu_process_status
+
+    async def get_gpu_process_status_timeseries(self,
+            uuid: str,
+            job: int,
+            epoch: int,
+            start_time_in_s: int,
+            end_time_in_s: int,
+            resolution_in_s: int) -> Awaitable[list[dict[str, any]]]:
+
+            query = select(
+                        GPUCardProcessStatus.gpu_util,
+                        GPUCardProcessStatus.gpu_memory,
+                        GPUCardProcessStatus.gpu_memory_util,
+                        GPUCardProcessStatus.timestamp
+                    ).where(
+                        (GPUCardProcessStatus.job == job) &
+                        (GPUCardProcessStatus.epoch == epoch) &
+                        (GPUCardProcessStatus.uuid == uuid)
+                    ).filter(
+                        GPUCardProcessStatus.timestamp >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
+                    ).filter(
+                        GPUCardProcessStatus.timestamp <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
+                    ).order_by(
+                        GPUCardProcessStatus.timestamp.asc()
+                    )
+
+            async with self.make_async_session() as session:
+                timeseries = (await session.execute(query)).all()
+                return [
+                        {
+                            'gpu_util': x[0],
+                            'gpu_memory': x[1],
+                            'gpu_memory_util': x[2],
+                            'timestamp': x[3]
+                        } for x in timeseries
+                ]
+
+    async def get_node_gpu_process_util(self,
+            cluster: str,
+            node: str
+        ):
+        """
+        Get the latest gpu utilization for the given node
+        """
+
+        node_config = await self.get_last_node_configs(cluster=cluster, node=node)
+        if node_config:
+            node_config = node_config[0]
+            cards = [x[0] for x in node_config.cards]
+        else:
+            raise RuntimeError(f"Failed to retrieve node config for {cluster=} {node=}")
+
+        return await self.get_gpu_process_util(uuids=cards)
+
+
+    async def get_gpu_process_util(self,
+            uuids: str | list[str]
+        ):
+        """
+        Get the latest gpu utilization for the given uuids
+        """
+
+        try:
+            start_time_in_s = utcnow().timestamp() - 60
+            query = select(
+                         GPUCardProcessStatus.uuid,
+                         func.max(GPUCardProcessStatus.timestamp).label('max_timestamp')
+                       ).filter(
+                         (GPUCardProcessStatus.uuid.in_(uuids)) &
+                         (GPUCardProcessStatus.timestamp >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc))
+                       ).group_by(
+                         GPUCardProcessStatus.uuid
+                       )
+
+            async with self.make_async_session() as session:
+                last_timestamps = (await session.execute(query)).all()
+
+            data = {}
+            for last_timestamp in last_timestamps:
+                uuid, timestamp = last_timestamp
+
+                query = select(
+                            GPUCardProcessStatus.uuid,
+                            GPUCardProcessStatus.gpu_memory,
+                            func.sum(GPUCardProcessStatus.gpu_util),
+                            func.sum(GPUCardProcessStatus.gpu_memory_util),
+                        ).where(
+                            (GPUCardProcessStatus.uuid == uuid) &
+                            (GPUCardProcessStatus.timestamp == timestamp)
+                        ).group_by(
+                            GPUCardProcessStatus.uuid,
+                            GPUCardProcessStatus.gpu_memory
+                        )
+
+                async with self.make_async_session() as session:
+                    uuid_result = (await session.execute(query)).all()
+                    if uuid_result:
+                        uuid, gpu_memory, gpu_util, gpu_memory_util = uuid_result[0]
+                        data[uuid] = {
+                                     'gpu_memory': gpu_memory,
+                                     'gpu_util': gpu_util,
+                                     'gpu_memory_util': gpu_memory_util
+                                 }
+            return data
+        except Exception as e:
+            logger.warning(e)
+            raise
+
+    async def get_nodes_process_status_timeseries(
+            self,
+            cluster: str,
+            nodes: list[str],
+            start_time_in_s: int,
+            end_time_in_s: int,
+            resolution_in_s: int
+            ):
+        """
+        return:
+            nodename:
+                Array[{job: int, epoch: int, data: Dict}]
+
+        """
+        node_configs = await self.get_last_node_configs(
+                           cluster=cluster,
+                           node=nodes,
+                           start_time_in_s=start_time_in_s,
+                           end_time_in_s=end_time_in_s,
+                        )
+
+        if not node_configs:
+            raise RuntimeError(f"gpu_process_status: {nodes=} on {cluster=} are not available")
+
+        nodes_process_status = {}
+        for node_config in node_configs:
+            # Identifiable processes in the time window
+            subquery = select(
+                        ProcessStatus.job,
+                        ProcessStatus.epoch,
+                        ProcessStatus.pid,
+                    )
+
+            if start_time_in_s:
+                subquery = subquery.filter(
+                    ProcessStatus.timestamp >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
+                )
+
+            if end_time_in_s:
+                subquery = subquery.filter(
+                    ProcessStatus.timestamp <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
+                )
+            subquery = subquery.distinct()
+
+            async with self.make_async_session() as session:
+                process_ids = (await session.execute(subquery)).all()
+
+            jobs = {}
+            for process_id in process_ids:
+                job, epoch, pid = process_id
+                timeseries_data = await self.get_process_status_timeseries(
+                        job=job,
+                        epoch=epoch,
+                        pid=pid,
+                        start_time_in_s=start_time_in_s,
+                        end_time_in_s=end_time_in_s,
+                        resolution_in_s=resolution_in_s
+                )
+
+                job_id = f"{job}_{epoch}"
+                if job_id not in jobs:
+                    jobs[job_id] = {
+                      "job": job,
+                      "epoch": epoch,
+                      "processes": []
+                    }
+
+                jobs[job_id]["processes"].append(
+                    {
+                      "pid": pid,
+                      "data": timeseries_data
+                    }
+                )
+
+            nodes_process_status[node_config.node] = [y for x,y in jobs.items()]
+
+        return nodes_process_status
+
+    async def get_process_status_timeseries(self,
+            job: int,
+            epoch: int,
+            pid: str,
+            start_time_in_s: int,
+            end_time_in_s: int,
+            resolution_in_s: int) -> Awaitable[list[dict[str, any]]]:
+
+            query = select(
+                        ProcessStatus.resident,
+                        ProcessStatus.virtual,
+                        ProcessStatus.cpu_avg,
+                        ProcessStatus.cpu_util,
+                        ProcessStatus.cpu_time,
+                        ProcessStatus.timestamp
+                    ).where(
+                        (ProcessStatus.job == job) &
+                        (ProcessStatus.epoch == epoch) &
+                        (ProcessStatus.pid == pid)
+                    ).filter(
+                        ProcessStatus.timestamp >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
+                    ).filter(
+                        ProcessStatus.timestamp <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
+                    ).order_by(
+                        ProcessStatus.timestamp.asc()
+                    )
+
+            async with self.make_async_session() as session:
+                timeseries = (await session.execute(query)).all()
+                return [
+                        {
+                            'resident': x[0],
+                            'virtual': x[1],
+                            'cpu_avg': x[2],
+                            'cpu_util': x[3],
+                            'cpu_time': x[4],
+                            'timestamp': x[5]
+                        } for x in timeseries
+                ]
 
