@@ -36,9 +36,12 @@ dependencies = [
     "asyncpg",
     "aiosqlite",
     "fastparquet",
+    "fastapi",
+    "fastapi-cache2[memcache]",
     "kafka-python-ng",
     "numpy",
     "pandas",
+    "prometheus-fastapi-instrumentator",
     "psutil",
     "pyarrow",
     "pydantic",
@@ -46,7 +49,9 @@ dependencies = [
     "pyyaml",
     "psycopg2-binary",
     "sqlalchemy",
+    "sqlalchemy-schemadisplay",
     "tqdm",
+    "uvicorn"
 ]
 
 [project.urls]
@@ -57,12 +62,6 @@ repository = "https://gitlab.com/simula/slurm-monitor"
 #[project.entry-points]
 
 [project.optional-dependencies]
-restapi = [
-    "fastapi",
-    "fastapi-cache2[memcache]",
-    "prometheus-fastapi-instrumentator",
-    "uvicorn",
-]
 
 vendorlibs = [
     "pynvml",
