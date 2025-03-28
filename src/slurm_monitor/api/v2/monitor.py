@@ -1,4 +1,6 @@
 # from slurm_monitor.backend.worker import celery_app
+import asyncio
+import datetime as dt
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response, FileResponse
 from fastapi_cache.decorator import cache
@@ -95,231 +97,319 @@ async def nodes_nodename_topology(cluster: str, nodename: str):
                 detail=f"No topology information available for {nodename=} {cluster=}")
 
 
+@api_router.get("/{cluster}/nodes/last_probe_timestamp", response_model=dict[str, dt.datetime])
+async def nodes_last_probe_timestamp(cluster: str):
+    """
+    Retrieve the last the timestamps of
+    """
+    dbi = db_ops.get_database_v2()
+    return await dbi.get_last_probe_timestamp(cluster=cluster)
+
+
+@api_router.get("/{cluster}/nodes/{nodename}/gpu_util")
+async def nodes_gpu_process_util(
+    cluster: str,
+    nodename: str,
+    dbi=Depends(db_ops.get_database_v2),
+):
+    try:
+        return await dbi.get_node_gpu_process_util(
+                cluster=cluster,
+                node=nodename,
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500,
+                detail=str(e))
+
+@api_router.get("/{cluster}/nodes/{nodename}/gpu_process_status")
+@api_router.get("/{cluster}/nodes/gpu_process_status")
+async def nodes_gpu_process_status(
+    cluster: str,
+    nodename: str | None = None,
+    start_time_in_s: float | None = None,
+    end_time_in_s: float | None = None,
+    resolution_in_s: int | None = None,
+    dbi=Depends(db_ops.get_database_v2),
+):
+    try:
+        start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s,
+                resolution_in_s=resolution_in_s
+        )
+
+        nodes = None if nodename is None else [nodename]
+        return await dbi.get_nodes_gpu_process_status_timeseries(
+                cluster=cluster,
+                nodes=nodes,
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s,
+                resolution_in_s=resolution_in_s
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500,
+                detail=str(e))
+
+@api_router.get("/{cluster}/nodes/{nodename}/process_status")
+@api_router.get("/{cluster}/nodes/process_status")
+async def nodes_process_status(
+    cluster: str,
+    nodename: str | None = None,
+    start_time_in_s: float | None = None,
+    end_time_in_s: float | None = None,
+    resolution_in_s: int | None = None,
+    dbi=Depends(db_ops.get_database_v2),
+):
+    try:
+        start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s,
+                resolution_in_s=resolution_in_s
+        )
+
+        nodes = None if nodename is None else [nodename]
+        return await dbi.get_nodes_process_status_timeseries(
+                cluster=cluster,
+                nodes=nodes,
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s,
+                resolution_in_s=resolution_in_s
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500,
+                detail=str(e))
+
+@api_router.get("/{cluster}/nodes/{nodename}/cpu_memory_status")
+@api_router.get("/{cluster}/nodes/cpu_memory_status")
+async def cpu_memory_status(
+    cluster: str,
+    nodename: str | None = None,
+    start_time_in_s: float | None = None,
+    end_time_in_s: float | None = None,
+    resolution_in_s: int | None = None,
+    dbi=Depends(db_ops.get_database_v2),
+):
+    try:
+        start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s,
+                resolution_in_s=resolution_in_s
+        )
+
+        nodes = await dbi.get_nodes() if nodename is None else [nodename]
+        tasks = {}
+        for node in nodes:
+            tasks[node] = asyncio.create_task(dbi.get_cpu_status_timeseries(
+                    cluster=cluster,
+                    node=nodename,
+                    start_time_in_s=start_time_in_s,
+                    end_time_in_s=end_time_in_s,
+                    resolution_in_s=resolution_in_s,
+                )
+            )
+        return { 'cpu_memory_status': {node : (await tasks[node]) for node in nodes}}
+    except Exception as e:
+        raise HTTPException(status_code=500,
+                detail=str(e))
+
+@api_router.get("/{cluster}/nodes/{nodename}/gpu_status")
+@api_router.get("/{cluster}/nodes/gpu_status")
+async def cpu_memory_status(
+    cluster: str,
+    nodename: str | None = None,
+    start_time_in_s: float | None = None,
+    end_time_in_s: float | None = None,
+    resolution_in_s: int | None = None,
+    dbi=Depends(db_ops.get_database_v2),
+):
+    try:
+        start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s,
+                resolution_in_s=resolution_in_s
+        )
+
+        nodes = await dbi.get_nodes() if nodename is None else [nodename]
+        tasks = {}
+        for node in nodes:
+            tasks[node] = asyncio.create_task(dbi.get_gpu_status_timeseries(
+                    cluster=cluster,
+                    node=nodename,
+                    start_time_in_s=start_time_in_s,
+                    end_time_in_s=end_time_in_s,
+                    resolution_in_s=resolution_in_s,
+                )
+            )
+        return { 'gpu_status': {node : (await tasks[node]) for node in nodes}}
+    except Exception as e:
+        raise HTTPException(status_code=500,
+                detail=str(e))
+
 
 ####### v1 ###############################
-@api_router.get("/jobs", response_model=None)
-@cache(expire=30)
-async def jobs():
-    """
-    Check status of jobs
-    """
-    return _get_slurmrestd("/jobs")
+if False:
+    @api_router.get("/jobs", response_model=None)
+    @cache(expire=30)
+    async def jobs():
+        """
+        Check status of jobs
+        """
+        return _get_slurmrestd("/jobs")
 
 
 
-@api_router.get("/{cluster}/partitions", response_model=None)
-@cache(expire=3600)
-async def partitions():
-    """
-    Check status of partitions
-    """
-    return _get_slurmrestd("/partitions")
+    @api_router.get("/{cluster}/partitions", response_model=None)
+    @cache(expire=3600)
+    async def partitions():
+        """
+        Check status of partitions
+        """
+        return _get_slurmrestd("/partitions")
 
-
-@api_router.get("{cluster}/nodes/last_probe_timestamp", response_model=None)
-async def nodes_last_probe_timestamp(cluster: str):
-    dbi = db_ops.get_database()
-    return await dbi.get_last_probe_timestamp()
-
-@api_router.get("/nodes/{nodename}/gpu_status")
-@api_router.get("/nodes/gpustatus")
-async def gpustatus(
-    nodename: str | None = None,
-    start_time_in_s: float | None = None,
-    end_time_in_s: float | None = None,
-    resolution_in_s: int | None = None,
-    local_indices: str | None = None,
-    dbi=Depends(db_ops.get_database),
-):
-    start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s
-    )
-
-    if local_indices is not None:
-        local_indices = [int(x) for x in local_indices.split(',')]
-
-    nodes = [] if nodename is None else [nodename]
-    return {
-        "gpu_status": await dbi.get_gpu_status_timeseries_list(
-            nodes=nodes,
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s,
-            local_indices=local_indices,
+    @api_router.get("/nodes/{nodename}/memory_status")
+    @api_router.get("/nodes/memory_status")
+    async def memory_status(
+        nodename: str | None = None,
+        start_time_in_s: float | None = None,
+        end_time_in_s: float | None = None,
+        resolution_in_s: int | None = None,
+        dbi=Depends(db_ops.get_database),
+    ):
+        start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s,
+                resolution_in_s=resolution_in_s
         )
-    }
 
-@api_router.get("/nodes/{nodename}/cpu_status")
-@api_router.get("/nodes/cpu_status")
-async def cpu_status(
-    nodename: str | None = None,
-    start_time_in_s: float | None = None,
-    end_time_in_s: float | None = None,
-    resolution_in_s: int | None = None,
-    dbi=Depends(db_ops.get_database),
-):
-    start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s
-    )
+        nodes = [] if nodename is None else [nodename]
+        return {
+            "memory_status": await dbi.get_memory_status_timeseries_list(
+                nodes=nodes,
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s,
+                resolution_in_s=resolution_in_s,
+            )
+        }
 
-    nodes = [] if nodename is None else [nodename]
-    return {
-        "cpu_status": await dbi.get_cpu_status_timeseries_list(
-            nodes=nodes,
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s,
-        )
-    }
-
-@api_router.get("/nodes/{nodename}/memory_status")
-@api_router.get("/nodes/memory_status")
-async def memory_status(
-    nodename: str | None = None,
-    start_time_in_s: float | None = None,
-    end_time_in_s: float | None = None,
-    resolution_in_s: int | None = None,
-    dbi=Depends(db_ops.get_database),
-):
-    start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s
-    )
-
-    nodes = [] if nodename is None else [nodename]
-    return {
-        "memory_status": await dbi.get_memory_status_timeseries_list(
-            nodes=nodes,
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s,
-        )
-    }
-
-@api_router.get("/jobs/query")
-async def jobs_query(
-    user: str | None = None,
-    user_id: int | None = None,
-    job_id: int | None = None,
-    start_before_in_s: float | None = None,
-    start_after_in_s: float | None = None,
-    end_before_in_s: float | None = None,
-    end_after_in_s: float | None = None,
-    submit_before_in_s: float | None = None,
-    submit_after_in_s: float | None = None,
-    min_duration_in_s: float | None = None,
-    max_duration_in_s: float | None = None,
-    limit: int = 100,
-):
-    dbi = db_ops.get_database()
-    return {"jobs": await dbi.get_jobs(
-        user=user,
-        user_id=user_id,
-        job_id=job_id,
-        start_before_in_s=start_before_in_s,
-        start_after_in_s=start_after_in_s,
-        end_before_in_s=end_before_in_s,
-        end_after_in_s=end_after_in_s,
-        submit_before_in_s=submit_before_in_s,
-        submit_after_in_s=submit_after_in_s,
-        min_duration_in_s=min_duration_in_s,
-        max_duration_in_s=max_duration_in_s,
-        limit=limit
-        )
-    }
-
-@api_router.get("/job/{job_id}")
-@api_router.get("/jobs/{job_id}/info")
-async def job_status(
-    job_id: int,
-    start_time_in_s: float | None = None,
-    end_time_in_s: float | None = None,
-    resolution_in_s: int | None = None,
-    dbi=Depends(db_ops.get_database),
-):
-    return {"job_status": await dbi.get_job(job_id=job_id) }
-
-
-@api_router.get("/jobs/{job_id}/system_status")
-async def job_system_status(
-    job_id: int,
-    start_time_in_s: float | None = None,
-    end_time_in_s: float | None = None,
-    resolution_in_s: int | None = None,
-    detailed: bool = False,
-    dbi=Depends(db_ops.get_database),
-):
-    start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s
-    )
-
-    data = {}
-    timeseries_per_node = await dbi.get_job_status_timeseries_list(
+    @api_router.get("/jobs/query")
+    async def jobs_query(
+        user: str | None = None,
+        user_id: int | None = None,
+        job_id: int | None = None,
+        start_before_in_s: float | None = None,
+        start_after_in_s: float | None = None,
+        end_before_in_s: float | None = None,
+        end_after_in_s: float | None = None,
+        submit_before_in_s: float | None = None,
+        submit_after_in_s: float | None = None,
+        min_duration_in_s: float | None = None,
+        max_duration_in_s: float | None = None,
+        limit: int = 100,
+    ):
+        dbi = db_ops.get_database()
+        return {"jobs": await dbi.get_jobs(
+            user=user,
+            user_id=user_id,
             job_id=job_id,
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s,
-            detailed=detailed
-    )
-    data["nodes"] = timeseries_per_node
-    return data
+            start_before_in_s=start_before_in_s,
+            start_after_in_s=start_after_in_s,
+            end_before_in_s=end_before_in_s,
+            end_after_in_s=end_after_in_s,
+            submit_before_in_s=submit_before_in_s,
+            submit_after_in_s=submit_after_in_s,
+            min_duration_in_s=min_duration_in_s,
+            max_duration_in_s=max_duration_in_s,
+            limit=limit
+            )
+        }
 
-
-@api_router.get("/jobs/{job_id}/export")
-async def job_export(
+    @api_router.get("/job/{job_id}")
+    @api_router.get("/jobs/{job_id}/info")
+    async def job_status(
         job_id: int,
-        refresh: bool = False
-) -> FileResponse:
-    dbi = db_ops.get_database()
-    zip_filename = Path(f"{dbi.get_export_data_dirname(job_id=job_id)}.zip")
-    if refresh or not zip_filename.exists():
-        zip_filename = await dbi.export_data(job_id=job_id)
-
-    logger.info(f"Job Data Export: {zip_filename}")
-    return FileResponse(path=zip_filename, filename=f"job-data-{job_id}.zip")
+        start_time_in_s: float | None = None,
+        end_time_in_s: float | None = None,
+        resolution_in_s: int | None = None,
+        dbi=Depends(db_ops.get_database),
+    ):
+        return {"job_status": await dbi.get_job(job_id=job_id) }
 
 
-@api_router.get("/queries")
-@api_router.get("/queries/{query_name}")
-async def queries(
-    query_name: str = None,
-    start_time_in_s: float | None = None,
-    end_time_in_s: float | None = None,
-):
-    if query_name is None:
-        return { 'queries': QueryMaker.list_available() }
-
-    try:
-        query_maker = QueryMaker(db_ops.get_database())
-        query = query_maker.create(query_name)
-        df = await query.execute_async()
-
-        return df.to_dict(orient="records")
-    except Exception as e:
-        raise HTTPException(
-                status_code=404,
-                detail=f"Failed to execute query: '{query_name}' -- {e}"
+    @api_router.get("/jobs/{job_id}/system_status")
+    async def job_system_status(
+        job_id: int,
+        start_time_in_s: float | None = None,
+        end_time_in_s: float | None = None,
+        resolution_in_s: int | None = None,
+        detailed: bool = False,
+        dbi=Depends(db_ops.get_database),
+    ):
+        start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s,
+                resolution_in_s=resolution_in_s
         )
 
+        data = {}
+        timeseries_per_node = await dbi.get_job_status_timeseries_list(
+                job_id=job_id,
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s,
+                resolution_in_s=resolution_in_s,
+                detailed=detailed
+        )
+        data["nodes"] = timeseries_per_node
+        return data
 
-@api_router.get("/benchmarks/{benchmark_name}")
-def benchmarks(benchmark_name: str = "lambdal"):
-    app_settings = AppSettings.initialize()
-    if app_settings.data_dir is None:
-        return {}
 
-    path = Path(app_settings.data_dir) / f"{benchmark_name}-benchmark-results.csv"
-    if not path.exists():
-        return {}
+    @api_router.get("/jobs/{job_id}/export")
+    async def job_export(
+            job_id: int,
+            refresh: bool = False
+    ) -> FileResponse:
+        dbi = db_ops.get_database()
+        zip_filename = Path(f"{dbi.get_export_data_dirname(job_id=job_id)}.zip")
+        if refresh or not zip_filename.exists():
+            zip_filename = await dbi.export_data(job_id=job_id)
 
-    df = pd.read_csv(str(path))
-    df = df.fillna(-1)
-    del df['Unnamed: 0']
-    return df.to_dict(orient="records")
+        logger.info(f"Job Data Export: {zip_filename}")
+        return FileResponse(path=zip_filename, filename=f"job-data-{job_id}.zip")
+
+
+    @api_router.get("/queries")
+    @api_router.get("/queries/{query_name}")
+    async def queries(
+        query_name: str = None,
+        start_time_in_s: float | None = None,
+        end_time_in_s: float | None = None,
+    ):
+        if query_name is None:
+            return { 'queries': QueryMaker.list_available() }
+
+        try:
+            query_maker = QueryMaker(db_ops.get_database())
+            query = query_maker.create(query_name)
+            df = await query.execute_async()
+
+            return df.to_dict(orient="records")
+        except Exception as e:
+            raise HTTPException(
+                    status_code=404,
+                    detail=f"Failed to execute query: '{query_name}' -- {e}"
+            )
+
+
+    @api_router.get("/benchmarks/{benchmark_name}")
+    def benchmarks(benchmark_name: str = "lambdal"):
+        app_settings = AppSettings.initialize()
+        if app_settings.data_dir is None:
+            return {}
+
+        path = Path(app_settings.data_dir) / f"{benchmark_name}-benchmark-results.csv"
+        if not path.exists():
+            return {}
+
+        df = pd.read_csv(str(path))
+        df = df.fillna(-1)
+        del df['Unnamed: 0']
+        return df.to_dict(orient="records")

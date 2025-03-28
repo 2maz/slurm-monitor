@@ -39,7 +39,8 @@ from .db_tables import (
     ProcessStatus,
     SoftwareVersion,
     TableMetadata,
-    TableBase
+    TableBase,
+    time_bucket
 )
 
 def create_url(url_str: str, username: str | None, password: str | None) -> URL:
@@ -641,10 +642,10 @@ class ClusterDB(Database):
             resolution_in_s: int) -> Awaitable[list[dict[str, any]]]:
 
             query = select(
-                        GPUCardProcessStatus.gpu_util,
-                        GPUCardProcessStatus.gpu_memory,
-                        GPUCardProcessStatus.gpu_memory_util,
-                        GPUCardProcessStatus.timestamp
+                        func.avg(GPUCardProcessStatus.gpu_util),
+                        func.avg(GPUCardProcessStatus.gpu_memory),
+                        func.avg(GPUCardProcessStatus.gpu_memory_util),
+                        time_bucket(resolution_in_s, GPUCardProcessStatus.timestamp).label('time_bucket')
                     ).where(
                         (GPUCardProcessStatus.job == job) &
                         (GPUCardProcessStatus.epoch == epoch) &
@@ -653,8 +654,10 @@ class ClusterDB(Database):
                         GPUCardProcessStatus.timestamp >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
                     ).filter(
                         GPUCardProcessStatus.timestamp <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
+                    ).group_by(
+                        'time_bucket',
                     ).order_by(
-                        GPUCardProcessStatus.timestamp.asc()
+                        'time_bucket'
                     )
 
             async with self.make_async_session() as session:
@@ -793,6 +796,7 @@ class ClusterDB(Database):
                         job=job,
                         epoch=epoch,
                         pid=pid,
+                        memory=node_config.memory,
                         start_time_in_s=start_time_in_s,
                         end_time_in_s=end_time_in_s,
                         resolution_in_s=resolution_in_s
@@ -821,17 +825,19 @@ class ClusterDB(Database):
             job: int,
             epoch: int,
             pid: str,
+            memory: int,
             start_time_in_s: int,
             end_time_in_s: int,
             resolution_in_s: int) -> Awaitable[list[dict[str, any]]]:
 
             query = select(
-                        ProcessStatus.resident,
-                        ProcessStatus.virtual,
-                        ProcessStatus.cpu_avg,
-                        ProcessStatus.cpu_util,
-                        ProcessStatus.cpu_time,
-                        ProcessStatus.timestamp
+                        func.avg(ProcessStatus.resident),
+                        func.avg(ProcessStatus.virtual),
+                        (func.avg(ProcessStatus.resident) / memory).label('memory_util'),
+                        func.avg(ProcessStatus.cpu_avg),
+                        func.avg(ProcessStatus.cpu_util),
+                        func.avg(ProcessStatus.cpu_time),
+                        time_bucket(resolution_in_s, ProcessStatus.timestamp).label("bucket"),
                     ).where(
                         (ProcessStatus.job == job) &
                         (ProcessStatus.epoch == epoch) &
@@ -840,20 +846,189 @@ class ClusterDB(Database):
                         ProcessStatus.timestamp >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
                     ).filter(
                         ProcessStatus.timestamp <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
+                    ).group_by(
+                       'bucket',
                     ).order_by(
-                        ProcessStatus.timestamp.asc()
+                       'bucket'
                     )
 
             async with self.make_async_session() as session:
                 timeseries = (await session.execute(query)).all()
                 return [
                         {
-                            'resident': x[0],
-                            'virtual': x[1],
-                            'cpu_avg': x[2],
-                            'cpu_util': x[3],
-                            'cpu_time': x[4],
-                            'timestamp': x[5]
+                            'memory_resident': x[0],
+                            'memory_virtual': x[1],
+                            'memory_util': round(x[2]*100,2),
+                            'cpu_avg': x[3],
+                            'cpu_util': x[4],
+                            'cpu_time': x[5],
+                            'timestamp': x[6]
                         } for x in timeseries
                 ]
 
+    async def get_cpu_status_timeseries(self,
+            cluster: str,
+            node: str,
+            start_time_in_s: int,
+            end_time_in_s: int,
+            resolution_in_s: int) -> Awaitable[list[dict[str, any]]]:
+
+            query = select(
+                    NodeConfig.memory,
+                    NodeConfig.timestamp
+                   ).where(
+                        (NodeConfig.cluster == cluster),
+                        (NodeConfig.node == node),
+                   )
+
+            async with self.make_async_session() as session:
+                node_config = (await session.execute(query)).all()
+                if node_config:
+                    memory = None
+                    for n in node_config:
+                        if memory is None:
+                            memory, timestamp = n
+                        else:
+                            if memory != n[0]:
+                                raise RuntimeError("cpu_status: memory changed - might lead to inconsistent reporting")
+                else:
+                    raise RuntimeError(f"cpu_status: missing node config for {node=}")
+
+            subquery = select(
+                        func.sum(ProcessStatus.resident).label('resident'),
+                        func.sum(ProcessStatus.virtual).label('virtual'),
+                        func.sum(ProcessStatus.cpu_avg).label('cpu_avg'),
+                        func.sum(ProcessStatus.cpu_util).label('cpu_util'),
+                        func.sum(ProcessStatus.cpu_time).label('cpu_time'),
+                        ProcessStatus.timestamp
+                    ).where(
+                        (ProcessStatus.cluster == cluster) &
+                        (ProcessStatus.node == node)
+                    ).filter(
+                        ProcessStatus.timestamp >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
+                    ).filter(
+                        ProcessStatus.timestamp <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
+                    ).group_by(
+                       ProcessStatus.timestamp,
+                    ).order_by(
+                       ProcessStatus.timestamp.asc()
+                    ).subquery()
+
+            query = select(
+                        func.avg(subquery.c.resident),
+                        func.avg(subquery.c.virtual),
+                        (func.avg(subquery.c.resident)/memory).label("memory_util"),
+                        func.avg(subquery.c.cpu_avg),
+                        func.avg(subquery.c.cpu_util),
+                        func.avg(subquery.c.cpu_time),
+                        time_bucket(resolution_in_s, subquery.c.timestamp).label("bucket"),
+                    ).select_from(
+                        subquery
+                    ).group_by(
+                       'bucket',
+                    ).order_by(
+                       'bucket'
+                    )
+
+            async with self.make_async_session() as session:
+                timeseries = (await session.execute(query)).all()
+                return [
+                        {
+                            'memory_resident': x[0],
+                            'memory_virtual': x[1],
+                            'memory_util': round(100*x[2],2),
+                            'cpu_avg': x[3],
+                            'cpu_util': x[4],
+                            'cpu_time': x[5],
+                            'timestamp': x[6]
+                        } for x in timeseries
+                ]
+
+    async def get_gpu_status_timeseries(
+            self,
+            cluster: str,
+            node: str,
+            start_time_in_s: int,
+            end_time_in_s: int,
+            resolution_in_s: int
+            ):
+        """
+        return:
+            [ { uuid: string, local_index: string, data: Array[GPUCardProcessStatus]} ]
+        """
+        query = select(
+                NodeConfig.cluster,
+                NodeConfig.node,
+                NodeConfig.cards,
+                func.max(NodeConfig.timestamp)
+               ).where(
+                    (NodeConfig.cluster == cluster),
+                    (NodeConfig.node == node)
+               ).group_by(
+                   NodeConfig.cluster,
+                   NodeConfig.node,
+                   NodeConfig.cards
+               )
+
+        async with self.make_async_session() as session:
+            node_configs = (await session.execute(query)).all()
+
+        gpu_status = []
+        for node_config in node_configs:
+            cards = [x[0] for x in node_config[2]]
+
+            for card_uuid in cards:
+                query = select(
+                        func.count(GPUCardStatus.failing).label("failure_count"),
+                        func.avg(GPUCardStatus.memory),
+                        func.avg(GPUCardStatus.memory_util),
+                        func.avg(GPUCardStatus.ce_util),
+                        func.avg(GPUCardStatus.temperature),
+                        func.avg(GPUCardStatus.power),
+                        func.avg(GPUCardStatus.power_limit),
+                        func.avg(GPUCardStatus.memory_clock),
+                        func.min(GPUCardStatus.index),
+                        time_bucket(resolution_in_s, GPUCardProcessStatus.timestamp).label('bucket')
+                    ).where(
+                        GPUCardStatus.uuid == card_uuid
+                    ).group_by(
+                        'bucket'
+                    ).order_by(
+                        'bucket'
+                    )
+
+                if start_time_in_s:
+                    query = query.filter(
+                        GPUCardProcessStatus.timestamp >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
+                    )
+
+                if end_time_in_s:
+                    query = query.filter(
+                        GPUCardProcessStatus.timestamp <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
+                    )
+
+                query = query.group_by(
+                            'bucket'
+                        ).order_by(
+                            'bucket'
+                        )
+
+                async with self.make_async_session() as session:
+                    node_samples = (await session.execute(query)).all()
+                    if node_samples:
+                        local_index = node_samples[0][8]
+                        timeseries_data = [{
+                                'failure_count': x[0],
+                                'memory': round(x[1],2),
+                                'memory_util': round(x[2],2),
+                                'ce_util': round(x[3],2),
+                                'temperature': round(x[4],2),
+                                'power': round(x[5],2),
+                                'power_limit': round(x[6],2),
+                                'memory_clock': round(x[7],2),
+                                'timestamp': x[9]
+                            } for x in node_samples]
+
+                        gpu_status.append({'uuid': card_uuid, 'local_index': local_index, 'data': timeseries_data })
+
+        return gpu_status

@@ -19,6 +19,7 @@ from sqlalchemy import (
     types,
     String,
     Text,
+    TIMESTAMP,
 )
 
 from sqlalchemy.orm import as_declarative, class_mapper
@@ -57,6 +58,21 @@ def compile_timescaledb(expr, compiler, **kwargs):
 @compiles(EpochFn, 'sqlite')
 def compile_sqlite(expr, compiler, **kwargs):
     return f"strftime('%s', {compiler.process(expr.clauses.clauses[0], **kwargs)})"
+
+class time_bucket(GenericFunction):
+    type = TIMESTAMP()
+    inherit_cache = True
+
+# For TimeScaledb
+@compiles(time_bucket, 'timescaledb')
+def compile_timescaledb(expr, compiler, **kwargs):
+    time_window = expr.clauses.clauses[0].value
+    time_column = f"{compiler.process(expr.clauses.clauses[1], **kwargs)}"
+
+    if type(time_window) == int:
+        return f"time_bucket('{time_window} seconds',{time_column})"
+    else:
+        return f"time_bucket('{time_window}',{time_column}"
 
 
 def Column(*args, **kwargs):
@@ -517,7 +533,6 @@ class GPUCardStatus(TableBase):
 
     ce_clock = Column(Integer)
     memory_clock = Column(Integer)
-
 
     timestamp = Column(DateTime(timezone=True), default=dt.datetime.now, primary_key=True)
 
