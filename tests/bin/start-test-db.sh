@@ -28,6 +28,7 @@ if [ ! -e $IMPORT_FILE ] ; then
 fi
 
 
+docker stop $CONTAINER_NAME
 docker run -d --rm --name $CONTAINER_NAME -p 7000:5432 -e POSTGRES_DB=test -e POSTGRES_PASSWORD=test -e POSTGRES_USER=test timescale/timescaledb:latest-pg17
 SLURM_MONITOR_DATABASE_URI=timescaledb://test:test@localhost:7000/test
 
@@ -41,6 +42,10 @@ for file in $IMPORT_FILES; do
     echo "slurm-monitor import --db-uri $SLURM_MONITOR_DATABASE_URI --file $file"
     slurm-monitor import --db-uri $SLURM_MONITOR_DATABASE_URI --file $file
 done
+
+# Will continue the existing timeseries data to the current time
+echo "Consider to complete db with:"
+echo "    slurm-monitor import --db-uri $SLURM_MONITOR_DATABASE_URI --fake-timeseries"
 
 echo ""
 echo "Running on $SLURM_MONITOR_DATABASE_URI"
