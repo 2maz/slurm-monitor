@@ -1,4 +1,5 @@
 import asyncio
+from tqdm import tqdm
 import os
 from collections.abc import Awaitable
 import datetime as dt
@@ -229,6 +230,121 @@ class ClusterDB(Database):
     ProcessStatus = ProcessStatus
     SoftwareVersion = SoftwareVersion
     #TableMetadata = TableMetadata
+
+    def fake_timeseries(self,
+            start_time: dt.datetime | None = None,
+            to_time: dt.datetime | None = None,
+            sampling_interval_in_s = 60
+        ):
+        self.fake_timeseries_process(
+                start_time=start_time,
+                to_time=to_time,
+                sampling_interval_in_s=sampling_interval_in_s)
+
+        self.fake_timeseries_gpu_process(
+                start_time=start_time,
+                to_time=to_time,
+                sampling_interval_in_s=sampling_interval_in_s)
+
+    def fake_timeseries_process(self,
+            start_time: dt.datetime | None = None,
+            to_time: dt.datetime | None = None,
+            sampling_interval_in_s = 60
+        ):
+
+        # Continue process data
+        query = select(
+                    ProcessStatus.job,
+                    ProcessStatus.epoch,
+                    ProcessStatus.pid,
+                    func.max(ProcessStatus.timestamp),
+                ).group_by(
+                    ProcessStatus.job,
+                    ProcessStatus.epoch,
+                    ProcessStatus.pid
+                )
+
+        with self.make_writeable_session() as session:
+            jobs = session.execute(query).all()
+
+        if to_time is None:
+            to_time = utcnow()
+
+        for job in tqdm(jobs, desc="jobs"):
+            job, epoch, pid, timestamp = job
+
+            query = select(
+                        ProcessStatus
+                    ).where(
+                        ((ProcessStatus.timestamp) == timestamp) &
+                        (ProcessStatus.job == job) &
+                        (ProcessStatus.epoch == epoch) &
+                        (ProcessStatus.pid == pid)
+                    )
+
+            with self.make_writeable_session() as session:
+                processes = session.execute(query).all()
+
+            timeseries = []
+            samples_to_add = int((to_time - timestamp).total_seconds()/ sampling_interval_in_s)
+            for i in tqdm(range(0, samples_to_add), desc=f"samples for {job=} {epoch=} {pid=}"):
+                timestamp += dt.timedelta(seconds=sampling_interval_in_s)
+                for process in processes:
+                    sample = dict(process[0])
+                    sample["timestamp"] = timestamp
+
+                    timeseries.append( ProcessStatus(**sample) )
+
+            logger.info(f"Inserting {len(timeseries)} samples for {job=} {epoch=} {pid=}")
+            self.insert(timeseries)
+
+
+
+    def fake_timeseries_gpu_process(self,
+            start_time: dt.datetime | None = None,
+            to_time: dt.datetime | None = None,
+            sampling_interval_in_s = 60,
+        ) -> list[str]:
+
+        # Continue GPU data
+        query = select(
+                    GPUCardProcessStatus.uuid,
+                    func.max(GPUCardProcessStatus.timestamp)
+                ).group_by(
+                    GPUCardProcessStatus.uuid
+                )
+
+        with self.make_writeable_session() as session:
+            gpus = session.execute(query).all()
+
+        if to_time is None:
+            to_time = utcnow()
+
+        for gpu in tqdm(gpus, desc="gpus"):
+            uuid, timestamp = gpu
+
+            query = select(
+                        GPUCardProcessStatus
+                    ).where(
+                        ((GPUCardProcessStatus.timestamp) == timestamp) &
+                        (GPUCardProcessStatus.uuid == uuid)
+                    )
+            with self.make_writeable_session() as session:
+                processes = session.execute(query).all()
+
+            timeseries = []
+            samples_to_add = int((to_time - timestamp).total_seconds()/ sampling_interval_in_s)
+            for i in tqdm(range(0, samples_to_add), desc=f"samples for {uuid}"):
+                timestamp += dt.timedelta(seconds=sampling_interval_in_s)
+                for process in processes:
+                    sample = dict(process[0])
+                    sample["timestamp"] = timestamp
+
+                    timeseries.append( GPUCardProcessStatus(**sample) )
+
+            logger.info(f"Inserting {len(timeseries)} samples for {uuid}")
+            self.insert(timeseries)
+
 
     async def get_nodes(self, cluster: str) -> list[str]:
         query = select(Node.node).filter(

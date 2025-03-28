@@ -18,6 +18,11 @@ class ImportParser(BaseParser):
             default=None,
             help="Database uri"
         )
+        parser.add_argument("--fake-timeseries",
+            default=False,
+            action="store_true",
+            help="Fake timeseries data - to have recent samples"
+        )
 
         parser.add_argument("-f", "--file",
             type=str,
@@ -33,17 +38,19 @@ class ImportParser(BaseParser):
         if args.db_uri is not None:
             app_settings.database.uri = args.db_uri
 
-        database = ClusterDB(db_settings=app_settings.database)
+        db = ClusterDB(db_settings=app_settings.database)
+        if args.file is not None:
+            if not Path(args.file).exists():
+                breakpoint()
+                raise FileNotFoundError(f"Could not find file: {args.file}")
 
-        if not Path(args.file).exists():
-            raise FileNotFoundError(f"Could not find file: {args.file}")
+            with open(args.file, 'r') as f:
+                data = json.load(f)
 
-        with open(args.file, 'r') as f:
-            data = json.load(f)
+            importer = DBJsonImporter(db)
+            print(f"Trying to import data from: {args.file}")
+            importer.insert(data)
 
-        db = ClusterDB(app_settings.database)
-        importer = DBJsonImporter(db)
-
-        print(f"Trying to import data from: {args.file}")
-        importer.insert(data)
+        if args.fake_timeseries:
+            db.fake_timeseries()
 
