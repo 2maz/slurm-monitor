@@ -738,6 +738,17 @@ class SlurmJobStatus(TableBase):
     end_time = Column(DateTime, nullable=True)
     exit_code = Column(Integer, nullable=True)
 
+    partition = Column(Text)
+    reservation = Column(String)
+
+    nodes = Column(ARRAY(String))
+    priority = Column(BigInteger)
+    distribution = Column(String)
+
+    gres_detail = Column(ARRAY(String), nullable=True)
+    requested_cpus = Column(Integer)
+    requested_memory_per_node = Column(Integer)
+    requested_node_count = Column(Integer)
     minimum_cpus_per_node = Column(Integer)
     # minimum_tmp_disk_per_node": 0,
     # preempt_time": 0,
