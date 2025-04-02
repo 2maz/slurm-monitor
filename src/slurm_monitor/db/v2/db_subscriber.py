@@ -1,4 +1,5 @@
 from slurm_monitor.db.v2.db_tables import (
+    Cluster,
     GPUCard,
     GPUCardConfig,
     GPUCardStatus,
@@ -7,6 +8,7 @@ from slurm_monitor.db.v2.db_tables import (
     NodeConfig,
     ProcessStatus,
     SlurmJobStatus,
+    SlurmJobAccStatus,
     SoftwareVersion,
     TableBase
 )
@@ -154,6 +156,8 @@ class DBJsonImporter:
                     for gpu_data in process['gpus']:
                         gpu_card_process_stati.append(
                             GPUCardProcessStatus(
+                                cluster=cluster,
+                                node=node,
                                 pid=pid,
                                 job=job_id,
                                 user=user,
@@ -175,6 +179,44 @@ class DBJsonImporter:
                    **process)
                 )
         return [gpu_samples, gpu_card_process_stati, process_stati]
+
+    @classmethod
+    def parse_slurm_jobs(cls, msg: Message) -> list[TableBase | list[TableBase]]:
+        attributes = msg.data.attributes
+        cluster = attributes.get('cluster', '')
+        slurm_jobs = attributes['slurm_jobs']
+
+        timestamp = dt.fromisoformat(attributes["time"])
+        del attributes['time']
+
+
+        slurm_job_samples = []
+        for job_data in slurm_jobs:
+            sacct = None
+            if 'sacct' in job_data:
+                sacct = job_data['sacct']
+                del job_data['sacct']
+
+            slurm_job_samples.append(
+                SlurmJobStatus(
+                    cluster=cluster,
+                    **job_data,
+                    timestamp=timestamp
+                )
+            )
+            if sacct:
+                if 'job_step' in job_data:
+                    sacct['job_step'] = job_data['job_step']
+
+                slurm_job_samples.append(
+                    SlurmJobAccStatus(
+                        cluster=cluster,
+                        job_id=job_data['job_id'],
+                        **sacct,
+                        timestamp=timestamp
+                    )
+                )
+        return slurm_job_samples
 
     def insert(self, message: dict[str, any]):
         samples = DBJsonImporter.parse(message)

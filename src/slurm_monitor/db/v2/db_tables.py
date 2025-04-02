@@ -7,9 +7,12 @@ import numpy as np
 from typing import ClassVar, Any, Callable, TypeVar
 import datetime as dt
 
+import enum
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
+    Enum,
     Float,
     ForeignKey,
     ForeignKeyConstraint,
@@ -553,6 +556,9 @@ class GPUCardProcessStatus(TableBase):
         }
     )
 
+    cluster = Column(Text, primary_key=True)
+    node = Column(Text, primary_key=True)
+
     pid = Column(BigInteger, primary_key=True)
 
     job = Column(BigInteger, primary_key=True)
@@ -560,9 +566,6 @@ class GPUCardProcessStatus(TableBase):
             desc="Bootcycle presentation of node - continuously increasing number",
             primary_key=True)
     user = Column(String)
-
-    # TBD: Could consider 'node' as redundant entry in here
-    # node = Column(Text)
 
     # Card UUID
     uuid = Column(UUID, ForeignKey('gpu_card.uuid'), index=True, primary_key=True)
@@ -649,7 +652,6 @@ class ProcessStatus(TableBase):
     )
 
 
-
 #class JobStatus(TableBase):
 #    __tablename__ = "job_status"
 #    __table_args__ = (
@@ -680,127 +682,62 @@ class TableMetadata(TableBase):
     unit = Column(Text)
 
 
+class SlurmJobState(enum.Enum):
+    # The key names are relevant here, not the values
+    CANCELLED = 'CANCELLED'
+    COMPLETED = 'COMPLETED'
+    DEADLINE = 'DEADLINE'
+    FAILED = 'FAILED'
+    PENDING = 'PENDING'
+    RUNNING = 'RUNNING'
+    OUT_OF_MEMORY = 'OUT_OF_MEMORY'
+    TIMEOUT = 'TIMEOUT'
+
+
 class SlurmJobStatus(TableBase):
     __tablename__ = "slurm_job_status"
     __table_args__ = (
-        CheckConstraint("job_id != 0 or timestamp != 0", "job_or_timestamp_non_zero"),
-        CheckConstraint("job_id >= 0 and timestamp >= 0", "job_or_timestamp_non_negative"),
+        CheckConstraint("job_id > 0", "job_non_zero_non_negative"),
         {
             'timescaledb_hypertable': {
                 'time_column_name': 'timestamp',
                 'chunk_time_interval': '24 hours',
                 'compression': {
-                    'segmentby': 'cluster, job',
+                    'segmentby': 'job_id',
                     'orderby': 'timestamp',
                     'interval': '7 days'
                 }
             }
-
         }
     )
+    cluster = Column(String, index=True, primary_key=True)
 
     # JobID
     # The number of the job or job step. It is in the form: job.jobstep.
     # Meanwhile here - we
     job_id = Column(BigInteger, index=True, primary_key=True)  # ": 244843,
-    job_step = Column(Integer)
+    job_step = Column(String, index=True, primary_key=True)
+    job_name = Column(String)
+    job_state = Column(Enum(SlurmJobState))
+    job_state = Column(String)
 
-    # JobIDRaw
-    # In case of job array print the JobId instead of the ArrayJobId. For non
-    # job arrays the output is the JobId in the format job.jobstep.
-    job_id_raw = Column
-
-
-    submit_time = Column(DateTime, index=True, primary_key=True)  #
-
-    name = Column(Text)
-    start_time = Column(DateTime, nullable=True)
-    end_time = Column(DateTime, nullable=True)
-
-    account = Column(Text)
-    accrue_time = Column(BigInteger)
-    admin_comment = Column(Text)
-    array_job_id = Column(Integer, nullable=True)  # 244843
+    array_job_id = Column(BigInteger, nullable=True)  # 244843
     array_task_id = Column(Integer, nullable=True)  # 984
-    array_max_tasks = Column(Integer)  # 20
-    array_task_string = Column(Text)  #
-    association_id = Column(Integer)  # ": 0,
-    # batch_features": "",
-    # batch_flag": true,
-    batch_host = Column(Text)
-    # flags": [],
-    # burst_buffer": "",
-    # burst_buffer_state": "",
 
-    cluster = Column(Text)
+    het_job_id = Column(BigInteger)
+    het_job_offset = Column(Integer)
 
-    # cluster_features": "",
-    # command": "/global/D1/homes/.."
-    # comment": "",
-    # contiguous": false,
-    # core_spec": null,
-    # thread_spec": null,
-    # cores_per_socket": null,
-    # billable_tres": 1,
-    # cpus_per_task": null,
-    # cpu_frequency_minimum": null,
-    # cpu_frequency_maximum": null,
-    # cpu_frequency_governor": null,
-    # cpus_per_tres": "",
-    # deadline": 0,
-    # delay_boot": 0,
-    # dependency": "",
-    derived_exit_code = Column(BigInteger)  # ": 256,
-    eligible_time = Column(Integer, nullable=True)  # ": 1720736375,
+    user_name = Column(String)
+    account = Column(Text)
 
-    # excluded_nodes": "",
-    exit_code = Column(BigInteger)  # ": 0,
-    # features": "",
-    # federation_origin": "",
-    # federation_siblings_active": "",
-    # federation_siblings_viable": "",
-    gres_detail = Column(GPUIdList, default=[])
-    group_id = Column(Integer, nullable=True)  # ": 5000,
-    # job_resources": {
-    # "nodes": "n042",
-    # "allocated_cpus": 1,
-    # "allocated_hosts": 1,
-    # "allocated_nodes": {
-    #   "0": {
-    #     "sockets": {
-    #       "1": "unassigned"
-    #     },
-    #     "cores": {
-    #       "0": "unassigned"
-    #     },
-    #     "memory": 0,
-    #     "cpus": 1
-    #   }
-    # }
-    # ,
-    job_state = Column(Text)  # ": "COMPLETED",
-    # last_sched_evaluation": 1720736375,
-    # licenses": "",
-    # max_cpus": 0,
-    # max_nodes": 0,
-    # mcs_label": "",
-    # memory_per_tres": "",
-    # name": "seidr",
-    nodes = Column(Text)  # "n042",
-    # nice": null,
-    # tasks_per_core": null,
-    # tasks_per_node": 0,
-    # tasks_per_socket": null,
-    # tasks_per_board": 0,
-    cpus = Column(Integer)  # 1
-    node_count = Column(Integer)  # 1
-    tasks = Column(Integer)  # 1,
-    # het_job_id": 0,
-    # het_job_id_set": "",
-    # het_job_offset": 0,
-    partition = Column(Text)  # "slowq",
-    memory_per_node = Column(Integer)
-    memory_per_cpu = Column(Integer)
+    start_time = Column(DateTime, nullable=True)
+    suspend_time = Column(BigInteger)
+
+    submit_time = Column(DateTime)
+    time_limit = Column(Integer)
+    end_time = Column(DateTime, nullable=True)
+    exit_code = Column(Integer, nullable=True)
+
     minimum_cpus_per_node = Column(Integer)
     # minimum_tmp_disk_per_node": 0,
     # preempt_time": 0,
@@ -849,6 +786,47 @@ class SlurmJobStatus(TableBase):
 
     timestamp = Column(DateTime(timezone=True), default=dt.datetime.now, primary_key=True)
 
+class SlurmJobAccStatus(TableBase):
+    __tablename__ = "slurm_job_acc_status"
+    __table_args__ = (
+        CheckConstraint("job_id > 0", "job_non_zero_non_negative"),
+        {
+            'timescaledb_hypertable': {
+                'time_column_name': 'timestamp',
+                'chunk_time_interval': '24 hours',
+                'compression': {
+                    'segmentby': 'job_id',
+                    'orderby': 'timestamp',
+                    'interval': '7 days'
+                }
+            }
+        }
+    )
+    cluster = Column(String, index=True, primary_key=True)
+
+    job_id = Column(BigInteger, primary_key=True, index=True)
+    job_step = Column(String, index=True, primary_key=True)
+
+    AllocTRES = Column(String)
+
+    ElapsedRaw = Column(BigInteger)
+
+    SystemCPU = Column(Integer)
+    UserCPU = Column(Integer)
+
+    AveVMSize = Column(BigInteger)
+    MaxVMSize = Column(BigInteger)
+
+    AveCPU = Column(Integer)
+    MinCPU = Column(Integer)
+
+    AveRSS = Column(BigInteger)
+    MaxRSS = Column(BigInteger)
+
+    AveDiskRead = Column(BigInteger)
+    AveDiskWrite = Column(BigInteger)
+
+    timestamp = Column(DateTime(timezone=True), default=dt.datetime.now, primary_key=True)
     @classmethod
     def from_json(cls, data) -> SlurmJobStatus:
         mapper = class_mapper(cls)
@@ -861,3 +839,20 @@ class SlurmJobStatus(TableBase):
                     mapped_data[k] = v
 
         return cls(**mapped_data)
+
+class Cluster(TableBase):
+    __tablename__ = "cluster"
+    __table_args__ = (
+        {
+            'timescaledb_hypertable': {
+                'time_column_name': 'timestamp',
+                'chunk_time_interval': '24 hours',
+            }
+        }
+    )
+    cluster = Column(String, primary_key=True, index=True)
+    slurm = Column(Boolean, default=True)
+    partitions = Column(ARRAY(String))
+    nodes = Column(ARRAY(String))
+
+    timestamp = Column(DateTime(timezone=True), default=dt.datetime.now, primary_key=True)

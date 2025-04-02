@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 import os
 
 
-from fastapi import FastAPI, Request, exception_handlers
+from fastapi import FastAPI, Request, exception_handlers, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_cache import FastAPICache
@@ -14,6 +14,8 @@ from fastapi_cache.backends.inmemory import InMemoryBackend
 
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
+import traceback
+
 
 from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.app_settings import AppSettings, AppSettingsV2
@@ -109,6 +111,13 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     logger.debug("", exc_info=exc)
     return await exception_handlers.request_validation_exception_handler(request, exc)
 
+@app.exception_handler(Exception)
+async def runtime_exception_handler(request: Request, exc: Exception):
+    logger.warning(exc)
+    traceback.print_tb(exc.__traceback__)
+
+    raise HTTPException(status_code=500,
+            detail=f"Internal Errror: {exc}")
 
 # Serve API. We want the API to take full charge of its prefix, not involve the SPA mount
 # at all, hence we use a submount rather than subrouter.
