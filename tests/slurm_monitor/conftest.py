@@ -3,7 +3,7 @@ import json
 import subprocess
 import psutil
 
-import slurm_monitor.db.timescaledb
+import slurm_monitor.timescaledb
 from slurm_monitor.db.v1.db import SlurmMonitorDB, DatabaseSettings
 from slurm_monitor.db.v1.db_tables import (
         CPUStatus,

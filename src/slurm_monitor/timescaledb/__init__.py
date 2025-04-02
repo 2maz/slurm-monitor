@@ -15,3 +15,5 @@ registry.register(
     f"{__name__}.dialect",
     'TimescaledbAsyncpgDialect'
 )
+
+dialect = "timescaledb"
