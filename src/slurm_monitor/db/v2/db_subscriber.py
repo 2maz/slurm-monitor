@@ -1,15 +1,17 @@
 from slurm_monitor.db.v2.db_tables import (
     Cluster,
-    GPUCard,
-    GPUCardConfig,
-    GPUCardStatus,
-    GPUCardProcessStatus,
     Node,
-    NodeConfig,
-    ProcessStatus,
-    SlurmJobStatus,
-    SlurmJobAccStatus,
-    SoftwareVersion,
+    NodeState,
+    Partition,
+    SampleGpu,
+    SampleProcess,
+    SampleProcessGpu,
+    SampleSlurmJob,
+    SampleSlurmJobAcc,
+    SysinfoAttributes,
+    SysinfoGpuCard,
+    SysinfoGpuCardConfig,
+    SysinfoSoftwareVersion,
     TableBase
 )
 from slurm_monitor.db.v2.db import (
@@ -18,6 +20,7 @@ from slurm_monitor.db.v2.db import (
 )
 
 import json
+import re
 import dataclasses
 from datetime import datetime as dt
 
@@ -36,6 +39,37 @@ class Data:
 class Message:
     meta: Meta
     data: Data
+
+def expand_node_names(names: str) -> list[str]:
+    nodes = []
+
+    if type(names) == str:
+        names = names.replace("],","];")
+        names = names.split(';')
+
+    for pattern in names:
+        m = re.match(r"(.*)\[(.*)\]$", pattern)
+        if m is None:
+            nodes.append(pattern)
+            continue
+
+        prefix, suffixes = m.groups()
+        # [005-006,001,005]
+        for suffix in suffixes.split(','):
+            #0,0
+            if "-" not in suffix:
+                nodes.append(prefix + suffix)
+                continue
+
+            # 001-010
+            start, end = suffix.split("-")
+            pattern_length = len(start)
+
+            for i in range(int(start), int(end)+1):
+                node_number = str(i).zfill(pattern_length)
+                nodes.append(prefix + node_number)
+
+    return nodes
 
 
 class DBJsonImporter:
@@ -68,7 +102,7 @@ class DBJsonImporter:
         cluster = attributes.get('cluster', '')
         node = attributes['node']
 
-        timestamp = dt.fromisoformat(attributes["time"])
+        time = dt.fromisoformat(attributes["time"])
         del attributes['time']
 
         gpu_uuids = []
@@ -89,40 +123,43 @@ class DBJsonImporter:
                         del card[field]
 
                 gpu_uuid = card['uuid'],
-                gpu_cards.append(GPUCard(
+
+                gpu_cards.append(SysinfoGpuCard(
                         uuid=gpu_uuid,
-                        **data
+                        **data,
+                    )
+                )
+
+                gpu_card_configs.append(SysinfoGpuCardConfig(
+                        cluster=cluster,
+                        node=node,
+                        time=time,
+                        **card
                     )
                 )
                 gpu_uuids.append(gpu_uuid)
 
-                gpu_card_configs.append(
-                        GPUCardConfig(
-                            cluster=cluster,
-                            node=node,
-                            timestamp=timestamp, 
-                            **card
-                        )
-                )
             gpu_info.append(gpu_cards)
             gpu_info.append(gpu_card_configs)
-       
+
         node = Node(
-                    cluster=attributes.get('cluster', ''),
-                    node=attributes['node']
-               )
-        node_config = NodeConfig(
-                    timestamp=timestamp,
+                cluster=attributes.get('cluster', ''),
+                node=attributes['node'],
+                architecture=attributes['architecture']
+        )
+
+        sysinfo = SysinfoAttributes(
+                    time=time,
                     cards=gpu_uuids,
                     **attributes
                 )
 
-        return [node, node_config] + gpu_info
+        return [node, sysinfo] + gpu_info
 
     @classmethod
     def parse_sample(cls, msg: Message) -> list[TableBase | list[TableBase]]:
         attributes = msg.data.attributes
-        timestamp = dt.fromisoformat(attributes["time"])
+        time = dt.fromisoformat(attributes["time"])
         del attributes['time']
 
         system = attributes["system"]
@@ -134,7 +171,10 @@ class DBJsonImporter:
             gpus = system["gpus"]
 
             for gpu in gpus:
-                gpu_status = GPUCardStatus(**gpu)
+                gpu_status = SampleGpu(
+                        **gpu,
+                        time=time
+                )
                 gpu_samples.append(gpu_status)
 
         cluster = attributes.get('cluster','')
@@ -155,38 +195,88 @@ class DBJsonImporter:
                 if "gpus" in process:
                     for gpu_data in process['gpus']:
                         gpu_card_process_stati.append(
-                            GPUCardProcessStatus(
+                            SampleProcessGpu(
                                 cluster=cluster,
                                 node=node,
                                 pid=pid,
                                 job=job_id,
                                 user=user,
                                 epoch=epoch,
-                                timestamp=timestamp,
+                                time=time,
                                 **gpu_data
                             )
                         )
                     del process["gpus"]
 
-                process_stati.append( ProcessStatus(
+                process_stati.append( SampleProcess(
                    cluster=cluster,
                    node=node,
                    job=job_id,
                    user=user,
                    epoch=epoch,
-                   timestamp=timestamp,
+                   time=time,
 
                    **process)
                 )
         return [gpu_samples, gpu_card_process_stati, process_stati]
 
     @classmethod
-    def parse_slurm_jobs(cls, msg: Message) -> list[TableBase | list[TableBase]]:
+    def parse_cluster(cls, msg: Message) -> list[TableBase | list[TableBase]]:
+        attributes = msg.data.attributes
+        cluster_id = attributes.get('cluster', '')
+        slurm = attributes['slurm']
+
+        time = dt.fromisoformat(attributes["time"])
+        del attributes['time']
+
+
+        nodes = set()
+        nodes_states = []
+        for n in attributes['nodes']:
+            node_names = expand_node_names(n['names'])
+            nodes.update(node_names)
+
+            states = n['states']
+            for n in node_names:
+                nodes_states.append(NodeState(
+                        cluster=cluster_id,
+                        node=n,
+                        states=states,
+                        time=time
+                    )
+                )
+
+
+
+        partitions = []
+        for p in attributes['partitions']:
+            node_names = expand_node_names(p["nodes"])
+            partitions.append(Partition(
+                    cluster=cluster_id,
+                    partition=p["name"],
+                    nodes=node_names,
+                    nodes_compact=p["nodes"],
+                    time=time
+                )
+            )
+
+        cluster = Cluster(
+            cluster=cluster_id,
+            slurm=slurm,
+            partitions=[x.partition for x in partitions],
+            nodes=list(nodes),
+            time=time
+        )
+
+        return [ cluster ]  + partitions + nodes_states
+
+    @classmethod
+    def parse_job(cls, msg: Message) -> list[TableBase | list[TableBase]]:
         attributes = msg.data.attributes
         cluster = attributes.get('cluster', '')
         slurm_jobs = attributes['slurm_jobs']
 
-        timestamp = dt.fromisoformat(attributes["time"])
+        time = dt.fromisoformat(attributes["time"])
         del attributes['time']
 
 
@@ -198,10 +288,10 @@ class DBJsonImporter:
                 del job_data['sacct']
 
             slurm_job_samples.append(
-                SlurmJobStatus(
+                SampleSlurmJob(
                     cluster=cluster,
                     **job_data,
-                    timestamp=timestamp
+                    time=time
                 )
             )
             if sacct:
@@ -209,11 +299,11 @@ class DBJsonImporter:
                     sacct['job_step'] = job_data['job_step']
 
                 slurm_job_samples.append(
-                    SlurmJobAccStatus(
+                    SampleSlurmJobAcc(
                         cluster=cluster,
                         job_id=job_data['job_id'],
                         **sacct,
-                        timestamp=timestamp
+                        time=time
                     )
                 )
         return slurm_job_samples

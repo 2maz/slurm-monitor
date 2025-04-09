@@ -40,6 +40,8 @@ from sqlalchemy.ext.compiler import compiles
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+Xint = BigInteger
+DateTimeTZAware = DateTime(timezone=True)
 
 
 # Ensure consistent time handling
@@ -104,6 +106,12 @@ def Column(*args, **kwargs):
     return sqlalchemy.Column(*args, **kwargs)
 
 
+def ensure_non_negative(*column_names) -> list[CheckConstraint]:
+    return [
+       CheckConstraint(f"{x} >= 0", name=f"{x}_is_not_negative") for x in column_names
+    ]
+
+
 class HStoreModel(types.TypeDecorator):
     impl = HSTORE
 
@@ -131,23 +139,6 @@ class HStoreModel(types.TypeDecorator):
     def process_result_value(self, value, dialect):
         return value
 
-
-
-
-# core-model: (index: unsigned, physical: unsigned, model: string)
-#class CoreModel(HStoreModel):
-#    required: ClassVar[list[str]] = ["index", "physical", "model"]
-#
-#class SoftwareVersion(HStoreModel):
-#    required: ClassVar[list[str]] = ["key", "version"]
-#    optional: ClassVar[list[str]] = ["name"]
-
-#@dataclasses.dataclass
-#class CoreModel:
-#    index: int
-#    physical: int
-#    model: str
-#
 
 @as_declarative()
 class TableBase:
@@ -188,7 +179,7 @@ class TableBase:
         """
         Get the id for the timeseries - so excluding the timestamp field
         """
-        return '.'.join([str(getattr(self, x)) for x in self.primary_key_columns() if x != "timestamp"])
+        return '.'.join([str(getattr(self, x)) for x in self.primary_key_columns() if x != "time"])
 
     @classmethod
     def merge(cls,
@@ -211,7 +202,7 @@ class TableBase:
                     values[attribute].append(value)
         kwargs = {}
 
-        static_columns = ["timestamp"]
+        static_columns = ["time"]
         static_columns.extend(cls.primary_key_columns())
 
         for column_name in static_columns:
@@ -228,63 +219,6 @@ class TableBase:
                         raise RuntimeError(f"Merging failed for column: '{column_name}'") from e
 
         return cls(**kwargs)
-
-    @classmethod
-    def apply_resolution(
-            cls, data: list[TableBase], resolution_in_s: int,
-    ) -> list[TableBase]:
-        smoothed_data = []
-        samples_in_window = {}
-
-        base_time = None
-        window_start_time = None
-        window_index = 0
-
-        if not data:
-            return data
-
-        if not hasattr(data[0], "timestamp"):
-            raise ValueError(
-                    "TableBase.apply_resolution can only be applied to "
-                    "types with a 'timestamp' column"
-            )
-
-        # requiring ordered list (oldest first)
-        if data[0].timestamp > data[-1].timestamp:
-            data.reverse()
-
-        for sample in data:
-            timeseries_id = sample.get_timeseries_id()
-
-            sample_timestamp = sample.timestamp
-            if type(sample.timestamp) == str:
-                sample_timestamp = dt.datetime.fromisoformat(sample.timestamp)
-
-            if not base_time:
-                base_time = sample_timestamp
-                window_start_time = base_time
-                window_index = 0
-
-            if (
-                sample_timestamp - window_start_time
-            ).total_seconds() < resolution_in_s:
-                if timeseries_id not in samples_in_window:
-                    samples_in_window[timeseries_id] = [sample]
-                else:
-                    samples_in_window[timeseries_id].append(sample)
-            else:
-                smoothed_data.append(sample.merge(samples_in_window[timeseries_id]))
-                window_index += 1
-
-                samples_in_window[timeseries_id] = [sample]
-                window_start_time = base_time + dt.timedelta(seconds=window_index*resolution_in_s)
-
-
-        for _, values in samples_in_window.items():
-            if values:
-                smoothed_data.append(sample.merge(values))
-
-        return smoothed_data
 
 # Define a custom column type to process logical ids from text using
 # transform
@@ -371,37 +305,52 @@ class Node(TableBase):
 
     architecture = Column(String)
 
-class NodeConfig(TableBase):
-    __tablename__ = "node_config"
 
+class SysinfoAttributes(TableBase):
+    __tablename__ = "sysinfo_attributes"
+
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
     cluster = Column(Text, primary_key=True)
     node = Column(Text, primary_key=True)
 
-    os_name = Column(Text)
-    os_release = Column(Text)
-    sockets = Column(Integer)
-    cores_per_socket = Column(Integer)
-    threads_per_core = Column(Integer)
-    cpu_model = Column(String)
+    os_name = Column(String)
+    os_release = Column(String)
     architecture = Column(String)
 
+    sockets = Column(BigInteger)
+    cores_per_socket = Column(BigInteger)
+    threads_per_core = Column(BigInteger)
+    cpu_model = Column(String)
+
+    # FIXME: does it exists?
     description = Column(Text)
 
     memory = Column(BigInteger, desc="primary memory", unit="kilobyte")
     topo_svg = Column(Text, default=None, nullable=True)
 
-    # TBD: array of gpu-card values # considering here uuids
     cards = Column(ARRAY(UUID), desc="Array of gpu-card uuid", default=[])
 
-    timestamp = Column(DateTime(timezone=True), default=dt.datetime.now, primary_key=True)
+    # FIXME: 
+    # software SysinfoSoftwareVersion
 
     __table_args__ = (
+        *ensure_non_negative("sockets", "cores_per_socket", "threads_per_core", "memory"),
         ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
-        {}
+        {
+            'timescaledb_hypertable': {
+                'time_column_name': 'time',
+                'chunk_time_interval': '24 hours',
+                'compression': {
+                    'segmentby': 'cluster, node',
+                    'orderby': 'time',
+                    'interval': '7 days'
+                }
+            }
+        }
     )
 
-class SoftwareVersion(TableBase):
-    __tablename__ = "software_version"
+class SysinfoSoftwareVersion(TableBase):
+    __tablename__ = "sysinfo_software_version"
     cluster = Column(Text, primary_key=True)
     node = Column(Text, primary_key=True)
 
@@ -409,70 +358,80 @@ class SoftwareVersion(TableBase):
     name = Column(String)
     version = Column(String, primary_key=True)
 
-class GPUCard(TableBase):
-    __tablename__ = "gpu_card"
+class SysinfoGpuCard(TableBase):
+    """
+    Collect dynamic properties of the GPU in this table
+    """
+    __tablename__ = "sysinfo_gpu_card"
     __table_args__ = (
-        *[CheckConstraint(f"{x} >= 0", name=f"{x}_is_not_negative") for x in [
-            'memory',
-        ]],
+        *ensure_non_negative('memory'),
         {}
     )
-    uuid = Column(UUID, index=True, primary_key=True)
+
+    uuid = Column(UUID, primary_key=True)
 
     manufacturer = Column(Text)
     model = Column(Text)
     architecture = Column(Text)
-    memory = Column(Integer)
+    memory = Column(BigInteger)
 
-class GPUCardConfig(TableBase):
-    """
-    Collect dynamic properties of the GPU in this table
-    """
-    __tablename__ = "gpu_card_config"
-
-    uuid = Column(UUID, ForeignKey("gpu_card.uuid"), primary_key=True)
-
-    address = Column(Text)
-    power_limit = Column(Integer)
-    max_power_limit = Column(Integer)
-    min_power_limit = Column(Integer)
-    max_ce_clock = Column(Integer)
-    max_memory_clock = Column(Integer)
-
-    driver = Column(String)
-    firmware = Column(String)
+class SysinfoGpuCardConfig(TableBase):
+    __tablename__ = "sysinfo_gpu_card_config"
 
     # node name the card is attached to
     cluster = Column(String)
     node = Column(String)
 
+    uuid = Column(UUID, ForeignKey('sysinfo_gpu_card.uuid'), primary_key=True)
+
     # Card local index
     index = Column(Integer, primary_key=True)
+    address = Column(Text)
+
+    driver = Column(String)
+    firmware = Column(String)
+
+    power_limit = Column(BigInteger)
+    max_power_limit = Column(BigInteger)
+    min_power_limit = Column(BigInteger)
+    max_ce_clock = Column(BigInteger)
+    max_memory_clock = Column(BigInteger)
 
     # Validity - since the card might not be present for some intervals
     # TDB: do we need to consider this
     #start_time = Column(DateTime(timezone=True), primary_key=True, default=dt.datetime(2025,1,1))
     #end_time = Column(DateTime(timezone=True), default=dt.datetime(2100,12,31))
 
-    timestamp = Column(DateTime(timezone=True), primary_key=True)
+    time = Column(DateTimeTZAware, primary_key=True)
 
     __table_args__ = (
-        ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
-        *[CheckConstraint(f"{x} >= 0", name=f"{x}_is_not_negative") for x in [
+        *ensure_non_negative(
+            'index',
             'power_limit',
             'max_power_limit',
             'min_power_limit',
             'max_ce_clock',
             'max_memory_clock',
-        ]],
-        {}
+        ),
+        ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
+        {
+            'timescaledb_hypertable': {
+                'time_column_name': 'time',
+                'chunk_time_interval': '24 hours',
+                'compression': {
+                    'segmentby': 'cluster, node, uuid',
+                    'orderby': 'time',
+                    'interval': '7 days'
+                }
+            }
+        }
     )
 
 
-class GPUCardStatus(TableBase):
-    __tablename__ = "gpu_card_status"
+class SampleGpu(TableBase):
+    __tablename__ = "sample_gpu"
     __table_args__ = (
-        *[CheckConstraint(f"{x} >= 0", name=f'{x}_is_not_negative') for x in [
+        *ensure_non_negative(
             'index',
             'fan',
             'failing',
@@ -483,72 +442,73 @@ class GPUCardStatus(TableBase):
             'memory_clock',
             'power',
             'power_limit',
-            ]
-        ],
+        ),
         {
             'timescaledb_hypertable': {
-                'time_column_name': 'timestamp',
+                'time_column_name': 'time',
                 'chunk_time_interval': '24 hours',
                 'compression': {
                     'segmentby': 'uuid, index',
-                    'orderby': 'timestamp',
+                    'orderby': 'time',
                     'interval': '7 days'
                 }
+            }
         }
-    })
+    )
 
 
     # local card index, may change at boot
     index = Column(Integer, nullable=True)
 
     # Card UUI
-    uuid = Column(UUID, ForeignKey("gpu_card.uuid"), index=True, primary_key=True)
+    uuid = Column(UUID, ForeignKey("sysinfo_gpu_card.uuid"), index=True, primary_key=True)
 
     # Indicate a failure condition, true meaning failure
-    failing = Column(Integer)
+    failing = Column(BigInteger)
 
     # percent of primary fans' max speed - max exceed 100% on some cards
-    fan = Column(Integer)
+    fan = Column(BigInteger)
 
     # current compute mode: card-specific if known at all
-    compute_mode = Column(Text)
+    compute_mode = Column(String)
 
     # current performance level, card-specific >= 0, 0 for 'unknown'
-    performance_state = Column(Integer)
+    performance_state = Column(Xint)
 
     # kB of memory_use
-    memory = Column(Integer)
+    memory = Column(BigInteger)
 
     # percent of computing element capability used
-    ce_util = Column(Integer)
+    ce_util = Column(BigInteger)
 
     # percent of memory used
-    memory_util = Column(Integer)
+    memory_util = Column(BigInteger)
 
     # degree C card temperature at primary sensor
     temperature = Column(Integer)
 
     # current power usage in W
-    power = Column(Integer)
+    power = Column(BigInteger)
 
     # power limit in W
-    power_limit = Column(Integer)
+    power_limit = Column(BigInteger)
 
-    ce_clock = Column(Integer)
-    memory_clock = Column(Integer)
+    ce_clock = Column(BigInteger)
+    memory_clock = Column(BigInteger)
 
-    timestamp = Column(DateTime(timezone=True), default=dt.datetime.now, primary_key=True)
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
-class GPUCardProcessStatus(TableBase):
-    __tablename__ = "gpu_card_process_status"
+class SampleProcessGpu(TableBase):
+    __tablename__ = "sample_process_gpu"
     __table_args__ = (
+        ForeignKeyConstraint(["cluster", "node"], [Node.cluster, Node.node]),
         {
             'timescaledb_hypertable': {
-                'time_column_name': 'timestamp',
+                'time_column_name': 'time',
                 'chunk_time_interval': '24 hours',
                 'compression': {
-                    'segmentby': 'uuid, index, pid',
-                    'orderby': 'timestamp',
+                    'segmentby': 'cluster, job, epoch',
+                    'orderby': 'time',
                     'interval': '7 days'
                 }
             }
@@ -559,27 +519,28 @@ class GPUCardProcessStatus(TableBase):
     cluster = Column(Text, primary_key=True)
     node = Column(Text, primary_key=True)
 
-    pid = Column(BigInteger, primary_key=True)
-
     job = Column(BigInteger, primary_key=True)
     epoch = Column(BigInteger,
             desc="Bootcycle presentation of node - continuously increasing number",
             primary_key=True)
     user = Column(String)
 
+    pid = Column(BigInteger, primary_key=True)
+
     # Card UUID
-    uuid = Column(UUID, ForeignKey('gpu_card.uuid'), index=True, primary_key=True)
+    uuid = Column(UUID, ForeignKey('sysinfo_gpu_card.uuid'), index=True, primary_key=True)
     index = Column(Integer)
 
     gpu_util = Column(Float)
+
     # in kilobytes
-    gpu_memory = Column(Float)
+    gpu_memory = Column(BigInteger)
     gpu_memory_util = Column(Float)
 
-    timestamp = Column(DateTime(timezone=True), default=dt.datetime.now, primary_key=True)
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
-class ProcessStatus(TableBase):
-    __tablename__ = "process_status"
+class SampleProcess(TableBase):
+    __tablename__ = "sample_process"
 
     cluster = Column(String, primary_key=True)
     node = Column(String, primary_key=True)
@@ -592,18 +553,16 @@ class ProcessStatus(TableBase):
 
     user = Column(String)
 
+    # private resident memory
+    resident_memory = Column(BigInteger, unit='kilobyte')
+    # virtual data+stack memory
+    virtual_memory = Column(BigInteger, unit='kilobyte')
+    # command (not the command line) - '_unknown_' for zombie processes
+    cmd = Column(Text)
+
     # rest of process sample
     pid = Column(BigInteger, primary_key=True)
     ppid = Column(BigInteger)
-
-    # private resident memory
-    resident = Column(BigInteger, unit='kilobyte')
-
-    # virtual data+stack memory
-    virtual = Column(BigInteger, unit='kilobyte')
-
-    # command (not the command line) - '_unknown_' for zombie processes
-    cmd = Column(Text)
 
     cpu_avg = Column(Float,
             desc="""
@@ -628,29 +587,28 @@ class ProcessStatus(TableBase):
             """,
             unit='seconds')
 
-    timestamp = Column(DateTime(timezone=True), default=dt.datetime.now, primary_key=True)
-    # Consider
-    # rolled_up =
+    rolled_up = Column(Integer)
+
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
     __table_args__ = (
-        ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
+        ForeignKeyConstraint(["cluster", "node"], [Node.cluster, Node.node]),
         CheckConstraint("job != 0 or epoch != 0", "job_or_epoch_non_zero"),
         CheckConstraint("job >= 0 and epoch >= 0", "job_or_epoch_non_negative"),
-        CheckConstraint("pid >= 0 and ppid >= 0", "pid_and_ppid_non_negative"),
+        *ensure_non_negative("pid","ppid"),
         {
             'timescaledb_hypertable': {
-                'time_column_name': 'timestamp',
+                'time_column_name': 'time',
                 'chunk_time_interval': '24 hours',
                 'compression': {
-                    'segmentby': 'job, epoch',
-                    'orderby': 'timestamp',
+                    'segmentby': 'cluster, job, epoch',
+                    'orderby': 'time',
                     'interval': '7 days'
                 }
             }
 
         }
     )
-
 
 #class JobStatus(TableBase):
 #    __tablename__ = "job_status"
@@ -659,11 +617,11 @@ class ProcessStatus(TableBase):
 #        CheckConstraint("job >= 0 and epoch >= 0", "job_or_epoch_non_negative"),
 #        {
 #            'timescaledb_hypertable': {
-#                'time_column_name': 'timestamp',
+#                'time_column_name': 'time',
 #                'chunk_time_interval': '24 hours',
 #                'compression': {
 #                    'segmentby': 'job, epoch',
-#                    'orderby': 'timestamp',
+#                    'orderby': 'time',
 #                    'interval': '7 days'
 #                }
 #            }
@@ -694,17 +652,29 @@ class SlurmJobState(enum.Enum):
     TIMEOUT = 'TIMEOUT'
 
 
-class SlurmJobStatus(TableBase):
-    __tablename__ = "slurm_job_status"
+class SampleSlurmJob(TableBase):
+    __tablename__ = "sample_slurm_job"
     __table_args__ = (
-        CheckConstraint("job_id > 0", "job_non_zero_non_negative"),
+        *ensure_non_negative(
+            'job_id',
+            'array_job_id',
+            'array_task_id',
+            'het_job_id',
+            'het_job_offset',
+            'requested_cpus',
+            'requested_memory_per_node',
+            'requested_node_count',
+            'minimum_cpus_per_node',
+            'suspend_time',
+            'exit_code',
+        ),
         {
             'timescaledb_hypertable': {
-                'time_column_name': 'timestamp',
+                'time_column_name': 'time',
                 'chunk_time_interval': '24 hours',
                 'compression': {
-                    'segmentby': 'job_id',
-                    'orderby': 'timestamp',
+                    'segmentby': 'cluster, job_id',
+                    'orderby': 'time',
                     'interval': '7 days'
                 }
             }
@@ -730,19 +700,19 @@ class SlurmJobStatus(TableBase):
     user_name = Column(String)
     account = Column(Text)
 
-    start_time = Column(DateTime, nullable=True)
+    start_time = Column(DateTimeTZAware, nullable=True)
     suspend_time = Column(BigInteger)
 
-    submit_time = Column(DateTime)
+    submit_time = Column(DateTimeTZAware)
     time_limit = Column(Integer)
-    end_time = Column(DateTime, nullable=True)
+    end_time = Column(DateTimeTZAware, nullable=True)
     exit_code = Column(Integer, nullable=True)
 
     partition = Column(Text)
     reservation = Column(String)
 
     nodes = Column(ARRAY(String))
-    priority = Column(BigInteger)
+    priority = Column(Xint)
     distribution = Column(String)
 
     gres_detail = Column(ARRAY(String), nullable=True)
@@ -750,64 +720,33 @@ class SlurmJobStatus(TableBase):
     requested_memory_per_node = Column(Integer)
     requested_node_count = Column(Integer)
     minimum_cpus_per_node = Column(Integer)
-    # minimum_tmp_disk_per_node": 0,
-    # preempt_time": 0,
-    # pre_sus_time": 0,
-    # priority": 4294726264,
-    # profile": null,
-    # qos": "normal",
-    # reboot": false,
-    # required_nodes": "",
-    # requeue": true,
-    # resize_time": 0,
-    # restart_cnt": 0,
-    # resv_name": "",
-    # shared": null,
-    # show_flags": [
-    # "SHOW_ALL",
-    # "SHOW_DETAIL",
-    # "SHOW_LOCAL"
-    # ,
-    # sockets_per_board": 0,
-    # sockets_per_node": null,
-    state_description = Column(Text)  # "",
-    state_reason = Column(Text)  # "None",
-    # standard_error": "/home/.../scripts/logs/%j-stderr.txt",
-    # standard_input": "/dev/null",
-    # standard_output": "/home/.../scripts/logs/%j-stdout.txt",
 
-    suspend_time = Column(Integer)  # 0,
-    # system_comment": "",
-    time_limit = Column(Integer, nullable=True)  # 7200,
-    # time_minimum": 0,
-    # threads_per_core": null,
-    # tres_bind": "",
-    # tres_freq": "",
-    # tres_per_job": "",
-    # tres_per_node": "",
-    # tres_per_socket": "",
-    # tres_per_task": "",
-    # tres_req_str": "cpu=1,node=1,billing=1",
-    # tres_alloc_str": "cpu=1,billing=1",
-    user_id = Column(Integer)  # 6500,
-    user_name = Column(Text, nullable=True)
-    # wckey": "",
-    # current_working_directory": "/global/D1/homes/..."
-    # id = Column(Integer) # 244843
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
-    timestamp = Column(DateTime(timezone=True), default=dt.datetime.now, primary_key=True)
-
-class SlurmJobAccStatus(TableBase):
-    __tablename__ = "slurm_job_acc_status"
+class SampleSlurmJobAcc(TableBase):
+    __tablename__ = "sample_slurm_job_acc"
     __table_args__ = (
-        CheckConstraint("job_id > 0", "job_non_zero_non_negative"),
+        *ensure_non_negative(
+            'job_id',
+            #'ElapsedRaw',
+            #'SystemCPU',
+            #'UserCPU',
+            #'AveVMSize',
+            #'MaxVMSize',
+            #'AveCPU',
+            #'MinCPU',
+            #'AveRSS',
+            #'MaxRSS',
+            #'AveDiskRead',
+            #'AveDiskWrite'
+        ),
         {
             'timescaledb_hypertable': {
-                'time_column_name': 'timestamp',
+                'time_column_name': 'time',
                 'chunk_time_interval': '24 hours',
                 'compression': {
-                    'segmentby': 'job_id',
-                    'orderby': 'timestamp',
+                    'segmentby': 'cluster, job_id',
+                    'orderby': 'time',
                     'interval': '7 days'
                 }
             }
@@ -822,14 +761,14 @@ class SlurmJobAccStatus(TableBase):
 
     ElapsedRaw = Column(BigInteger)
 
-    SystemCPU = Column(Integer)
-    UserCPU = Column(Integer)
+    SystemCPU = Column(BigInteger)
+    UserCPU = Column(BigInteger)
 
     AveVMSize = Column(BigInteger)
     MaxVMSize = Column(BigInteger)
 
-    AveCPU = Column(Integer)
-    MinCPU = Column(Integer)
+    AveCPU = Column(BigInteger)
+    MinCPU = Column(BigInteger)
 
     AveRSS = Column(BigInteger)
     MaxRSS = Column(BigInteger)
@@ -837,7 +776,141 @@ class SlurmJobAccStatus(TableBase):
     AveDiskRead = Column(BigInteger)
     AveDiskWrite = Column(BigInteger)
 
-    timestamp = Column(DateTime(timezone=True), default=dt.datetime.now, primary_key=True)
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
+
+    ## JobIDRaw
+    ## In case of job array print the JobId instead of the ArrayJobId. For non
+    ## job arrays the output is the JobId in the format job.jobstep.
+    #job_id_raw = Column
+
+    #name = Column(Text)
+    #start_time = Column(DateTime, nullable=True)
+    #end_time = Column(DateTime, nullable=True)
+
+    #accrue_time = Column(BigInteger)
+    #admin_comment = Column(Text)
+    #array_max_tasks = Column(Integer)  # 20
+    #array_task_string = Column(Text)  #
+    #association_id = Column(Integer)  # ": 0,
+    ## batch_features": "",
+    ## batch_flag": true,
+    #batch_host = Column(Text)
+    ## flags": [],
+    ## burst_buffer": "",
+    ## burst_buffer_state": "",
+
+    #cluster = Column(Text)
+
+    ## cluster_features": "",
+    ## command": "/global/D1/homes/.."
+    ## comment": "",
+    ## contiguous": false,
+    ## core_spec": null,
+    ## thread_spec": null,
+    ## cores_per_socket": null,
+    ## billable_tres": 1,
+    ## cpus_per_task": null,
+    ## cpu_frequency_minimum": null,
+    ## cpu_frequency_maximum": null,
+    ## cpu_frequency_governor": null,
+    ## cpus_per_tres": "",
+    ## deadline": 0,
+    ## delay_boot": 0,
+    ## dependency": "",
+    #derived_exit_code = Column(BigInteger)  # ": 256,
+    #eligible_time = Column(Integer, nullable=True)  # ": 1720736375,
+
+    ## excluded_nodes": "",
+    #exit_code = Column(BigInteger)  # ": 0,
+    ## features": "",
+    ## federation_origin": "",
+    ## federation_siblings_active": "",
+    ## federation_siblings_viable": "",
+    #gres_detail = Column(GPUIdList, default=[])
+    #group_id = Column(Integer, nullable=True)  # ": 5000,
+    ## job_resources": {
+    ## "nodes": "n042",
+    ## "allocated_cpus": 1,
+    ## "allocated_hosts": 1,
+    ## "allocated_nodes": {
+    ##   "0": {
+    ##     "sockets": {
+    ##       "1": "unassigned"
+    ##     },
+    ##     "cores": {
+    ##       "0": "unassigned"
+    ##     },
+    ##     "memory": 0,
+    ##     "cpus": 1
+    ##   }
+    ## }
+    ## ,
+    #job_state = Column(Text)  # ": "COMPLETED",
+    ## last_sched_evaluation": 1720736375,
+    ## licenses": "",
+    ## max_cpus": 0,
+    ## max_nodes": 0,
+    ## mcs_label": "",
+    ## memory_per_tres": "",
+    ## name": "seidr",
+    ## nice": null,
+    ## tasks_per_core": null,
+    ## tasks_per_node": 0,
+    ## tasks_per_socket": null,
+    ## tasks_per_board": 0,
+    #cpus = Column(Integer)  # 1
+    #node_count = Column(Integer)  # 1
+    #tasks = Column(Integer)  # 1,
+    ## het_job_id": 0,
+    ## het_job_id_set": "",
+    ## het_job_offset": 0,
+    #memory_per_node = Column(Integer)
+    #memory_per_cpu = Column(Integer)
+    #minimum_cpus_per_node = Column(Integer)
+    ## minimum_tmp_disk_per_node": 0,
+    ## preempt_time": 0,
+    ## pre_sus_time": 0,
+    ## priority": 4294726264,
+    ## profile": null,
+    ## qos": "normal",
+    ## reboot": false,
+    ## required_nodes": "",
+    ## requeue": true,
+    ## resize_time": 0,
+    ## restart_cnt": 0,
+    ## resv_name": "",
+    ## shared": null,
+    ## show_flags": [
+    ## "SHOW_ALL",
+    ## "SHOW_DETAIL",
+    ## "SHOW_LOCAL"
+    ## ,
+    ## sockets_per_board": 0,
+    ## sockets_per_node": null,
+    #state_description = Column(Text)  # "",
+    #state_reason = Column(Text)  # "None",
+    ## standard_error": "/home/.../scripts/logs/%j-stderr.txt",
+    ## standard_input": "/dev/null",
+    ## standard_output": "/home/.../scripts/logs/%j-stdout.txt",
+
+    #suspend_time = Column(Integer)  # 0,
+    ## system_comment": "",
+    ## time_minimum": 0,
+    ## threads_per_core": null,
+    ## tres_bind": "",
+    ## tres_freq": "",
+    ## tres_per_job": "",
+    ## tres_per_node": "",
+    ## tres_per_socket": "",
+    ## tres_per_task": "",
+    ## tres_req_str": "cpu=1,node=1,billing=1",
+    ## tres_alloc_str": "cpu=1,billing=1",
+    #user_id = Column(Integer)  # 6500,
+    #user_name = Column(Text, nullable=True)
+    ## wckey": "",
+    ## current_working_directory": "/global/D1/homes/..."
+    ## id = Column(Integer) # 244843
+
     @classmethod
     def from_json(cls, data) -> SlurmJobStatus:
         mapper = class_mapper(cls)
@@ -851,13 +924,19 @@ class SlurmJobAccStatus(TableBase):
 
         return cls(**mapped_data)
 
+
 class Cluster(TableBase):
     __tablename__ = "cluster"
     __table_args__ = (
         {
             'timescaledb_hypertable': {
-                'time_column_name': 'timestamp',
+                'time_column_name': 'time',
                 'chunk_time_interval': '24 hours',
+                'compression': {
+                    'segmentby': 'cluster',
+                    'orderby': 'time',
+                    'interval': '7 days'
+                }
             }
         }
     )
@@ -866,4 +945,47 @@ class Cluster(TableBase):
     partitions = Column(ARRAY(String))
     nodes = Column(ARRAY(String))
 
-    timestamp = Column(DateTime(timezone=True), default=dt.datetime.now, primary_key=True)
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
+
+class Partition(TableBase):
+    __tablename__ = "partition"
+    __table_args__ = (
+        {
+            'timescaledb_hypertable': {
+                'time_column_name': 'time',
+                'chunk_time_interval': '24 hours',
+                'compression': {
+                    'segmentby': 'cluster',
+                    'orderby': 'time',
+                    'interval': '7 days'
+                }
+            }
+        }
+    )
+    cluster = Column(String, primary_key=True, index=True)
+    partition = Column(String, primary_key=True, index=True)
+    nodes = Column(ARRAY(String))
+    nodes_compact = Column(ARRAY(String))
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
+
+class NodeState(TableBase):
+    __tablename__ = "node_state"
+    __table_args__ = (
+        {
+            'timescaledb_hypertable': {
+                'time_column_name': 'time',
+                'chunk_time_interval': '24 hours',
+                'compression': {
+                    'segmentby': 'cluster, node',
+                    'orderby': 'time',
+                    'interval': '7 days'
+                }
+            }
+        }
+    )
+
+    cluster = Column(String, primary_key=True)
+    node = Column(String, primary_key=True)
+    states = Column(ARRAY(String))
+
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)

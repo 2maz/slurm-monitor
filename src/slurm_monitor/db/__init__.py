@@ -6,3 +6,7 @@ from .v1.db_tables import CPUStatus as CPUStatus
 from .v1.db_tables import GPUStatus as GPUStatus
 from .v1.db_tables import GPUs as GPUs
 from .v1.db_tables import Nodes as Nodes
+
+import slurm_monitor.timescaledb
+
+__all__ = [ "timescaledb" ]

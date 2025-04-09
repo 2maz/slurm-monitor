@@ -60,7 +60,8 @@ def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None
     if (end_time_in_s - start_time_in_s) > 3600*24*14:
         raise HTTPException(
             status_code=500,
-            detail="ValueError: timeframe cannot exceed 14 days",
+            detail=f"""ValueError: query timeframe cannot exceed 14 days (job length), but was
+                {(end_time_in_s - start_time_in_s) / (3600*24):.2f} days""",
         )
 
     if resolution_in_s <= 0:
@@ -83,9 +84,21 @@ async def nodes_nodename_info(cluster: str, nodename: str):
 
 @api_router.get("/{cluster}/nodes", response_model=None)
 @api_router.get("/{cluster}/nodes/info", response_model=None)
+@api_router.get("/{cluster}/nodes/{nodename}/info", response_model=None)
 @cache(expire=3600*24)
-async def nodes_info(cluster: str, nodes: list[str] | None = None, dbi=Depends(db_ops.get_database_v2)):
-    return await dbi.get_nodes_info(cluster)
+async def nodes_info(cluster: str,
+        nodename: str | None = None,
+        time_in_s: int | None = None,
+        dbi=Depends(db_ops.get_database_v2)):
+    return await dbi.get_nodes_info(cluster, nodename, time_in_s)
+
+@api_router.get("/{cluster}/nodes/states", response_model=None)
+@api_router.get("/{cluster}/nodes/{nodename}/states", response_model=None)
+async def nodes_states(cluster: str, nodename: str | None = None,
+        time_in_s: int | None = None,
+        ):
+    dbi = db_ops.get_database_v2()
+    return await dbi.get_nodes_states(cluster, nodename, time_in_s)
 
 
 @api_router.get("/{cluster}/nodes/{nodename}/topology", response_model=None)
@@ -111,7 +124,7 @@ async def nodes_last_probe_timestamp(cluster: str):
 
 @api_router.get("/{cluster}/nodes/{nodename}/gpu_util", description="test desc")
 @api_router.get("/{cluster}/nodes/gpu_util", description="test desc")
-async def nodes_gpu_process_util(
+async def nodes_process_gpu_util(
     cluster: str,
     nodename: str | None = None,
     reference_time_in_s: float | None = None,
@@ -122,7 +135,7 @@ async def nodes_gpu_process_util(
     nodes = [nodename] if nodename else (await dbi.get_nodes(cluster))
     tasks = {}
     for node in nodes:
-        tasks[node] = asyncio.create_task(dbi.get_node_gpu_process_util(
+        tasks[node] = asyncio.create_task(dbi.get_node_sample_process_gpu_util(
                 cluster=cluster,
                 node=node,
                 reference_time_in_s=reference_time_in_s,
@@ -134,7 +147,7 @@ async def nodes_gpu_process_util(
 @api_router.get("/{cluster}/nodes/{nodename}/gpu_process_status")
 @api_router.get("/{cluster}/nodes/gpu_process_status")
 @api_router.get("/{cluster}/nodes/{nodename}/jobs/{job}/gpu_process_status")
-async def nodes_gpu_process_status(
+async def nodes_sample_process_gpu(
     cluster: str,
     nodename: str | None = None,
     job: int | None = None,
@@ -151,7 +164,7 @@ async def nodes_gpu_process_status(
     )
 
     nodes = None if nodename is None else [nodename]
-    return await dbi.get_nodes_gpu_process_status_timeseries(
+    return await dbi.get_nodes_sample_process_gpu_timeseries(
             cluster=cluster,
             nodes=nodes,
             job_id=job,
@@ -166,7 +179,7 @@ async def nodes_gpu_process_status(
 
 @api_router.get("/{cluster}/jobs/system_process_status")
 @api_router.get("/{cluster}/jobs/{job}/system_process_status")
-async def job_gpu_process_status(
+async def job_sample_process_system(
     cluster: str,
     job: int | None = None,
     epoch: int = 0,
@@ -186,7 +199,7 @@ async def job_gpu_process_status(
     )
 
     nodes = None if nodename is None else [nodename]
-    return await dbi.get_jobs_system_process_status_timeseries(
+    return await dbi.get_jobs_sample_process_system_timeseries(
             cluster=cluster,
             nodes=nodes,
             job_id=job,
@@ -198,7 +211,7 @@ async def job_gpu_process_status(
 
 @api_router.get("/{cluster}/jobs/gpu_process_status")
 @api_router.get("/{cluster}/jobs/{job}/gpu_process_status")
-async def job_gpu_process_status(
+async def job_sample_process_gpu(
     cluster: str,
     job: int | None = None,
     epoch: int = 0,
@@ -215,7 +228,7 @@ async def job_gpu_process_status(
     )
 
     nodes = None if nodename is None else [nodename]
-    return await dbi.get_jobs_gpu_process_status_timeseries(
+    return await dbi.get_jobs_sample_process_gpu_timeseries(
             cluster=cluster,
             nodes=nodes,
             job_id=job,
@@ -323,7 +336,7 @@ async def gpu_status(
         nodes = await dbi.get_nodes() if nodename is None else [nodename]
         tasks = {}
         for node in nodes:
-            tasks[node] = asyncio.create_task(dbi.get_gpu_status_timeseries(
+            tasks[node] = asyncio.create_task(dbi.get_sample_gpu_timeseries(
                     cluster=cluster,
                     node=nodename,
                     start_time_in_s=start_time_in_s,
@@ -337,11 +350,14 @@ async def gpu_status(
                 detail=str(e))
 
 @api_router.get("/{cluster}/jobs/{job_id}/gpu_status")
-@api_router.get("/{cluster}/nodes/{nodename}/jobs//gpu_status")
+@api_router.get("/{cluster}/jobs/{job_id}/{epoch}/gpu_status")
+@api_router.get("/{cluster}/nodes/{nodename}/jobs/gpu_status")
 @api_router.get("/{cluster}/nodes/{nodename}/jobs/{job_id}/gpu_status")
+@api_router.get("/{cluster}/nodes/{nodename}/jobs/{job_id}/{epoch}/gpu_status")
 async def job_gpu_status(
     cluster: str,
     job_id: int,
+    epoch: int = 0,
     nodename: str | None = None,
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
@@ -354,15 +370,14 @@ async def job_gpu_status(
             resolution_in_s=resolution_in_s
     )
 
-    # FIXME: slurm job
-    epoch = 0 # by default
     if nodename is None:
         if job_id is None:
             nodes = await dbi.get_nodes(cluster)
         else:
-            job = await dbi.get_slurm_job(
+            job = await dbi.get_job(
                             cluster=cluster,
                             job_id=job_id,
+                            epoch=epoch,
                             start_time_in_s=start_time_in_s,
                             end_time_in_s=end_time_in_s
                         )
@@ -374,7 +389,7 @@ async def job_gpu_status(
 
     tasks = {}
     for node in nodes:
-        tasks[node] = asyncio.create_task(dbi.get_nodes_gpu_process_status_timeseries(
+        tasks[node] = asyncio.create_task(dbi.get_nodes_sample_process_gpu_timeseries(
                 cluster=cluster,
                 nodes=[node],
                 job_id=job_id,
@@ -464,17 +479,20 @@ async def jobs_query(
         )
     }
 
+@api_router.get("/{cluster}/partitions", response_model=None)
+@cache(expire=3600)
+async def partitions(
+        cluster: str,
+        time_in_s: int | None = None):
+    """
+    Check status of partitions
+    """
+    dbi = db_ops.get_database_v2()
+    return await dbi.get_partitions(cluster, time_in_s)
+
 
 ####### v1 ###############################
 if False:
-    @api_router.get("/{cluster}/partitions", response_model=None)
-    @cache(expire=3600)
-    async def partitions():
-        """
-        Check status of partitions
-        """
-        return _get_slurmrestd("/partitions")
-
     @api_router.get("/nodes/{nodename}/memory_status")
     @api_router.get("/nodes/memory_status")
     async def memory_status(

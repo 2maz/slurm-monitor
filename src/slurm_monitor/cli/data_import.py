@@ -41,7 +41,6 @@ class ImportParser(BaseParser):
         db = ClusterDB(db_settings=app_settings.database)
         if args.file is not None:
             if not Path(args.file).exists():
-                breakpoint()
                 raise FileNotFoundError(f"Could not find file: {args.file}")
 
             with open(args.file, 'r') as f:
