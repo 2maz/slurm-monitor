@@ -29,14 +29,14 @@ fi
 
 
 docker stop $CONTAINER_NAME
-docker run -d --rm --name $CONTAINER_NAME -p 7000:5432 -e POSTGRES_DB=test -e POSTGRES_PASSWORD=test -e POSTGRES_USER=test timescale/timescaledb:latest-pg17
-SLURM_MONITOR_DATABASE_URI=timescaledb://test:test@localhost:7000/test
+docker run -d --rm --name $CONTAINER_NAME -p 7777:5432 -e POSTGRES_DB=test -e POSTGRES_PASSWORD=test -e POSTGRES_USER=test timescale/timescaledb:latest-pg17
+SLURM_MONITOR_DATABASE_URI=timescaledb://test:test@localhost:7777/test
 
 #HOSTNAME=srl-login3.cm.cluster
 export SLURM_MONITOR_DATA_DIR=/tmp/slurm-monitor-data
 
-echo "Waiting for db to start"
-sleep 5
+echo "Waiting for db to start - 10 seconds"
+sleep 10
 
 for file in $IMPORT_FILES; do
     echo "slurm-monitor import --db-uri $SLURM_MONITOR_DATABASE_URI --file $file"

@@ -688,7 +688,7 @@ class SampleSlurmJob(TableBase):
     job_id = Column(BigInteger, index=True, primary_key=True)  # ": 244843,
     job_step = Column(String, index=True, primary_key=True)
     job_name = Column(String)
-    job_state = Column(Enum(SlurmJobState))
+#    job_state = Column(Enum(SlurmJobState))
     job_state = Column(String)
 
     array_job_id = Column(BigInteger, nullable=True)  # 244843
