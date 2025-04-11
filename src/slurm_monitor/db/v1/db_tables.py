@@ -1,4 +1,5 @@
 from __future__ import annotations
+import slurm_monitor.timescaledb
 import logging
 import sqlalchemy
 import json

@@ -10,6 +10,7 @@ from slurm_monitor.cli.system_info import SystemInfoParser
 from slurm_monitor.cli.autodeploy import AutoDeployParser
 from slurm_monitor.cli.query import QueryParser
 from slurm_monitor.cli.data_import import ImportParser
+from slurm_monitor.cli.test import TestParser
 from slurm_monitor import __version__
 
 logger = getLogger(__name__)
@@ -74,6 +75,12 @@ def run():
         subcommand="system-info",
         help="Extract system information",
         parser_klass=SystemInfoParser
+    )
+
+    main_parser.attach_subcommand_parser(
+        subcommand="test",
+        help="Create a test database",
+        parser_klass=TestParser
     )
 
     args = main_parser.parse_args()

@@ -65,7 +65,7 @@ def test_data_dir():
 #    nodes_info = await db.get_nodes_info(cluster=cluster)
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_get_slurm_jobs(test_db_v2, number_of_jobs, number_of_nodes):
+async def test_get_slurm_jobs(test_db_v2, db_config):
     time_in_s = utcnow().timestamp()
     running_jobs = await test_db_v2.get_slurm_jobs(
             cluster="cluster-0",
@@ -75,29 +75,28 @@ async def test_get_slurm_jobs(test_db_v2, number_of_jobs, number_of_nodes):
             end_time_in_s=time_in_s + 5*60
     )
 
-    assert len(running_jobs) == number_of_jobs*number_of_nodes
+    assert len(running_jobs) == db_config.number_of_jobs*db_config.number_of_nodes
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_clusters(test_db_v2, number_of_clusters, number_of_partitions,
-        number_of_nodes, number_of_jobs, number_of_gpus):
+async def test_clusters(test_db_v2, db_config):
     clusters = await test_db_v2.get_clusters()
-    assert len(clusters) == number_of_clusters
+    assert len(clusters) == db_config.number_of_clusters
 
     for cluster in clusters:
         partitions = await test_db_v2.get_partitions(cluster=cluster['cluster'])
-        assert len(partitions) == number_of_partitions
+        assert len(partitions) == db_config.number_of_partitions
 
         # only the first partition has running jobs
         p = partitions[0]
-        assert len(p['nodes']) == number_of_nodes
+        assert len(p['nodes']) == db_config.number_of_nodes
 
         job_ids = [x['job_id'] for x in p['jobs_running']]
         assert len(job_ids) == len(set(job_ids))
-        assert len(job_ids) == number_of_jobs*number_of_nodes
+        assert len(job_ids) == db_config.number_of_jobs*db_config.number_of_nodes
 
-        assert p['total_cpus'] == (2*24*2)*number_of_nodes
-        assert p['gpus_reserved'] == number_of_jobs*number_of_nodes
+        assert p['total_cpus'] == (2*24*2)*db_config.number_of_nodes
+        assert p['gpus_reserved'] == db_config.number_of_jobs*db_config.number_of_nodes
 
 @pytest.mark.asyncio(loop_scope="module")
 async def test_get_sample_gpu_timeseries(test_db_v2):
@@ -133,19 +132,19 @@ async def test_job_sample_process_gpu_timeseries(test_db_v2):
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_nodes(test_db_v2, number_of_nodes, number_of_gpus):
+async def test_nodes(test_db_v2, db_config):
     nodes = await test_db_v2.get_nodes(cluster="cluster-1")
-    assert len(nodes) == number_of_nodes
+    assert len(nodes) == db_config.number_of_nodes
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_nodes_info(test_db_v2, number_of_clusters, number_of_nodes, number_of_gpus):
+async def test_nodes_info(test_db_v2, db_config):
 
     clusters = await test_db_v2.get_clusters()
-    assert len(clusters) == number_of_clusters
+    assert len(clusters) == db_config.number_of_clusters
 
     nodes = await test_db_v2.get_nodes_info(cluster="cluster-1")
     for node, value in nodes.items():
-        assert len(value['cards']) == number_of_gpus
+        assert len(value['cards']) == db_config.number_of_gpus
 
 
 
