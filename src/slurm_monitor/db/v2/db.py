@@ -119,7 +119,7 @@ class Database:
                     db_settings.password
             )
 
-        self.async_engine = create_async_engine(async_db_url, **engine_kwargs)
+        self.async_engine = create_async_engine(async_db_url, pool_size=10, **engine_kwargs)
         self.async_session_factory = async_sessionmaker(self.async_engine, expire_on_commit=False)
 
         #from sqlalchemy_schemadisplay import create_schema_graph
@@ -747,6 +747,13 @@ class ClusterDB(Database):
             nodename:
                 gpu_uuid: Array[{job: int, epoch: int, data: Array[SampleProcessGpu]]
         """
+        if not nodes:
+            nodes = await self.get_nodes(cluster=cluster, time_in_s=end_time_in_s)
+            if not nodes:
+                raise RuntimeError("get_nodes_sample_process_gpu_timeseries: "
+                        f" could not find any available node for {cluster=}"
+                        f", {start_time_in_s=} {end_time_in_s=}")
+
         node_configs = await self.get_active_node_configs(
                            cluster=cluster,
                            node=nodes,
@@ -758,7 +765,7 @@ class ClusterDB(Database):
 
         nodes_sample_process_gpu = {}
         for node_config in node_configs:
-            cards = [x[0] for x in node_config.cards]
+            cards = node_config.cards
 
             where = SampleProcessGpu.uuid.in_(cards)
             if job_id is not None:
@@ -1022,7 +1029,7 @@ class ClusterDB(Database):
                     } for x in timeseries
             ]
 
-    async def get_node_process_gpu_util(self,
+    async def get_node_sample_process_gpu_util(self,
             cluster: str,
             node: str,
             reference_time_in_s: float | None = None,
@@ -1031,25 +1038,31 @@ class ClusterDB(Database):
         """
         Get the latest gpu utilization for the given node
         """
+        if reference_time_in_s is None:
+            reference_time_in_s = utcnow().timestamp()
+
+        if window_in_s is None:
+            window_in_s = 5*60 # 5 minutes
 
         node_config = await self.get_active_node_configs(
                     cluster=cluster,
                     node=node,
                     time_in_s=reference_time_in_s - window_in_s
                 )
+
         if node_config:
             node_config = node_config[0]
-            cards = [x[0] for x in node_config.cards]
+            cards = node_config.cards
         else:
             raise RuntimeError(f"Failed to retrieve node config for {cluster=} {node=}")
 
-        return await self.get_process_gpu_util(uuids=cards,
+        return await self.get_sample_process_gpu_util(uuids=cards,
                 reference_time_in_s=reference_time_in_s,
                 window_in_s=window_in_s
                 )
 
 
-    async def get_process_gpu_util(self,
+    async def get_sample_process_gpu_util(self,
             uuids: str | list[str],
             reference_time_in_s: float | None = None,
             window_in_s: int | None = None,
@@ -1076,17 +1089,19 @@ class ClusterDB(Database):
                        )
 
             async with self.make_async_session() as session:
-                last_time = (await session.execute(query)).all()
+                last_timestamps = (await session.execute(query)).all()
 
             data = {}
             for last_timestamp in last_timestamps:
                 uuid, timestamp = last_timestamp
 
+                # Sum over all processes
                 query = select(
                             SampleProcessGpu.uuid,
                             SampleProcessGpu.gpu_memory,
                             func.sum(SampleProcessGpu.gpu_util),
                             func.sum(SampleProcessGpu.gpu_memory_util),
+                            func.array_agg(SampleProcessGpu.pid).label('pids'),
                         ).where(
                             (SampleProcessGpu.uuid == uuid) &
                             (SampleProcessGpu.time == timestamp)
@@ -1098,11 +1113,13 @@ class ClusterDB(Database):
                 async with self.make_async_session() as session:
                     uuid_result = (await session.execute(query)).all()
                     if uuid_result:
-                        uuid, gpu_memory, gpu_util, gpu_memory_util = uuid_result[0]
+                        uuid, gpu_memory, gpu_util, gpu_memory_util, pids = uuid_result[0]
                         data[uuid] = {
                                      'gpu_memory': gpu_memory,
                                      'gpu_util': gpu_util,
-                                     'gpu_memory_util': gpu_memory_util
+                                     'gpu_memory_util': gpu_memory_util,
+                                     'pids': pids,
+                                     'time': timestamp
                                  }
             return data
         except Exception as e:

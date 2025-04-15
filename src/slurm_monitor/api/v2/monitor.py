@@ -7,10 +7,12 @@ from fastapi_cache.decorator import cache
 from logging import getLogger, Logger
 import pandas as pd
 from pathlib import Path
+from pydantic import BaseModel, RootModel, root_validator
 import re
 import tempfile
 from tqdm import tqdm
 import traceback
+from typing import TypeVar, Generic
 
 from slurm_monitor.utils import utcnow
 
@@ -72,19 +74,224 @@ def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None
 
     return start_time_in_s, end_time_in_s, resolution_in_s
 
+#### Response Types ######
+class SimpleModel(BaseModel):
+    class Config:
+        orm_mode = True
+
+class TimestampedModel(SimpleModel):
+    time: dt.datetime
+
+    class Config:
+        orm_mode = True
+
+class ClusterResponse(TimestampedModel):
+    cluster: str
+    slurm: int
+    partitions: list[str]
+    nodes: list[str]
+
+class JobResponse(TimestampedModel):
+    cluster: str
+    job_id: int
+    job_step: str
+    job_name: str
+    job_state: str
+
+    array_job_id: int | None
+    array_task_id: int | None
+
+    het_job_id: int
+    het_job_offset: int
+    user_name: str
+    account: str
+
+    start_time: dt.datetime
+    suspend_time: int
+    submit_time: dt.datetime
+    time_limit: int
+    end_time: dt.datetime | None
+    exit_code: int | None
+
+    partition: str
+    reservation: str
+    nodes: list[str]
+    reservation: str
+    nodes: list[str]
+    priority: int
+    distribution: str
+
+    gres_detail: list[str] | None
+    requested_cpus: int
+    requested_memory_per_node: int
+    requested_node_count: int
+    minimum_cpus_per_node: int
+
+
+class PartitionResponse(TimestampedModel):
+   cluster: str
+   name: str
+   nodes: list[str]
+   nodes_compact: list[str]
+
+   jobs_pending: list[JobResponse]
+   jobs_running: list[JobResponse]
+   pending_max_submit_time: dt.datetime | int
+   running_latest_wait_time: dt.datetime | int
+   total_cpus: int
+   total_gpus: int
+   gpus_reserved: int
+   gpus_in_use: list[str]
+
+class JobsResponse(BaseModel):
+    jobs: list[JobResponse]
+
+class NodeStateResponse(TimestampedModel):
+    cluster: str
+    node: str
+    states: list[str]
+
+class GPUCardResponse(TimestampedModel):
+    uuid: str
+    manufacturer: str
+    model: str
+    architecture: str
+    memory: int
+
+    cluster: str
+    node: str
+    index: int
+    address: str
+    driver: str
+    firmware: str
+    power_limit: int
+    max_power_limit: int
+    min_power_limit: int
+    max_ce_clock: int
+    max_memory_clock: int
+
+class SampleGpuResponse(TimestampedModel):
+    uuid: str
+    index: int
+    failing: int
+    fan: int
+    compute_mode: str
+    performance_state: int
+    memory: int
+    ce_util: int
+    memory_util: int
+    temperature: int
+    power: int
+    power_limit: int
+    memory_clock: int
+
+class SampleProcessResponse(TimestampedModel):
+    cluster: str
+    node: str
+    job: int
+    epoch: int
+    user: str
+
+    resident_memory: int
+    virtual_memory: int
+    cmd: str
+    pid: int
+    ppid: int
+
+    cpu_avg: float
+    cpu_util: float
+    cpu_time: int
+
+    rolled_up: int
+
+class SampleProcessGpuResponse(TimestampedModel):
+    cluster: str
+    node: str
+    job: int
+    epoch: int
+    user: str
+    pid: int
+    uuid: str
+    index: int
+
+    gpu_util: float
+    gpu_memory: int
+    gpu_memory_util: float
+
+class SampleProcessGpuAccResponse(TimestampedModel):
+    gpu_memory: int
+    gpu_util: float
+    gpu_memory_util: float
+    pids: list[int]
+
+class NodeResponse(TimestampedModel):
+    cluster: str
+    node: str
+    os_name: str
+    os_release: str
+    architecture: str
+    sockets: int
+    cores_per_socket: int
+    threads_per_core: int
+    cpu_model: str
+    description: str
+    memory: int
+    topo_svg: str | None
+    cards: list[GPUCardResponse]
+    #
+    partitions: list[str]
+
+
+T = TypeVar('T')
+class JobSpecificTimeseriesResponse(BaseModel, Generic[T]):
+    job: int
+    epoch: int
+    data: list[T]
+
+class CombinedProcessTimeSeriesResponse(BaseModel):
+    cpu_memory: list[SampleProcessResponse]
+    gpus: dict[str, list[SampleProcessGpuResponse]]
+
+class SystemProcessTimeseriesResponse(BaseModel):
+    job: int
+    epoch: int
+    nodes: dict[str, CombinedProcessTimeSeriesResponse]
+
+class NodeJobSampleProcessTimeseriesResponse(BaseModel):
+    job: int
+    epoch: int
+    processes: list[SystemProcessTimeseriesResponse]
+
+#### GPU
+# Uuid top-level
+class GpuJobSampleProcessGpuTimeseriesResponse(RootModel):
+    # uuid > list[job-timeseries]
+    root: dict[str, list[JobSpecificTimeseriesResponse]]
+
+# Node top-level
+class NodeGpuJobSampleProcessGpuTimeseriesResponse(RootModel):
+    root: dict[str, GpuJobSampleProcessGpuTimeseriesResponse]
+
+class NodeSampleProcessGpuAccResponse(RootModel):
+    root: dict[str, dict[str, SampleProcessGpuAccResponse]]
+
+    @root_validator(pre=True)
+    def check_nested_structure(cls, values):
+        if not isinstance(values, dict):
+            raise ValueError("Response must be a dictionary: keys are nodenames")
+        for key, value in values.items():
+            if not isinstance(list):
+                raise ValueError("Nodes need to map to list of job timeseries data")
 
 #### Results sorted by nodes
-
-@api_router.get("/{cluster}/nodes/{nodename}/info", response_model=None)
-@cache(expire=3600*24)
-async def nodes_nodename_info(cluster: str, nodename: str):
+@api_router.get("/cluster", response_model=list[ClusterResponse])
+async def cluster(time_in_s: int | None = None):
     dbi = db_ops.get_database_v2()
-    return await dbi.get_nodes_info(cluster, nodename)
+    return await dbi.get_clusters(time_in_s=time_in_s)
 
-
-@api_router.get("/{cluster}/nodes", response_model=None)
-@api_router.get("/{cluster}/nodes/info", response_model=None)
-@api_router.get("/{cluster}/nodes/{nodename}/info", response_model=None)
+@api_router.get("/cluster/{cluster}/nodes", response_model=dict[str, NodeResponse])
+@api_router.get("/cluster/{cluster}/nodes/info", response_model=dict[str, NodeResponse])
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/info", response_model=dict[str, NodeResponse])
 @cache(expire=3600*24)
 async def nodes_info(cluster: str,
         nodename: str | None = None,
@@ -92,8 +299,8 @@ async def nodes_info(cluster: str,
         dbi=Depends(db_ops.get_database_v2)):
     return await dbi.get_nodes_info(cluster, nodename, time_in_s)
 
-@api_router.get("/{cluster}/nodes/states", response_model=None)
-@api_router.get("/{cluster}/nodes/{nodename}/states", response_model=None)
+@api_router.get("/cluster/{cluster}/nodes/states", response_model=NodeStateResponse)
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/states", response_model=NodeStateResponse)
 async def nodes_states(cluster: str, nodename: str | None = None,
         time_in_s: int | None = None,
         ):
@@ -101,7 +308,7 @@ async def nodes_states(cluster: str, nodename: str | None = None,
     return await dbi.get_nodes_states(cluster, nodename, time_in_s)
 
 
-@api_router.get("/{cluster}/nodes/{nodename}/topology", response_model=None)
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/topology", response_model=None)
 async def nodes_nodename_topology(cluster: str, nodename: str):
     dbi = db_ops.get_database_v2()
     node_config = await dbi.get_nodes_info(cluster, nodename)
@@ -113,23 +320,26 @@ async def nodes_nodename_topology(cluster: str, nodename: str):
                 detail=f"No topology information available for {nodename=} {cluster=}")
 
 
-@api_router.get("/{cluster}/nodes/last_probe_timestamp", response_model=dict[str, dt.datetime])
+@api_router.get("/cluster/{cluster}/nodes/last_probe_timestamp", response_model=dict[str, dt.datetime])
 async def nodes_last_probe_timestamp(cluster: str):
     """
-    Retrieve the last the timestamps of
+    Retrieve the last known timestamps of records added for nodes in the cluster
     """
     dbi = db_ops.get_database_v2()
     return await dbi.get_last_probe_timestamp(cluster=cluster)
 
 
-@api_router.get("/{cluster}/nodes/{nodename}/gpu_util", description="test desc")
-@api_router.get("/{cluster}/nodes/gpu_util", description="test desc")
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/gpu_util", response_model=NodeSampleProcessGpuAccResponse)
+@api_router.get("/cluster/{cluster}/nodes/gpu_util", response_model=NodeSampleProcessGpuAccResponse)
 async def nodes_process_gpu_util(
     cluster: str,
     nodename: str | None = None,
     reference_time_in_s: float | None = None,
     window_in_s: int | None = None,
 ):
+    """
+    Retrieve the latest gpu utilization
+    """
     dbi = db_ops.get_database_v2()
 
     nodes = [nodename] if nodename else (await dbi.get_nodes(cluster))
@@ -142,11 +352,12 @@ async def nodes_process_gpu_util(
                 window_in_s=window_in_s
             )
         )
-    return { x: (await task) for x, task in tasks.items()}
+    data = { x: (await task) for x, task in tasks.items()}
+    return data
 
-@api_router.get("/{cluster}/nodes/{nodename}/gpu_process_status")
-@api_router.get("/{cluster}/nodes/gpu_process_status")
-@api_router.get("/{cluster}/nodes/{nodename}/jobs/{job}/gpu_process_status")
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/gpu_process_status", response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse)
+@api_router.get("/cluster/{cluster}/nodes/gpu_process_status", response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse)
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/jobs/{job}/gpu_process_status", response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse)
 async def nodes_sample_process_gpu(
     cluster: str,
     nodename: str | None = None,
@@ -174,11 +385,10 @@ async def nodes_sample_process_gpu(
             resolution_in_s=resolution_in_s
         )
 
-
 #### Results sorted by jobs
 
-@api_router.get("/{cluster}/jobs/system_process_status")
-@api_router.get("/{cluster}/jobs/{job}/system_process_status")
+@api_router.get("/cluster/{cluster}/jobs/system_process_status", response_model=list[SystemProcessTimeseriesResponse])
+@api_router.get("/cluster/{cluster}/jobs/{job}/system_process_status", response_model=list[SystemProcessTimeseriesResponse])
 async def job_sample_process_system(
     cluster: str,
     job: int | None = None,
@@ -209,8 +419,8 @@ async def job_sample_process_system(
             resolution_in_s=resolution_in_s
         )
 
-@api_router.get("/{cluster}/jobs/gpu_process_status")
-@api_router.get("/{cluster}/jobs/{job}/gpu_process_status")
+@api_router.get("/cluster/{cluster}/jobs/gpu_process_status")
+@api_router.get("/cluster/{cluster}/jobs/{job}/gpu_process_status")
 async def job_sample_process_gpu(
     cluster: str,
     job: int | None = None,
@@ -238,8 +448,8 @@ async def job_sample_process_gpu(
             resolution_in_s=resolution_in_s
         )
 
-@api_router.get("/{cluster}/nodes/{nodename}/process_status")
-@api_router.get("/{cluster}/nodes/process_status")
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/process_status")
+@api_router.get("/cluster/{cluster}/nodes/process_status")
 async def nodes_process_status(
     cluster: str,
     nodename: str | None = None,
@@ -263,10 +473,10 @@ async def nodes_process_status(
             resolution_in_s=resolution_in_s
         )
 
-@api_router.get("/{cluster}/nodes/{nodename}/cpu_memory_status")
-@api_router.get("/{cluster}/nodes/cpu_memory_status")
-@api_router.get("/{cluster}/jobs/{job_id}/cpu_memory_status")
-@api_router.get("/{cluster}/nodes/{nodename}/jobs/{job_id}/cpu_memory_status")
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/cpu_memory_status")
+@api_router.get("/cluster/{cluster}/nodes/cpu_memory_status")
+@api_router.get("/cluster/{cluster}/jobs/{job_id}/cpu_memory_status")
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/jobs/{job_id}/cpu_memory_status")
 async def cpu_memory_status(
     cluster: str,
     nodename: str | None = None,
@@ -316,8 +526,8 @@ async def cpu_memory_status(
         raise HTTPException(status_code=500,
                 detail=str(e))
 
-@api_router.get("/{cluster}/nodes/{nodename}/gpu_status")
-@api_router.get("/{cluster}/nodes/gpu_status")
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/gpu_status")
+@api_router.get("/cluster/{cluster}/nodes/gpu_status")
 async def gpu_status(
     cluster: str,
     nodename: str | None = None,
@@ -349,11 +559,11 @@ async def gpu_status(
         raise HTTPException(status_code=500,
                 detail=str(e))
 
-@api_router.get("/{cluster}/jobs/{job_id}/gpu_status")
-@api_router.get("/{cluster}/jobs/{job_id}/{epoch}/gpu_status")
-@api_router.get("/{cluster}/nodes/{nodename}/jobs/gpu_status")
-@api_router.get("/{cluster}/nodes/{nodename}/jobs/{job_id}/gpu_status")
-@api_router.get("/{cluster}/nodes/{nodename}/jobs/{job_id}/{epoch}/gpu_status")
+@api_router.get("/cluster/{cluster}/jobs/{job_id}/gpu_status")
+@api_router.get("/cluster/{cluster}/jobs/{job_id}/{epoch}/gpu_status")
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/jobs/gpu_status")
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/jobs/{job_id}/gpu_status")
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/jobs/{job_id}/{epoch}/gpu_status")
 async def job_gpu_status(
     cluster: str,
     job_id: int,
@@ -405,7 +615,7 @@ async def job_gpu_status(
         status |= await tasks[node]
     return { 'gpu_status': status}
 
-@api_router.get("/{cluster}/jobs", response_model=None)
+@api_router.get("/cluster/{cluster}/jobs", response_model=JobsResponse)
 @cache(expire=30)
 async def jobs(cluster: str,
         start_time_in_s: int | None = None,
@@ -428,8 +638,8 @@ async def jobs(cluster: str,
             end_time_in_s=end_time_in_s
         )}
 
-@api_router.get("/{cluster}/job/{job_id}")
-@api_router.get("/{cluster}/jobs/{job_id}/info")
+@api_router.get("/cluster/{cluster}/job/{job_id}")
+@api_router.get("/cluster/{cluster}/jobs/{job_id}/info")
 async def job_status(
     cluster: str,
     job_id: int,
@@ -445,7 +655,7 @@ async def job_status(
         )
     }
 
-@api_router.get("/{cluster}/jobs/query")
+@api_router.get("/cluster/{cluster}/jobs/query")
 async def jobs_query(
     cluster: str,
     user: str | None = None,
@@ -479,7 +689,7 @@ async def jobs_query(
         )
     }
 
-@api_router.get("/{cluster}/partitions", response_model=None)
+@api_router.get("/cluster/{cluster}/partitions", response_model=list[PartitionResponse])
 @cache(expire=3600)
 async def partitions(
         cluster: str,

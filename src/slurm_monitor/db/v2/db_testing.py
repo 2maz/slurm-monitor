@@ -162,8 +162,8 @@ def create_test_db(
                             compute_mode="P",
                             performance_state=1,
                             memory=278656,
-                            ce_util=30,
-                            memory_util=20,
+                            ce_util=100.0/config.number_of_jobs,
+                            memory_util=100.0/config.number_of_jobs,
                             temperature=52,
                             power=41,
                             power_limit=350,
@@ -278,9 +278,9 @@ def create_test_db(
                                 user="any-user",
                                 pid=jobId,
                                 uuid=card,
-                                gpu_util=30,
+                                gpu_util=100.0/config.number_of_jobs,
                                 gpu_memory=80*32*1024**2,
-                                gpu_memory_util=80,
+                                gpu_memory_util=100.0/config.number_of_jobs,
                                 time=sample_time
                             )
                         )
