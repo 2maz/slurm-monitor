@@ -117,7 +117,7 @@ async def runtime_exception_handler(request: Request, exc: Exception):
     traceback.print_tb(exc.__traceback__)
 
     raise HTTPException(status_code=500,
-            detail=f"Internal Errror: {exc}")
+            detail=f"Internal Error: {exc}")
 
 # Serve API. We want the API to take full charge of its prefix, not involve the SPA mount
 # at all, hence we use a submount rather than subrouter.
