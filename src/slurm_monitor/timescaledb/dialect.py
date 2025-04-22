@@ -67,7 +67,7 @@ class TimescaledbDDLCompiler(PGDDLCompiler):
                 interval = compression["interval"]
 
                 statement += f"""
-                    SELECT add_compression_policy('{table_name}', INTERVAL '{interval}')
+                    SELECT add_compression_policy('{table_name}', INTERVAL '{interval}', if_not_exists => 'TRUE')
                 """
 
         return DDL(
