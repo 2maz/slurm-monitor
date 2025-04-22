@@ -518,6 +518,7 @@ class ClusterDB(Database):
         async with self.make_async_session() as session:
             node_states = [
                     { 
+                        'cluster': cluster,
                         'node': x[0],
                         'states': x[1],
                         'time': x[2]
@@ -539,10 +540,10 @@ class ClusterDB(Database):
         if node is None:
             nodelist = await self.get_nodes(cluster=cluster)
         elif type(node) == str:
-            node = [node]
+            nodelist = [node]
 
         try:
-            where = (SysinfoAttributes.cluster == cluster) & SysinfoAttributes.node.in_(node)
+            where = (SysinfoAttributes.cluster == cluster) & SysinfoAttributes.node.in_(nodelist)
             if time_in_s:
                 where &= SysinfoAttributes.time <= dt.datetime.fromtimestamp(time_in_s, dt.timezone.utc)
             else:
@@ -584,7 +585,7 @@ class ClusterDB(Database):
                          func.min(SysinfoAttributes.time).label('min_time')
                        ).where(
                             (SysinfoAttributes.cluster == cluster) &
-                            SysinfoAttributes.node.in_(node) &
+                            SysinfoAttributes.node.in_(nodelist) &
                             (SysinfoAttributes.time >= dt.datetime.fromtimestamp(time_in_s, dt.timezone.utc))
                        ).group_by(
                          SysinfoAttributes.cluster,
@@ -622,11 +623,11 @@ class ClusterDB(Database):
         if node is None:
             nodelist = await self.get_nodes(cluster=cluster, time_in_s=time_in_s)
         elif type(node) == str:
-            node = [node]
+            nodelist = [node]
 
         try:
             # Configuration needs to be active before or at that timepoint gvein
-            where = (SysinfoGpuCardConfig.cluster == cluster) & SysinfoGpuCardConfig.node.in_(node)
+            where = (SysinfoGpuCardConfig.cluster == cluster) & SysinfoGpuCardConfig.node.in_(nodelist)
             if time_in_s:
                 time = dt.datetime.fromtimestamp(time_in_s, dt.timezone.utc)
                 where &= SysinfoGpuCardConfig.time <= time
@@ -854,6 +855,12 @@ class ClusterDB(Database):
 
             if nodes is None:
                 nodes = job_nodes
+            else:
+                intersection = set(nodes) & set(job_nodes)
+                if not intersection:
+                    # this jobs runs on nodes that are not
+                    # relevant for this query
+                    continue
 
             nodes_data = {}
             for gpu_job in gpu_status:
@@ -871,10 +878,10 @@ class ClusterDB(Database):
                         end_time_in_s=end_time_in_s,
                         resolution_in_s=resolution_in_s
                 )
-                if cpu_status_timeseries:
-                    if node not in nodes_data:
-                        nodes_data[node] = {}
+                if node not in nodes_data:
+                    nodes_data[node] = { 'cpu_memory': {}, 'gpus': {}}
 
+                if cpu_status_timeseries:
                     nodes_data[node]['cpu_memory'] = cpu_status_timeseries
 
             all_jobs.append({ 'job': jid, 'epoch': epoch, 'nodes': nodes_data})
@@ -1101,7 +1108,7 @@ class ClusterDB(Database):
                             SampleProcessGpu.gpu_memory,
                             func.sum(SampleProcessGpu.gpu_util),
                             func.sum(SampleProcessGpu.gpu_memory_util),
-                            func.array_agg(SampleProcessGpu.pid).label('pids'),
+                            func.array_agg(SampleProcessGpu.pid.distinct()).label('pids'),
                         ).where(
                             (SampleProcessGpu.uuid == uuid) &
                             (SampleProcessGpu.time == timestamp)
@@ -1245,6 +1252,8 @@ class ClusterDB(Database):
                             'cpu_avg': x[3],
                             'cpu_util': x[4],
                             'cpu_time': x[5],
+                            # To satisfy SampleProcessAccResponse interface
+                            'processes_avg': 1,
                             'time': x[6]
                         } for x in timeseries
                 ]
@@ -1334,7 +1343,7 @@ class ClusterDB(Database):
                             'cpu_avg': x[3],
                             'cpu_util': x[4],
                             'cpu_time': x[5],
-                            'pids': x[6],
+                            'processes_avg': x[6],
                             'time': x[7]
                         } for x in timeseries
                 ]
@@ -1470,7 +1479,7 @@ class ClusterDB(Database):
             states: list[str] | None = None,
         ) -> dict[str, any] | None:
         """
-        Get the SLURM job status for all a specific job in a cluster
+        Get the SLURM job status for a specific job in a cluster
         """
         where = (SampleSlurmJob.cluster == cluster) & (SampleSlurmJob.job_id == job_id) & (SampleSlurmJob.job_step == '') # get the main job
         if start_time_in_s:
@@ -1735,10 +1744,10 @@ class ClusterDB(Database):
                     start_time = job['start_time'] 
                     if latest_start_time is None:
                         latest_start_time = start_time
-                        wait_time = start_time - job['submit_time']
+                        wait_time = (start_time - job['submit_time']).total_seconds()
                     elif start_time < latest_start_time:
                         latest_start_time = start_time
-                        wait_time = start_time - job['submit_time']
+                        wait_time = (start_time - job['submit_time']).total_seconds()
                     m = re.search(r"gpu=([0-9]+)", job['sacct']['AllocTRES'])
                     if m:
                         cards_reserved += int(m.groups(0)[0])

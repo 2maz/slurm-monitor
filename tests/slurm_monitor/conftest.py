@@ -2,8 +2,16 @@ import pytest
 import json
 import subprocess
 import psutil
+import datetime as dt
+from pathlib import Path
+import sqlalchemy
+import time
 
 import slurm_monitor.timescaledb
+from slurm_monitor.utils import utcnow
+from slurm_monitor.devices.gpu import GPU
+from slurm_monitor.utils.command import Command
+
 from slurm_monitor.db.v1.db import SlurmMonitorDB, DatabaseSettings
 from slurm_monitor.db.v1.db_tables import (
         CPUStatus,
@@ -15,12 +23,9 @@ from slurm_monitor.db.v1.db_tables import (
         Nodes,
         ProcessStatus
 )
-import datetime as dt
-from pathlib import Path
-from slurm_monitor.utils import utcnow
 
-from slurm_monitor.devices.gpu import GPU
-from slurm_monitor.utils.command import Command
+import slurm_monitor.db.v2 as db_v2
+import slurm_monitor.db.v2.db_testing as db_v2_testing
 
 def pytest_addoption(parser):
     parser.addoption("--db-uri", help="Test database ", default=None)
@@ -500,3 +505,35 @@ def mock_gpu(gpu_type, gpu_responses, monkeypatch):
     monkeypatch.setattr(GPU, "query_status_smi", mock_query_status_smi)
 
     return gpu_responses[gpu_type]['expect']
+
+## DB V2
+@pytest.fixture(scope='module')
+def db_config() -> db_v2_testing.TestDBConfig:
+    return db_v2_testing.TestDBConfig()
+
+@pytest.fixture(scope="module")
+def timescaledb(request):
+    container_name = "timescaledb-pytest"
+    uri = db_v2_testing.start_timescaledb_container(
+            port=7001,
+            container_name=container_name
+    )
+
+    def teardown():
+        Command.run(f"docker stop {container_name}")
+
+    request.addfinalizer(teardown)
+    return uri
+
+@pytest.fixture(scope="module")
+def test_db_v2(timescaledb,
+        db_config) -> db_v2.db.ClusterDB:
+    for i in range(0,3):
+        try:
+            db_test = db_v2_testing.create_test_db(timescaledb, db_config)
+            time.sleep(2)
+        except sqlalchemy.exc.OperationalError as e:
+            if i < 2 and "server closed" in str(e):
+                pass
+            raise
+    return db_test

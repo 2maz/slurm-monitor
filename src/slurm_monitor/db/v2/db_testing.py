@@ -34,7 +34,7 @@ class TestDBConfig(BaseModel):
     number_of_cpus: int = 2
     number_of_gpus: int = 2
     number_of_jobs: int = 4
-    number_of_samples: int = 2
+    number_of_samples: int = 25
     sampling_interval_in_s: int = 30
 
 
@@ -58,7 +58,7 @@ def start_timescaledb_container(
         if container:
             break
 
-    sleep(3)
+    sleep(5)
     logger.info(f"{container_name=} is ready")
 
     return f"timescaledb://{user}:{password}@localhost:{port}/{db_name}"

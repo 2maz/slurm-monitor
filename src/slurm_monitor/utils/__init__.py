@@ -1,10 +1,13 @@
 import datetime as dt
 import pytz
 
-def utcnow():
+def utcnow() -> dt.datetime:
     return dt.datetime.now(tz=dt.timezone.utc)
 
-def ensure_utc(date: dt.datetime):
+def fromtimestamp(time_in_s: float) -> dt.datetime:
+    return dt.datetime.fromtimestamp(time_in_s, tz=dt.timezone.utc)
+
+def ensure_utc(date: dt.datetime) -> dt.datetime:
     """
     Prepare plain time in utc, but with tzinfo being set
     """

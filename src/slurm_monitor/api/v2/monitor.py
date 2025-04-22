@@ -7,20 +7,38 @@ from fastapi_cache.decorator import cache
 from logging import getLogger, Logger
 import pandas as pd
 from pathlib import Path
-from pydantic import BaseModel, RootModel, root_validator
 import re
 import tempfile
 from tqdm import tqdm
 import traceback
-from typing import TypeVar, Generic
 
-from slurm_monitor.utils import utcnow
+from slurm_monitor.utils import utcnow, fromtimestamp
 
 from slurm_monitor.utils.command import Command
 from slurm_monitor.utils.slurm import Slurm
 
 from slurm_monitor.app_settings import AppSettingsV2
 import slurm_monitor.db_operations as db_ops
+
+from .response_models import (
+    ClusterResponse,
+    JobResponse,
+    PartitionResponse,
+    JobsResponse,
+    GPUCardResponse,
+    SampleGpuResponse,
+    SampleProcessResponse,
+    SampleProcessGpuResponse,
+    SampleProcessGpuAccResponse,
+    NodeStateResponse,
+    NodeResponse,
+    SystemProcessTimeseriesResponse,
+    NodeJobSampleProcessTimeseriesResponse,
+    NodeGpuJobSampleProcessGpuTimeseriesResponse,
+    NodeSampleProcessGpuAccResponse,
+    JobNodeSampleProcessGpuTimeseriesResponse,
+    JobNodeSampleProcessTimeseriesResponse
+)
 
 logger: Logger = getLogger(__name__)
 
@@ -74,215 +92,6 @@ def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None
 
     return start_time_in_s, end_time_in_s, resolution_in_s
 
-#### Response Types ######
-class SimpleModel(BaseModel):
-    class Config:
-        orm_mode = True
-
-class TimestampedModel(SimpleModel):
-    time: dt.datetime
-
-    class Config:
-        orm_mode = True
-
-class ClusterResponse(TimestampedModel):
-    cluster: str
-    slurm: int
-    partitions: list[str]
-    nodes: list[str]
-
-class JobResponse(TimestampedModel):
-    cluster: str
-    job_id: int
-    job_step: str
-    job_name: str
-    job_state: str
-
-    array_job_id: int | None
-    array_task_id: int | None
-
-    het_job_id: int
-    het_job_offset: int
-    user_name: str
-    account: str
-
-    start_time: dt.datetime
-    suspend_time: int
-    submit_time: dt.datetime
-    time_limit: int
-    end_time: dt.datetime | None
-    exit_code: int | None
-
-    partition: str
-    reservation: str
-    nodes: list[str]
-    reservation: str
-    nodes: list[str]
-    priority: int
-    distribution: str
-
-    gres_detail: list[str] | None
-    requested_cpus: int
-    requested_memory_per_node: int
-    requested_node_count: int
-    minimum_cpus_per_node: int
-
-
-class PartitionResponse(TimestampedModel):
-   cluster: str
-   name: str
-   nodes: list[str]
-   nodes_compact: list[str]
-
-   jobs_pending: list[JobResponse]
-   jobs_running: list[JobResponse]
-   pending_max_submit_time: dt.datetime | int
-   running_latest_wait_time: dt.datetime | int
-   total_cpus: int
-   total_gpus: int
-   gpus_reserved: int
-   gpus_in_use: list[str]
-
-class JobsResponse(BaseModel):
-    jobs: list[JobResponse]
-
-class NodeStateResponse(TimestampedModel):
-    cluster: str
-    node: str
-    states: list[str]
-
-class GPUCardResponse(TimestampedModel):
-    uuid: str
-    manufacturer: str
-    model: str
-    architecture: str
-    memory: int
-
-    cluster: str
-    node: str
-    index: int
-    address: str
-    driver: str
-    firmware: str
-    power_limit: int
-    max_power_limit: int
-    min_power_limit: int
-    max_ce_clock: int
-    max_memory_clock: int
-
-class SampleGpuResponse(TimestampedModel):
-    uuid: str
-    index: int
-    failing: int
-    fan: int
-    compute_mode: str
-    performance_state: int
-    memory: int
-    ce_util: int
-    memory_util: int
-    temperature: int
-    power: int
-    power_limit: int
-    memory_clock: int
-
-class SampleProcessResponse(TimestampedModel):
-    cluster: str
-    node: str
-    job: int
-    epoch: int
-    user: str
-
-    resident_memory: int
-    virtual_memory: int
-    cmd: str
-    pid: int
-    ppid: int
-
-    cpu_avg: float
-    cpu_util: float
-    cpu_time: int
-
-    rolled_up: int
-
-class SampleProcessGpuResponse(TimestampedModel):
-    cluster: str
-    node: str
-    job: int
-    epoch: int
-    user: str
-    pid: int
-    uuid: str
-    index: int
-
-    gpu_util: float
-    gpu_memory: int
-    gpu_memory_util: float
-
-class SampleProcessGpuAccResponse(TimestampedModel):
-    gpu_memory: int
-    gpu_util: float
-    gpu_memory_util: float
-    pids: list[int]
-
-class NodeResponse(TimestampedModel):
-    cluster: str
-    node: str
-    os_name: str
-    os_release: str
-    architecture: str
-    sockets: int
-    cores_per_socket: int
-    threads_per_core: int
-    cpu_model: str
-    description: str
-    memory: int
-    topo_svg: str | None
-    cards: list[GPUCardResponse]
-    #
-    partitions: list[str]
-
-
-T = TypeVar('T')
-class JobSpecificTimeseriesResponse(BaseModel, Generic[T]):
-    job: int
-    epoch: int
-    data: list[T]
-
-class CombinedProcessTimeSeriesResponse(BaseModel):
-    cpu_memory: list[SampleProcessResponse]
-    gpus: dict[str, list[SampleProcessGpuResponse]]
-
-class SystemProcessTimeseriesResponse(BaseModel):
-    job: int
-    epoch: int
-    nodes: dict[str, CombinedProcessTimeSeriesResponse]
-
-class NodeJobSampleProcessTimeseriesResponse(BaseModel):
-    job: int
-    epoch: int
-    processes: list[SystemProcessTimeseriesResponse]
-
-#### GPU
-# Uuid top-level
-class GpuJobSampleProcessGpuTimeseriesResponse(RootModel):
-    # uuid > list[job-timeseries]
-    root: dict[str, list[JobSpecificTimeseriesResponse]]
-
-# Node top-level
-class NodeGpuJobSampleProcessGpuTimeseriesResponse(RootModel):
-    root: dict[str, GpuJobSampleProcessGpuTimeseriesResponse]
-
-class NodeSampleProcessGpuAccResponse(RootModel):
-    root: dict[str, dict[str, SampleProcessGpuAccResponse]]
-
-    @root_validator(pre=True)
-    def check_nested_structure(cls, values):
-        if not isinstance(values, dict):
-            raise ValueError("Response must be a dictionary: keys are nodenames")
-        for key, value in values.items():
-            if not isinstance(list):
-                raise ValueError("Nodes need to map to list of job timeseries data")
-
 #### Results sorted by nodes
 @api_router.get("/cluster", response_model=list[ClusterResponse])
 async def cluster(time_in_s: int | None = None):
@@ -299,14 +108,13 @@ async def nodes_info(cluster: str,
         dbi=Depends(db_ops.get_database_v2)):
     return await dbi.get_nodes_info(cluster, nodename, time_in_s)
 
-@api_router.get("/cluster/{cluster}/nodes/states", response_model=NodeStateResponse)
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/states", response_model=NodeStateResponse)
+@api_router.get("/cluster/{cluster}/nodes/states", response_model=list[NodeStateResponse])
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/states", response_model=list[NodeStateResponse])
 async def nodes_states(cluster: str, nodename: str | None = None,
         time_in_s: int | None = None,
         ):
     dbi = db_ops.get_database_v2()
     return await dbi.get_nodes_states(cluster, nodename, time_in_s)
-
 
 @api_router.get("/cluster/{cluster}/nodes/{nodename}/topology", response_model=None)
 async def nodes_nodename_topology(cluster: str, nodename: str):
@@ -352,16 +160,15 @@ async def nodes_process_gpu_util(
                 window_in_s=window_in_s
             )
         )
-    data = { x: (await task) for x, task in tasks.items()}
-    return data
+    return { x: (await task) for x, task in tasks.items()}
 
 @api_router.get("/cluster/{cluster}/nodes/{nodename}/gpu_process_status", response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse)
 @api_router.get("/cluster/{cluster}/nodes/gpu_process_status", response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse)
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/jobs/{job}/gpu_process_status", response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse)
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/jobs/{job_id}/gpu_process_status", response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse)
 async def nodes_sample_process_gpu(
     cluster: str,
     nodename: str | None = None,
-    job: int | None = None,
+    job_id: int | None = None,
     epoch: int = 0,
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
@@ -378,7 +185,7 @@ async def nodes_sample_process_gpu(
     return await dbi.get_nodes_sample_process_gpu_timeseries(
             cluster=cluster,
             nodes=nodes,
-            job_id=job,
+            job_id=job_id,
             epoch=epoch,
             start_time_in_s=start_time_in_s,
             end_time_in_s=end_time_in_s,
@@ -386,12 +193,11 @@ async def nodes_sample_process_gpu(
         )
 
 #### Results sorted by jobs
-
 @api_router.get("/cluster/{cluster}/jobs/system_process_status", response_model=list[SystemProcessTimeseriesResponse])
-@api_router.get("/cluster/{cluster}/jobs/{job}/system_process_status", response_model=list[SystemProcessTimeseriesResponse])
+@api_router.get("/cluster/{cluster}/jobs/{job_id}/system_process_status", response_model=list[SystemProcessTimeseriesResponse])
 async def job_sample_process_system(
     cluster: str,
-    job: int | None = None,
+    job_id: int | None = None,
     epoch: int = 0,
     nodename: str | None = None,
     start_time_in_s: float | None = None,
@@ -412,18 +218,18 @@ async def job_sample_process_system(
     return await dbi.get_jobs_sample_process_system_timeseries(
             cluster=cluster,
             nodes=nodes,
-            job_id=job,
+            job_id=job_id,
             epoch=epoch,
             start_time_in_s=start_time_in_s,
             end_time_in_s=end_time_in_s,
             resolution_in_s=resolution_in_s
         )
 
-@api_router.get("/cluster/{cluster}/jobs/gpu_process_status")
-@api_router.get("/cluster/{cluster}/jobs/{job}/gpu_process_status")
+@api_router.get("/cluster/{cluster}/jobs/gpu_process_status", response_model=list[JobNodeSampleProcessGpuTimeseriesResponse])
+@api_router.get("/cluster/{cluster}/jobs/{job_id}/gpu_process_status", response_model=list[JobNodeSampleProcessGpuTimeseriesResponse])
 async def job_sample_process_gpu(
     cluster: str,
-    job: int | None = None,
+    job_id: int | None = None,
     epoch: int = 0,
     nodename: str | None = None,
     start_time_in_s: float | None = None,
@@ -438,18 +244,19 @@ async def job_sample_process_gpu(
     )
 
     nodes = None if nodename is None else [nodename]
-    return await dbi.get_jobs_sample_process_gpu_timeseries(
+    data = await dbi.get_jobs_sample_process_gpu_timeseries(
             cluster=cluster,
             nodes=nodes,
-            job_id=job,
+            job_id=job_id,
             epoch=epoch,
             start_time_in_s=start_time_in_s,
             end_time_in_s=end_time_in_s,
             resolution_in_s=resolution_in_s
         )
+    return data
 
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/process_status")
-@api_router.get("/cluster/{cluster}/nodes/process_status")
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/process_status", response_model=dict[str, list[NodeJobSampleProcessTimeseriesResponse]])
+@api_router.get("/cluster/{cluster}/nodes/process_status", response_model=dict[str, list[NodeJobSampleProcessTimeseriesResponse]])
 async def nodes_process_status(
     cluster: str,
     nodename: str | None = None,
@@ -465,7 +272,7 @@ async def nodes_process_status(
     )
 
     nodes = None if nodename is None else [nodename]
-    return await dbi.get_nodes_process_status_timeseries(
+    return await dbi.get_nodes_sample_process_timeseries(
             cluster=cluster,
             nodes=nodes,
             start_time_in_s=start_time_in_s,
@@ -504,7 +311,7 @@ async def cpu_memory_status(
                                 end_time_in_s=end_time_in_s
                             )
                 if not job:
-                    raise RuntimeError(f"Failed to get information about {job_id=}")
+                    raise RuntimeError(f"Failed to get information about {job_id=}. No job with {job_id=}.")
                 nodes = job['nodes']
         else:
             nodes = [nodename]
@@ -592,7 +399,11 @@ async def job_gpu_status(
                             end_time_in_s=end_time_in_s
                         )
             if not job:
-                raise RuntimeError(f"gpu_status: failed to get information about {job_id=}")
+                raise RuntimeError(f"gpu_status: failed to get information about {job_id=}"
+                        f" {cluster=} {epoch=}"
+                        f" {start_time_in_s=} ({fromtimestamp(start_time_in_s)})"
+                        f" {end_time_in_s=} ({fromtimestamp(end_time_in_s)})"
+                    )
             nodes = job['nodes']
     else:
         nodes = [nodename]
