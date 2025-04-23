@@ -40,6 +40,11 @@ class TestParser(BaseParser):
             help="Name of the container"
         )
 
+        parser.add_argument("--with-stats",
+                action="store_true",
+                default=False
+        )
+
 
     def execute(self, args):
         super().execute(args)
@@ -49,7 +54,8 @@ class TestParser(BaseParser):
                 user=args.user,
                 password=args.password,
                 container_name=args.container_name,
-                image=args.image
+                image=args.image,
+                stats=True
         )
 
         create_test_db(uri)
