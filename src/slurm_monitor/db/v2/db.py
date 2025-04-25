@@ -27,7 +27,13 @@ from sqlalchemy.ext.asyncio import (
 )
 
 import logging
-from slurm_monitor.utils import utcnow
+from slurm_monitor.utils import utcnow, fromtimestamp
+from slurm_monitor.api.v2.response_models import (
+    JobResponse,
+    SampleProcessGpuAccResponse,
+    SampleProcessAccResponse,
+    NodeJobSampleProcessTimeseriesResponse
+)
 
 logger = logging.getLogger(__name__)
 
@@ -254,124 +260,10 @@ class ClusterDB(Database):
             for table in reversed(self._metadata.sorted_tables):
                 session.query(table).delete()
 
-    def fake_timeseries(self,
-            start_time: dt.datetime | None = None,
-            to_time: dt.datetime | None = None,
-            sampling_interval_in_s = 60
-        ):
-        self.fake_timeseries_process(
-                start_time=start_time,
-                to_time=to_time,
-                sampling_interval_in_s=sampling_interval_in_s)
-
-        self.fake_timeseries_gpu_process(
-                start_time=start_time,
-                to_time=to_time,
-                sampling_interval_in_s=sampling_interval_in_s)
-
-    def fake_timeseries_process(self,
-            start_time: dt.datetime | None = None,
-            to_time: dt.datetime | None = None,
-            sampling_interval_in_s = 60
-        ):
-
-        # Continue process data
-        query = select(
-                    SampleProcess.job,
-                    SampleProcess.epoch,
-                    SampleProcess.pid,
-                    func.max(SampleProcess.time),
-                ).group_by(
-                    SampleProcess.job,
-                    SampleProcess.epoch,
-                    SampleProcess.pid
-                )
-
-        with self.make_writeable_session() as session:
-            jobs = session.execute(query).all()
-
-        if to_time is None:
-            to_time = utcnow()
-
-        for job in tqdm(jobs, desc="jobs"):
-            job, epoch, pid, timestamp = job
-
-            query = select(
-                        SampleProcess
-                    ).where(
-                        ((SampleProcess.time) == timestamp) &
-                        (SampleProcess.job == job) &
-                        (SampleProcess.epoch == epoch) &
-                        (SampleProcess.pid == pid)
-                    )
-
-            with self.make_writeable_session() as session:
-                processes = session.execute(query).all()
-
-            timeseries = []
-            samples_to_add = int((to_time - timestamp).total_seconds()/ sampling_interval_in_s)
-            for i in tqdm(range(0, samples_to_add), desc=f"samples for {job=} {epoch=} {pid=}"):
-                timestamp += dt.timedelta(seconds=sampling_interval_in_s)
-                for process in processes:
-                    sample = dict(process[0])
-                    sample["time"] = timestamp
-
-                    timeseries.append( SampleProcess(**sample) )
-
-            logger.info(f"Inserting {len(timeseries)} samples for {job=} {epoch=} {pid=}")
-            self.insert(timeseries)
-
-
-
-    def fake_timeseries_gpu_process(self,
-            start_time: dt.datetime | None = None,
-            to_time: dt.datetime | None = None,
-            sampling_interval_in_s = 60,
-        ) -> list[str]:
-
-        # Continue GPU data
-        query = select(
-                    SampleProcessGpu.uuid,
-                    func.max(SampleProcessGpu.time)
-                ).group_by(
-                    SampleProcessGpu.uuid
-                )
-
-        with self.make_writeable_session() as session:
-            gpus = session.execute(query).all()
-
-        if to_time is None:
-            to_time = utcnow()
-
-        for gpu in tqdm(gpus, desc="gpus"):
-            uuid, timestamp = gpu
-
-            query = select(
-                        SampleProcessGpu
-                    ).where(
-                        ((SampleProcessGpu.time) == timestamp) &
-                        (SampleProcessGpu.uuid == uuid)
-                    )
-            with self.make_writeable_session() as session:
-                processes = session.execute(query).all()
-
-            timeseries = []
-            samples_to_add = int((to_time - timestamp).total_seconds()/ sampling_interval_in_s)
-            for i in tqdm(range(0, samples_to_add), desc=f"samples for {uuid}"):
-                timestamp += dt.timedelta(seconds=sampling_interval_in_s)
-                for process in processes:
-                    sample = dict(process[0])
-                    sample["time"] = timestamp
-
-                    timeseries.append( SampleProcessGpu(**sample) )
-
-            logger.info(f"Inserting {len(timeseries)} samples for {uuid}")
-            self.insert(timeseries)
-
     async def get_clusters(self, time_in_s: int | None = None) -> list[str]:
         where = sqlalchemy.sql.true()
         if time_in_s:
-            where &= (Cluster.time <= dt.datetime.fromtimestamp(time_in_s, dt.timezone.utc))
+            where &= (Cluster.time <= fromtimestamp(time_in_s))
 
         query = select(
             Cluster,
@@ -389,7 +281,7 @@ class ClusterDB(Database):
     async def get_nodes(self, cluster: str, time_in_s: int | None = None) -> list[str]:
         where = Cluster.cluster == cluster
         if time_in_s:
-            where &= (Cluster.time <= dt.datetime.fromtimestamp(time_in_s, dt.timezone.utc))
+            where &= (Cluster.time <= fromtimestamp(time_in_s))
 
         query = select(Cluster.nodes).where(where)
 
@@ -417,21 +309,122 @@ class ClusterDB(Database):
                 result = [x[0] for x in result]
             return result
 
+    async def get_partitions(self, cluster: str,
+            time_in_s: int | None = None):
+        if time_in_s is None:
+            time_in_s = utcnow().timestamp()
+
+
+        query = select(
+                    Partition.cluster,
+                    Partition.partition,
+                    Partition.nodes,
+                    Partition.nodes_compact,
+                    func.max(Partition.time)
+                ).where(
+                    (Partition.cluster == cluster) &
+                    (Partition.time <= fromtimestamp(time_in_s))
+                ).group_by(
+                    Partition.cluster,
+                    Partition.partition,
+                    Partition.nodes,
+                    Partition.nodes_compact
+                )
+
+        nodes = await self.get_nodes_sysinfo(cluster=cluster, time_in_s=time_in_s)
+
+        partitions = []
+        async with self.make_async_session() as session:
+            for x in (await session.execute(query)).all():
+                partition_name = x[1]
+                partition_nodes = x[2]
+
+                pending_jobs = await self.get_slurm_jobs(
+                        cluster=cluster,
+                        partition=partition_name,
+                        states=["PENDING"],
+                        start_time_in_s= time_in_s - 5*60,
+                        end_time_in_s= time_in_s + 5*60,
+                )
+
+                running_jobs = await self.get_slurm_jobs(
+                        cluster=cluster,
+                        partition=partition_name,
+                        states=["RUNNING"],
+                        start_time_in_s=time_in_s - 5*60,
+                        end_time_in_s=time_in_s + 5*60,
+                )
+
+                # logical cpus
+                total_cpus = []
+                total_gpus = 0
+                cards_in_use = []
+                for node, y in nodes.items():
+                    if node in partition_nodes:
+                        total_cpus.append(y['cores_per_socket']*y['sockets']*y['threads_per_core'])
+                        total_gpus += len(y['cards'])
+                        for card in y['cards']:
+                            last_active = card['last_active']
+                            if last_active and time_in_s - last_active.timestamp() < 5*60:
+                                cards_in_use.append(card['uuid'])
+
+                total_cpus = sum(total_cpus)
+
+                pending_max_submit_time = 0
+                if pending_jobs:
+                    pending_max_submit_time = max([x['submit_time'] for x in pending_jobs])
+                # for the latest running job -> wait time
+                wait_time = 0
+                latest_start_time = None
+
+                cards_reserved = 0
+                for job in running_jobs:
+                    start_time = job['start_time']
+                    if latest_start_time is None:
+                        latest_start_time = start_time
+                        wait_time = (start_time - job['submit_time']).total_seconds()
+                    elif start_time < latest_start_time:
+                        latest_start_time = start_time
+                        wait_time = (start_time - job['submit_time']).total_seconds()
+                    m = re.search(r"gpu=([0-9]+)", job['sacct']['AllocTRES'])
+                    if m:
+                        cards_reserved += int(m.groups(0)[0])
+
+                partitions.append({
+                    'cluster': x[0],
+                    'name': partition_name,
+                    'nodes': partition_nodes,
+                    'nodes_compact': x[3],
+                    'jobs_pending': pending_jobs,
+                    'jobs_running': running_jobs,
+                    'pending_max_submit_time': pending_max_submit_time,
+                    'running_latest_wait_time': wait_time,
+                    'total_cpus': total_cpus,
+                    'total_gpus': total_gpus,
+                    'gpus_reserved': cards_reserved,
+                    'gpus_in_use': cards_in_use,
+                    'time': x[4],
+                })
+        partitions.sort(key=lambda x: x['name'])
+        return partitions
 
 ## NODES #####################################
     async def get_nodes_partitions(self,
             cluster,
-            nodelist: list[str] | str | None = None,
+            nodes: list[str] | str | None = None,
             time_in_s: int | None = None
-            ):
-        if not nodelist:
-            nodelist = await self.get_nodes(cluster=cluster, time_in_s=time_in_s)
-        elif type(nodelist) == str:
-            nodelist = [nodelist]
+            ) -> dict[str, list[str]]:
+        """
+        Get the list of partitions per node
+        """
+        if not nodes:
+            nodes = await self.get_nodes(cluster=cluster, time_in_s=time_in_s)
+        elif type(nodes) == str:
+            nodes = [nodes]
 
         where = Partition.cluster == cluster
         if time_in_s:
-            where &= (Partition.time <= dt.datetime.fromtimestamp(time_in_s, dt.timezone.utc))
+            where &= (Partition.time <= fromtimestamp(time_in_s))
 
         query = select(
                     Partition.partition,
@@ -449,103 +442,24 @@ class ClusterDB(Database):
 
         return nodes_partitions
 
-    async def get_nodes_info(self, 
-            cluster: str, 
-            nodelist: list[str] | str | None = None, 
-            time_in_s: int | None = None
-        ):
-
-        if not nodelist:
-            nodelist = await self.get_nodes(cluster=cluster, time_in_s=time_in_s)
-        elif type(nodelist) == str:
-            nodelist = [nodelist]
-
-        node_configs = await self.fetch_all_async(SysinfoAttributes,
-                    (SysinfoAttributes.cluster == cluster) & (SysinfoAttributes.node.in_(nodelist)),
-                    order_by=SysinfoAttributes.node
-                )
-
-        nodes_partitions = await self.get_nodes_partitions(cluster=cluster,
-                nodelist=nodelist,
-                time_in_s=time_in_s
-        )
-
-        nodeinfo = {}
-        for node_config in node_configs:
-            nodename = node_config.node
-            nodeinfo[nodename] = dict(node_config)
-           
-            if nodename in nodes_partitions:
-                nodeinfo[nodename].update({'partitions': nodes_partitions[nodename]})
-
-            if node_config.cards:
-                try:
-                    nodeinfo[nodename].update({'cards': await self.get_gpu_infos(
-                        cluster=cluster,
-                        node=nodename,
-                        time_in_s=time_in_s
-                        )})
-                except Exception as e:
-                    logger.warn(f"Internal error: Retrieving GPU info for {nodename} failed -- {e}")
-        return nodeinfo
-
-    async def get_nodes_states(self,
+    async def get_nodes_sysinfo_attributes(self,
             cluster: str,
-            nodelist: list[str] | str | None = None,
-            time_in_s: int | None = None):
-
-        where = (NodeState.cluster == cluster)
-        if nodelist:
-            if type(nodelist) == str:
-                nodelist = [nodelist]
-
-            where &= NodeState.node.in_(nodelist)
-
-        if time_in_s:
-            where &= (NodeState.time <= dt.datetime.fromtimestamp(time_in_s, dt.timezone.utc))
-
-        query = select(
-                    NodeState.node,
-                    NodeState.states,
-                    func.max(NodeState.time),
-                ).where(
-                  where
-                ).group_by(
-                    NodeState.node,
-                    NodeState.states
-                )
-
-        async with self.make_async_session() as session:
-            node_states = [
-                    { 
-                        'cluster': cluster,
-                        'node': x[0],
-                        'states': x[1],
-                        'time': x[2]
-                    }
-                    for x in (await session.execute(query)).all()]
-
-            return node_states
-
-    async def get_active_node_configs(self,
-            cluster: str,
-            node: str | list[str] | None = None,
-            time_in_s: int | None = None) -> SysinfoAttributes:
+            nodes: str | list[str] | None = None,
+            time_in_s: int | None = None) -> list[SysinfoAttributes]:
         """
         Retrieve the node configuration that is active at the given point in time
         if not time is given, the current time (as of 'now') is used
         """
-
-        nodelist = node
-        if node is None:
+        nodelist = nodes
+        if nodes is None:
             nodelist = await self.get_nodes(cluster=cluster)
-        elif type(node) == str:
-            nodelist = [node]
+        elif type(nodes) == str:
+            nodelist = [nodes]
 
         try:
             where = (SysinfoAttributes.cluster == cluster) & SysinfoAttributes.node.in_(nodelist)
             if time_in_s:
-                where &= SysinfoAttributes.time <= dt.datetime.fromtimestamp(time_in_s, dt.timezone.utc)
+                where &= SysinfoAttributes.time <= fromtimestamp(time_in_s)
             else:
                 where &= SysinfoAttributes.time <= utcnow()
 
@@ -586,7 +500,7 @@ class ClusterDB(Database):
                        ).where(
                             (SysinfoAttributes.cluster == cluster) &
                             SysinfoAttributes.node.in_(nodelist) &
-                            (SysinfoAttributes.time >= dt.datetime.fromtimestamp(time_in_s, dt.timezone.utc))
+                            (SysinfoAttributes.time >= fromtimestamp(time_in_s))
                        ).group_by(
                          SysinfoAttributes.cluster,
                          SysinfoAttributes.node,
@@ -610,14 +524,90 @@ class ClusterDB(Database):
 
         return []
 
+    async def get_nodes_sysinfo(self,
+            cluster: str,
+            nodelist: list[str] | str | None = None,
+            time_in_s: int | None = None
+        ):
+        """
+        Get the (full) sysinfo information for all nodes
+        """
+
+        node_configs = await self.get_nodes_sysinfo_attributes(
+                cluster=cluster,
+                nodes=nodelist,
+                time_in_s=time_in_s
+        )
+        nodes_partitions = await self.get_nodes_partitions(cluster=cluster,
+                nodes=[x.node for x in node_configs],
+                time_in_s=time_in_s
+        )
+
+        nodeinfo = {}
+        for node_config in node_configs:
+            nodename = node_config.node
+            nodeinfo[nodename] = dict(node_config)
+
+            if nodename in nodes_partitions:
+                nodeinfo[nodename].update({'partitions': nodes_partitions[nodename]})
+
+            if node_config.cards:
+                try:
+                    nodeinfo[nodename].update({'cards': await self.get_sysinfo_gpu_card(
+                        cluster=cluster,
+                        node=nodename,
+                        time_in_s=time_in_s
+                        )})
+                except Exception as e:
+                    logger.warn(f"Internal error: Retrieving GPU info for {nodename} failed -- {e}")
+        return nodeinfo
+
+    async def get_nodes_states(self,
+            cluster: str,
+            nodelist: list[str] | str | None = None,
+            time_in_s: int | None = None) -> dict[str, dict[str, list]]:
+
+        where = (NodeState.cluster == cluster)
+        if nodelist:
+            if type(nodelist) == str:
+                nodelist = [nodelist]
+
+            where &= NodeState.node.in_(nodelist)
+
+        if time_in_s:
+            where &= (NodeState.time <= fromtimestamp(time_in_s))
+
+        query = select(
+                    NodeState.node,
+                    NodeState.states,
+                    func.max(NodeState.time),
+                ).where(
+                  where
+                ).group_by(
+                    NodeState.node,
+                    NodeState.states
+                )
+
+        async with self.make_async_session() as session:
+            node_states = [
+                    {
+                        'cluster': cluster,
+                        'node': x[0],
+                        'states': x[1],
+                        'time': x[2]
+                    }
+                    for x in (await session.execute(query)).all()]
+
+            return node_states
+
 ################################################################
 
-    async def get_active_sysinfo_gpu_card(self,
+    async def get_sysinfo_gpu_card(self,
             cluster: str,
             node: str | list[str] | None = None,
             time_in_s: int | None = None) -> list[SysinfoGpuCard]:
         """
-        Retrieve the GPUCard configuration that is active at the given point in time
+        Retrieve the GPUCard configuration at a given point in time
         """
         nodelist = node
         if node is None:
@@ -629,7 +619,7 @@ class ClusterDB(Database):
             # Configuration needs to be active before or at that timepoint gvein
             where = (SysinfoGpuCardConfig.cluster == cluster) & SysinfoGpuCardConfig.node.in_(nodelist)
             if time_in_s:
-                time = dt.datetime.fromtimestamp(time_in_s, dt.timezone.utc)
+                time = fromtimestamp(time_in_s)
                 where &= SysinfoGpuCardConfig.time <= time
                 where_last_active = SampleProcessGpu.time <= time
             else:
@@ -691,22 +681,6 @@ class ClusterDB(Database):
         return []
 
 
-    async def get_gpu_infos(self, cluster: str, node: str,
-            time_in_s: int | None = None ,
-            ) -> Awaitable[list[dict[str, any]]]:
-        """
-        Get an array of SysinfoGpuCard information for the given cluster and node
-        """
-        # model, node, uuid, local_id, memory_total
-        gpu_cards = await self.get_active_sysinfo_gpu_card(
-                        cluster=cluster,
-                        node=node,
-                        time_in_s=time_in_s
-                    )
-        if gpu_cards:
-            return [ dict(x) for x in gpu_cards ]
-        return {}
-
     async def get_last_probe_timestamp(self, cluster: str) -> Awaitable[dict[str, dt.datetime]]:
         """
         Get the timestamp of the lastest sample for all nodes in this cluster
@@ -730,94 +704,7 @@ class ClusterDB(Database):
 
         return {}
 
-
-    async def get_nodes_sample_process_gpu_timeseries(
-            self,
-            cluster: str,
-            nodes: list[str],
-            job_id: int | None,
-            epoch: int,
-            start_time_in_s: int,
-            end_time_in_s: int,
-            resolution_in_s: int
-            ):
-        """
-        Get the SampleProcessGpu timeseries for a set of nodes in a cluster.
-
-        return:
-            nodename:
-                gpu_uuid: Array[{job: int, epoch: int, data: Array[SampleProcessGpu]]
-        """
-        if not nodes:
-            nodes = await self.get_nodes(cluster=cluster, time_in_s=end_time_in_s)
-            if not nodes:
-                raise RuntimeError("get_nodes_sample_process_gpu_timeseries: "
-                        f" could not find any available node for {cluster=}"
-                        f", {start_time_in_s=} {end_time_in_s=}")
-
-        node_configs = await self.get_active_node_configs(
-                           cluster=cluster,
-                           node=nodes,
-                           time_in_s=start_time_in_s,
-                        )
-
-        if not node_configs:
-            raise RuntimeError(f"sample_process_gpu: {nodes=} on {cluster=} are not available")
-
-        nodes_sample_process_gpu = {}
-        for node_config in node_configs:
-            cards = node_config.cards
-
-            where = SampleProcessGpu.uuid.in_(cards)
-            if job_id is not None:
-                where &= (SampleProcessGpu.job == job_id) & (SampleProcessGpu.epoch == epoch)
-
-            if start_time_in_s:
-                where &= SampleProcessGpu.time >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
-
-            if end_time_in_s:
-                where &= SampleProcessGpu.time <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
-
-            # Identifiable processes in the time window
-            subquery = select(
-                        SampleProcessGpu.job,
-                        SampleProcessGpu.epoch,
-                        SampleProcessGpu.pid,
-                        SampleProcessGpu.uuid
-                    ).where(
-                        where
-                    ).distinct()
-
-            async with self.make_async_session() as session:
-                process_ids = (await session.execute(subquery)).all()
-
-            processes = {}
-            for process_id in process_ids:
-                job, epoch, pid, uuid = process_id
-                timeseries_data = await self.get_sample_process_gpu_timeseries(
-                        uuid=uuid,
-                        job=job,
-                        epoch=epoch,
-                        start_time_in_s=start_time_in_s,
-                        end_time_in_s=end_time_in_s,
-                        resolution_in_s=resolution_in_s
-                )
-
-                if uuid not in processes:
-                    processes[uuid] = []
-
-                processes[uuid].append(
-                    {
-                      "job": job,
-                      "epoch": epoch,
-                      "data": timeseries_data
-                    }
-                )
-
-            nodes_sample_process_gpu[node_config.node] = processes
-
-        return nodes_sample_process_gpu
-
+#### BEGIN SAMPLE PROCESS (system = cpu + gpu)  #########################################
     async def get_jobs_sample_process_system_timeseries(
             self,
             cluster: str,
@@ -869,7 +756,7 @@ class ClusterDB(Database):
                     break
 
             for node in nodes:
-                cpu_status_timeseries = await self.get_cpu_status_timeseries(
+                cpu_status_timeseries = await self.get_node_sample_process_timeseries(
                         cluster=cluster,
                         job_id=job_id,
                         node=node,
@@ -888,30 +775,95 @@ class ClusterDB(Database):
 
         return all_jobs
 
-    async def get_active_jobs(self, cluster: str,
-                start_time_in_s: int,
-                end_time_in_s: int
-                ):
-        """
-            Get active job
-            return
-                [ (job, epoch, nodes) ]
-        """
-        query = select(
-                    SampleProcess.job,
-                    SampleProcess.epoch,
-                    func.array_agg(SampleProcess.node.distinct())
-                ).where(
-                    (SampleProcess.cluster == cluster) &
-                    (SampleProcess.time >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)) &
-                    (SampleProcess.time <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc))
-                ).group_by(
-                    SampleProcess.job,
-                    SampleProcess.epoch
-                ).distinct()
+#### END SAMPLE PROCESS (system = cpu + gpu) ###################################
 
-        async with self.make_async_session() as session:
-            return (await session.execute(query)).all()
+##### BEGIN SAMPLE PROCESS GPU #######################################################
+    async def get_nodes_sample_process_gpu_timeseries(
+            self,
+            cluster: str,
+            nodes: list[str],
+            job_id: int | None,
+            epoch: int,
+            start_time_in_s: int,
+            end_time_in_s: int,
+            resolution_in_s: int
+            ):
+        """
+        Get the SampleProcessGpu timeseries for a set of nodes in a cluster.
+
+        return:
+            nodename:
+                gpu_uuid: Array[{job: int, epoch: int, data: Array[SampleProcessGpu]]
+        """
+        if not nodes:
+            nodes = await self.get_nodes(cluster=cluster, time_in_s=end_time_in_s)
+            if not nodes:
+                raise RuntimeError("get_nodes_sample_process_gpu_timeseries: "
+                        f" could not find any available node for {cluster=}"
+                        f", {start_time_in_s=} {end_time_in_s=}")
+
+        node_configs = await self.get_nodes_sysinfo_attributes(
+                           cluster=cluster,
+                           nodes=nodes,
+                           time_in_s=start_time_in_s,
+                        )
+
+        if not node_configs:
+            raise RuntimeError(f"sample_process_gpu: {nodes=} on {cluster=} are not available")
+
+        nodes_sample_process_gpu = {}
+        for node_config in node_configs:
+            cards = node_config.cards
+
+            where = SampleProcessGpu.uuid.in_(cards)
+            if job_id is not None:
+                where &= (SampleProcessGpu.job == job_id) & (SampleProcessGpu.epoch == epoch)
+
+            if start_time_in_s:
+                where &= SampleProcessGpu.time >= fromtimestamp(start_time_in_s)
+
+            if end_time_in_s:
+                where &= SampleProcessGpu.time <= fromtimestamp(end_time_in_s)
+
+            # Identifiable processes in the time window
+            subquery = select(
+                        SampleProcessGpu.job,
+                        SampleProcessGpu.epoch,
+                        SampleProcessGpu.pid,
+                        SampleProcessGpu.uuid
+                    ).where(
+                        where
+                    ).distinct()
+
+            async with self.make_async_session() as session:
+                process_ids = (await session.execute(subquery)).all()
+
+            processes = {}
+            for process_id in process_ids:
+                job, epoch, pid, uuid = process_id
+                timeseries_data = await self.get_sample_process_gpu_timeseries(
+                        uuid=uuid,
+                        job=job,
+                        epoch=epoch,
+                        start_time_in_s=start_time_in_s,
+                        end_time_in_s=end_time_in_s,
+                        resolution_in_s=resolution_in_s
+                )
+
+                if uuid not in processes:
+                    processes[uuid] = []
+
+                processes[uuid].append(
+                    {
+                      "job": job,
+                      "epoch": epoch,
+                      "data": timeseries_data
+                    }
+                )
+
+            nodes_sample_process_gpu[node_config.node] = processes
+
+        return nodes_sample_process_gpu
 
 
     async def get_jobs_sample_process_gpu_timeseries(
@@ -939,10 +891,10 @@ class ClusterDB(Database):
             where &= (SampleProcessGpu.job == job_id) & (SampleProcessGpu.epoch == epoch)
 
         if start_time_in_s:
-            where &= SampleProcessGpu.time >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
+            where &= SampleProcessGpu.time >= fromtimestamp(start_time_in_s)
 
         if end_time_in_s:
-            where &= SampleProcessGpu.time <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
+            where &= SampleProcessGpu.time <= fromtimestamp(end_time_in_s)
 
         query = select(
                     SampleProcessGpu.job,
@@ -1016,8 +968,8 @@ class ClusterDB(Database):
                     (SampleProcessGpu.job == job) &
                     (SampleProcessGpu.epoch == epoch) &
                     (SampleProcessGpu.uuid == uuid) &
-                    (SampleProcessGpu.time >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)) &
-                    (SampleProcessGpu.time <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc))
+                    (SampleProcessGpu.time >= fromtimestamp(start_time_in_s)) &
+                    (SampleProcessGpu.time <= fromtimestamp(end_time_in_s))
                 ).group_by(
                     'time_bucket',
                 ).order_by(
@@ -1043,7 +995,7 @@ class ClusterDB(Database):
             window_in_s: int | None = None,
         ):
         """
-        Get the latest gpu utilization for the given node
+        Get the latest (default is last 5 min) gpu utilization for the given node
         """
         if reference_time_in_s is None:
             reference_time_in_s = utcnow().timestamp()
@@ -1051,9 +1003,9 @@ class ClusterDB(Database):
         if window_in_s is None:
             window_in_s = 5*60 # 5 minutes
 
-        node_config = await self.get_active_node_configs(
+        node_config = await self.get_nodes_sysinfo_attributes(
                     cluster=cluster,
-                    node=node,
+                    nodes=node,
                     time_in_s=reference_time_in_s - window_in_s
                 )
 
@@ -1073,7 +1025,7 @@ class ClusterDB(Database):
             uuids: str | list[str],
             reference_time_in_s: float | None = None,
             window_in_s: int | None = None,
-        ):
+        ) -> dict[str, SampleProcessGpuAccResponse]:
         """
         Get the latest gpu utilization for the given uuids
         """
@@ -1096,11 +1048,12 @@ class ClusterDB(Database):
                        )
 
             async with self.make_async_session() as session:
-                last_timestamps = (await session.execute(query)).all()
+                uuid_timestamps = (await session.execute(query)).all()
 
             data = {}
-            for last_timestamp in last_timestamps:
-                uuid, timestamp = last_timestamp
+            # per uuids
+            for uuid_timestamp in uuid_timestamps:
+                uuid, timestamp = uuid_timestamp
 
                 # Sum over all processes
                 query = select(
@@ -1121,18 +1074,126 @@ class ClusterDB(Database):
                     uuid_result = (await session.execute(query)).all()
                     if uuid_result:
                         uuid, gpu_memory, gpu_util, gpu_memory_util, pids = uuid_result[0]
-                        data[uuid] = {
-                                     'gpu_memory': gpu_memory,
-                                     'gpu_util': gpu_util,
-                                     'gpu_memory_util': gpu_memory_util,
-                                     'pids': pids,
-                                     'time': timestamp
-                                 }
+                        data[uuid] = SampleProcessGpuAccResponse(
+                                         gpu_memory=gpu_memory,
+                                         gpu_util=gpu_util,
+                                         gpu_memory_util=gpu_memory_util,
+                                         pids=pids,
+                                         time=timestamp
+                                    )
             return data
         except Exception as e:
             logger.warning(e)
             raise
 
+    async def get_sample_gpu_timeseries(
+            self,
+            uuids: list[str],
+            start_time_in_s: int,
+            end_time_in_s: int,
+            resolution_in_s: int
+        ):
+            uuid_sample_gpu = []
+            for card_uuid in uuids:
+                where = SampleGpu.uuid == card_uuid
+                if start_time_in_s:
+                    where &= (SampleGpu.time >= fromtimestamp(start_time_in_s))
+
+                if end_time_in_s:
+                    where &= (SampleGpu.time <= fromtimestamp(end_time_in_s))
+
+                query = select(
+                        func.count(SampleGpu.failing).label("failure_count"),
+                        func.avg(SampleGpu.memory),
+                        func.avg(SampleGpu.memory_util),
+                        func.avg(SampleGpu.ce_util),
+                        func.avg(SampleGpu.temperature),
+                        func.avg(SampleGpu.power),
+                        func.avg(SampleGpu.power_limit),
+                        func.avg(SampleGpu.memory_clock),
+                        func.min(SampleGpu.index),
+                        time_bucket(resolution_in_s, SampleGpu.time).label('bucket')
+                    ).where(
+                        where
+                    ).group_by(
+                        'bucket'
+                    ).order_by(
+                        'bucket'
+                    )
+
+                query = query.group_by(
+                            'bucket'
+                        ).order_by(
+                            'bucket'
+                        )
+
+                async with self.make_async_session() as session:
+                    gpu_samples = (await session.execute(query)).all()
+
+                    if gpu_samples:
+                        local_index = gpu_samples[0][8]
+                        timeseries_data = [{
+                                'failure_count': x[0],
+                                'memory': round(x[1],2),
+                                'memory_util': round(x[2],2),
+                                'ce_util': round(x[3],2),
+                                'temperature': round(x[4],2),
+                                'power': round(x[5],2),
+                                'power_limit': round(x[6],2),
+                                'memory_clock': round(x[7],2),
+                                'time': x[9]
+                            } for x in gpu_samples]
+
+                        uuid_sample_gpu.append({'uuid': card_uuid, 'local_index': local_index, 'data': timeseries_data })
+            return uuid_sample_gpu
+
+    async def get_node_sample_gpu_timeseries(
+            self,
+            cluster: str,
+            node: str,
+            start_time_in_s: int,
+            end_time_in_s: int,
+            resolution_in_s: int
+            ):
+        """
+        Get SampleGpu timeseries for a given timeframe.
+
+        This is GPU related data
+
+        For all cards on a node:
+        return:
+            [ { uuid: string, local_index: string, data: Array[SampleGpu]} ]
+        """
+        query = select(
+                SysinfoAttributes.cluster,
+                SysinfoAttributes.node,
+                SysinfoAttributes.cards,
+                func.max(SysinfoAttributes.time)
+               ).where(
+                    (SysinfoAttributes.cluster == cluster),
+                    (SysinfoAttributes.node == node)
+               ).group_by(
+                   SysinfoAttributes.cluster,
+                   SysinfoAttributes.node,
+                   SysinfoAttributes.cards
+               )
+
+        async with self.make_async_session() as session:
+            node_configs = (await session.execute(query)).all()
+
+        for node_config in node_configs:
+            return await self.get_sample_gpu_timeseries(
+                uuids=node_config[2],
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s,
+                resolution_in_s=resolution_in_s
+            )
+        return []
+
+
+##### END SAMPLE PROCESS GPU #######################################################
+
+##### BEGIN SAMPLE PROCESS (CPU) ###################################################
     async def get_nodes_sample_process_timeseries(
             self,
             cluster: str,
@@ -1147,9 +1208,9 @@ class ClusterDB(Database):
                 Array[{job: int, epoch: int, data: Dict}]
 
         """
-        node_configs = await self.get_active_node_configs(
+        node_configs = await self.get_nodes_sysinfo_attributes(
                            cluster=cluster,
-                           node=nodes,
+                           nodes=nodes,
                            time_in_s=start_time_in_s,
                         )
 
@@ -1160,10 +1221,10 @@ class ClusterDB(Database):
         for node_config in node_configs:
             where = (SampleProcess.cluster == cluster) & (SampleProcess.node == node_config.node)
             if start_time_in_s:
-                where &= SampleProcess.time >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
+                where &= SampleProcess.time >= fromtimestamp(start_time_in_s)
 
             if end_time_in_s:
-                where &= SampleProcess.time <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
+                where &= SampleProcess.time <= fromtimestamp(end_time_in_s)
 
             # Identifiable processes in the time window
             subquery = select(
@@ -1182,8 +1243,10 @@ class ClusterDB(Database):
             jobs = {}
             for process_id in process_ids:
                 job, epoch, pid = process_id
-                timeseries_data = await self.get_sample_process_timeseries(
-                        job=job,
+                timeseries_data = await self.get_sample_process_by_pid_timeseries(
+                        cluster=cluster,
+                        node=node_config.node,
+                        job_id=job,
                         epoch=epoch,
                         pid=pid,
                         memory=node_config.memory,
@@ -1211,14 +1274,16 @@ class ClusterDB(Database):
 
         return nodes_sample_process
 
-    async def get_sample_process_timeseries(self,
-            job: int,
+    async def get_sample_process_by_pid_timeseries(self,
+            cluster: str,
+            node: str,
+            job_id: int,
             epoch: int,
             pid: str,
             memory: int,
             start_time_in_s: int,
             end_time_in_s: int,
-            resolution_in_s: int) -> Awaitable[list[dict[str, any]]]:
+            resolution_in_s: int) -> Awaitable[list[SampleProcessAccResponse]]:
 
             query = select(
                         func.avg(SampleProcess.resident_memory),
@@ -1229,13 +1294,15 @@ class ClusterDB(Database):
                         func.avg(SampleProcess.cpu_time),
                         time_bucket(resolution_in_s, SampleProcess.time).label("bucket"),
                     ).where(
-                        (SampleProcess.job == job) &
+                        (SampleProcess.cluster == cluster) &
+                        (SampleProcess.node == node) &
+                        (SampleProcess.job == job_id) &
                         (SampleProcess.epoch == epoch) &
                         (SampleProcess.pid == pid)
                     ).filter(
-                        SampleProcess.time >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)
+                        SampleProcess.time >= fromtimestamp(start_time_in_s)
                     ).filter(
-                        SampleProcess.time <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc)
+                        SampleProcess.time <= fromtimestamp(end_time_in_s)
                     ).group_by(
                        'bucket',
                     ).order_by(
@@ -1245,53 +1312,33 @@ class ClusterDB(Database):
             async with self.make_async_session() as session:
                 timeseries = (await session.execute(query)).all()
                 return [
-                        {
-                            'memory_resident': x[0],
-                            'memory_virtual': x[1],
-                            'memory_util': round(x[2]*100,2),
-                            'cpu_avg': x[3],
-                            'cpu_util': x[4],
-                            'cpu_time': x[5],
+                        SampleProcessAccResponse(
+                            memory_resident=x[0],
+                            memory_virtual=x[1],
+                            memory_util=round(x[2]*100,2),
+                            cpu_avg=x[3],
+                            cpu_util=x[4],
+                            cpu_time=x[5],
                             # To satisfy SampleProcessAccResponse interface
-                            'processes_avg': 1,
-                            'time': x[6]
-                        } for x in timeseries
+                            processes_avg=1,
+                            time=x[6]
+                        ) for x in timeseries
                 ]
 
-    async def get_cpu_status_timeseries(self,
+    async def get_node_sample_process_timeseries(self,
             cluster: str,
             node: str,
-            job_id: int | None,
             start_time_in_s: int,
             end_time_in_s: int,
             resolution_in_s: int,
+            job_id: int | None = None,
             epoch: int = 0,
-            ) -> Awaitable[list[dict[str, any]]]:
+            ) -> Awaitable[list[SampleProcessAccResponse]]:
             """
-            Get CPU and memory sampling aggregated either for all jobs, or per job id
+            Get CPU and memory sampling aggregated - per default for all jobs, or per job id
             """
 
-            query = select(
-                        SysinfoAttributes.memory,
-                        SysinfoAttributes.time
-                   ).where(
-                        (SysinfoAttributes.cluster == cluster),
-                        (SysinfoAttributes.node == node),
-                   )
-
-            async with self.make_async_session() as session:
-                node_config = (await session.execute(query)).all()
-                if node_config:
-                    memory = None
-                    for n in node_config:
-                        if memory is None:
-                            memory, timestamp = n
-                        else:
-                            if memory != n[0]:
-                                raise RuntimeError("cpu_status: memory changed - might lead to inconsistent reporting")
-                else:
-                    raise RuntimeError(f"cpu_status: missing node config for {node=}")
-
+            memory, timestamp = await self.get_node_memory(cluster=cluster, node=node, time_in_s=start_time_in_s)
             where = (SampleProcess.cluster == cluster) & (SampleProcess.node == node)
             if job_id:
                 where &= (SampleProcess.job == job_id) & (SampleProcess.epoch == epoch)
@@ -1306,8 +1353,8 @@ class ClusterDB(Database):
                         SampleProcess.time
                     ).where(
                         where &
-                        (SampleProcess.time >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)) &
-                        (SampleProcess.time <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc))
+                        (SampleProcess.time >= fromtimestamp(start_time_in_s)) &
+                        (SampleProcess.time <= fromtimestamp(end_time_in_s))
                     ).group_by(
                        SampleProcess.time,
                     ).order_by(
@@ -1336,117 +1383,91 @@ class ClusterDB(Database):
             async with self.make_async_session() as session:
                 timeseries = (await session.execute(query)).all()
                 return [
-                        {
-                            'memory_resident': x[0],
-                            'memory_virtual': x[1],
-                            'memory_util': round(100*x[2],2),
-                            'cpu_avg': x[3],
-                            'cpu_util': x[4],
-                            'cpu_time': x[5],
-                            'processes_avg': x[6],
-                            'time': x[7]
-                        } for x in timeseries
+                        SampleProcessAccResponse(
+                            memory_resident=x[0],
+                            memory_virtual=x[1],
+                            memory_util=round(100*x[2],2),
+                            cpu_avg=x[3],
+                            cpu_util=x[4],
+                            cpu_time=x[5],
+                            processes_avg=x[6],
+                            time=x[7]
+                        ) for x in timeseries
                 ]
 
-    async def get_sample_gpu_timeseries(
+    async def get_node_memory(
             self,
             cluster: str,
             node: str,
-            start_time_in_s: int,
-            end_time_in_s: int,
-            resolution_in_s: int
-            ):
-        """
-        Get the latest GPU sample data for a given timeframe.
-        For all cards on a node:
-        return:
-            [ { uuid: string, local_index: string, data: Array[SampleProcessGpu]} ]
-        """
+            time_in_s: int
+        ):
+
         query = select(
-                SysinfoAttributes.cluster,
-                SysinfoAttributes.node,
-                SysinfoAttributes.cards,
-                func.max(SysinfoAttributes.time)
+                    SysinfoAttributes.memory,
+                    func.max(SysinfoAttributes.time)
                ).where(
                     (SysinfoAttributes.cluster == cluster),
-                    (SysinfoAttributes.node == node)
+                    (SysinfoAttributes.node == node),
+                    #(SysinfoAttributes.time <= fromtimestamp(time_in_s))
                ).group_by(
-                   SysinfoAttributes.cluster,
-                   SysinfoAttributes.node,
-                   SysinfoAttributes.cards
-               )
+                   SysinfoAttributes.memory
+               ).order_by(None)
 
         async with self.make_async_session() as session:
-            node_configs = (await session.execute(query)).all()
+            node_config = (await session.execute(query)).all()
+            if node_config:
+                memory = None
+                for n in node_config:
+                    if memory is None:
+                        memory, timestamp = n
+                    else:
+                        if memory != n[0]:
+                            raise RuntimeError("node memory: memory changed - might lead to inconsistent reporting")
+            else:
+                raise RuntimeError(f"node memory: missing node config for {node=}")
+        return memory, timestamp
 
-        gpu_sample = []
-        for node_config in node_configs:
-            cards = node_config[2]
+##### END SAMPLE PROCESS (CPU) ######################################################
 
-            for card_uuid in cards:
-                where = SampleGpu.uuid == card_uuid
-                if start_time_in_s:
-                    where &= (SampleGpu.time >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc))
 
-                if end_time_in_s:
-                    where &= (SampleGpu.time <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc))
+#### BEGIN JOBS #####################################################################
 
-                query = select(
-                        func.count(SampleGpu.failing).label("failure_count"),
-                        func.avg(SampleGpu.memory),
-                        func.avg(SampleGpu.memory_util),
-                        func.avg(SampleGpu.ce_util),
-                        func.avg(SampleGpu.temperature),
-                        func.avg(SampleGpu.power),
-                        func.avg(SampleGpu.power_limit),
-                        func.avg(SampleGpu.memory_clock),
-                        func.min(SampleGpu.index),
-                        time_bucket(resolution_in_s, SampleGpu.time).label('bucket')
-                    ).where(
-                        where
-                    ).group_by(
-                        'bucket'
-                    ).order_by(
-                        'bucket'
-                    )
+    async def get_active_jobs(self, cluster: str,
+                start_time_in_s: int,
+                end_time_in_s: int
+                ):
+        """
+            Get all active jobs in the cluster
+            return
+                [ (job, epoch, nodes) ]
+        """
+        query = select(
+                    SampleProcess.job,
+                    SampleProcess.epoch,
+                    func.array_agg(SampleProcess.node.distinct())
+                ).where(
+                    (SampleProcess.cluster == cluster) &
+                    (SampleProcess.time >= fromtimestamp(start_time_in_s)) &
+                    (SampleProcess.time <= fromtimestamp(end_time_in_s))
+                ).group_by(
+                    SampleProcess.job,
+                    SampleProcess.epoch
+                ).distinct()
 
-                query = query.group_by(
-                            'bucket'
-                        ).order_by(
-                            'bucket'
-                        )
-
-                async with self.make_async_session() as session:
-                    node_samples = (await session.execute(query)).all()
-
-                    if node_samples:
-                        local_index = node_samples[0][8]
-                        timeseries_data = [{
-                                'failure_count': x[0],
-                                'memory': round(x[1],2),
-                                'memory_util': round(x[2],2),
-                                'ce_util': round(x[3],2),
-                                'temperature': round(x[4],2),
-                                'power': round(x[5],2),
-                                'power_limit': round(x[6],2),
-                                'memory_clock': round(x[7],2),
-                                'time': x[9]
-                            } for x in node_samples]
-
-                        gpu_sample.append({'uuid': card_uuid, 'local_index': local_index, 'data': timeseries_data })
-
-        return gpu_sample
-
+        async with self.make_async_session() as session:
+            return (await session.execute(query)).all()
 
     async def get_jobs(
             self,
             cluster: str,
             start_time_in_s: int | None = None,
             end_time_in_s: int | None = None,
+            states: list[str] | None = None,
         ):
         return await self.get_slurm_jobs(cluster,
                     start_time_in_s=start_time_in_s,
                     end_time_in_s=end_time_in_s,
+                    states=states,
                 )
 
     async def get_job(
@@ -1457,7 +1478,7 @@ class ClusterDB(Database):
             start_time_in_s: int | None = None,
             end_time_in_s: int | None = None,
             states: list[str] | None = None,
-        ) -> dict[str, any] | None:
+        ) -> JobResponse | None:
 
         if epoch == 0:
             return await self.get_slurm_job(
@@ -1467,8 +1488,7 @@ class ClusterDB(Database):
                     end_time_in_s=end_time_in_s,
                     states=states)
         else:
-            raise NotImplementedError("get_job not yet implemented")
-
+            raise NotImplementedError("get_job not yet implemented for epoch != 0")
 
     async def get_slurm_job(
             self,
@@ -1477,15 +1497,17 @@ class ClusterDB(Database):
             start_time_in_s: int | None = None,
             end_time_in_s: int | None = None,
             states: list[str] | None = None,
-        ) -> dict[str, any] | None:
+        ) -> JobResponse | None:
         """
         Get the SLURM job status for a specific job in a cluster
         """
         where = (SampleSlurmJob.cluster == cluster) & (SampleSlurmJob.job_id == job_id) & (SampleSlurmJob.job_step == '') # get the main job
         if start_time_in_s:
-            where &= (SampleSlurmJob.time >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc))
+            where &= (SampleSlurmJob.time >= fromtimestamp(start_time_in_s))
         if end_time_in_s:
-            where &= (SampleSlurmJob.time <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc))
+            where &= (SampleSlurmJob.time <= fromtimestamp(end_time_in_s))
+        if states is not None:
+            where &= SampleSlurmJob.job_state.in_(states)
 
         query = select(
                     SampleSlurmJob
@@ -1511,7 +1533,9 @@ class ClusterDB(Database):
                 slurm_data =  dict(data[0][0])
                 if gpus:
                     slurm_data['used_gpu_uuids'] = gpus
-                return slurm_data
+                else:
+                    slurm_data['used_gpu_uuids'] = []
+                return JobResponse(**slurm_data)
             else:
                 return None
 
@@ -1528,6 +1552,7 @@ class ClusterDB(Database):
             submit_after_in_s: float | None = None,
             min_duration_in_s: float | None = None,
             max_duration_in_s: float | None = None,
+            states: list[str] | None = None,
             limit: int = 100
         ):
 
@@ -1542,27 +1567,27 @@ class ClusterDB(Database):
             where &= SampleSlurmJob.job_id == job_id
 
         if start_before_in_s is not None:
-            reference_time = dt.datetime.fromtimestamp(start_before_in_s, dt.timezone.utc).replace(tzinfo=None)
+            reference_time = fromtimestamp(start_before_in_s).replace(tzinfo=None)
             where &= SampleSlurmJob.start_time <= reference_time
 
         if start_after_in_s is not None:
-            reference_time = dt.datetime.fromtimestamp(start_after_in_s, dt.timezone.utc).replace(tzinfo=None)
+            reference_time = fromtimestamp(start_after_in_s).replace(tzinfo=None)
             where &= SampleSlurmJob.start_time >= reference_time
 
         if end_before_in_s is not None:
-            reference_time = dt.datetime.fromtimestamp(end_before_in_s, dt.timezone.utc).replace(tzinfo=None)
+            reference_time = fromtimestamp(end_before_in_s).replace(tzinfo=None)
             where &= SampleSlurmJob.end_time <= reference_time
 
         if end_after_in_s is not None:
-            reference_time = dt.datetime.fromtimestamp(end_after_in_s, dt.timezone.utc).replace(tzinfo=None)
+            reference_time = fromtimestamp(end_after_in_s).replace(tzinfo=None)
             where &= SampleSlurmJob.end_time >= reference_time
 
         if submit_before_in_s is not None:
-            reference_time = dt.datetime.fromtimestamp(submit_before_in_s, dt.timezone.utc).replace(tzinfo=None)
+            reference_time = fromtimestamp(submit_before_in_s).replace(tzinfo=None)
             where &= SampleSlurmJob.submit_time <= reference_time
 
         if submit_after_in_s is not None:
-            reference_time = dt.datetime.fromtimestamp(submit_after_in_s, dt.timezone.utc).replace(tzinfo=None)
+            reference_time = fromtimestamp(submit_after_in_s).replace(tzinfo=None)
             where &= SampleSlurmJob.submit_time >= reference_time
 
         if min_duration_in_s is not None:
@@ -1571,8 +1596,10 @@ class ClusterDB(Database):
         if max_duration_in_s is not None:
             where &= (EpochFn(SampleSlurmJob.end_time) - EpochFn(SampleSlurmJob.start_time)) <= max_duration_in_s
 
-        # limit search to completed jobs
-        where &= (SampleSlurmJob.job_state == 'COMPLETED') & (SampleSlurmJob.user_name != '')
+        if states:
+            where &= (SampleSlurmJob.job_state.in_(states))
+
+        where &= (SampleSlurmJob.user_name != '')
         subquery = select(
                     SampleSlurmJob.job_id.label('job_id'),
                     func.max(SampleSlurmJob.time).label('last_timestamp')
@@ -1600,7 +1627,7 @@ class ClusterDB(Database):
             cluster: str,
             partition: str | None = None,
             nodelist: list[str] | None = None,
-            job_states: list[str] | None = None,
+            states: list[str] | None = None,
             start_time_in_s: int | None = None,
             end_time_in_s: int | None = None,
         ):
@@ -1614,11 +1641,11 @@ class ClusterDB(Database):
             start_time_in_s = end_time_in_s - 300
 
         where = (SampleSlurmJob.cluster == cluster)
-        where &= (SampleSlurmJob.time >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc))
-        where &= (SampleSlurmJob.time <= dt.datetime.fromtimestamp(end_time_in_s, dt.timezone.utc))
+        where &= (SampleSlurmJob.time >= fromtimestamp(start_time_in_s))
+        where &= (SampleSlurmJob.time <= fromtimestamp(end_time_in_s))
 
-        if job_states:
-            where &= SampleSlurmJob.job_state.in_(job_states)
+        if states:
+            where &= SampleSlurmJob.job_state.in_(states)
 
         if partition:
             where &= (SampleSlurmJob.partition == partition)
@@ -1637,9 +1664,22 @@ class ClusterDB(Database):
                 SampleSlurmJob.job_step
             ).subquery()
 
+        gpus_subquery = select(
+                    SampleProcessGpu.cluster,
+                    SampleProcessGpu.job,
+                    func.array_agg(SampleProcessGpu.uuid.distinct()).label("used_gpu_uuids")
+                ).where(
+                    (SampleProcessGpu.cluster == cluster) &
+                    (SampleProcessGpu.epoch == 0)
+                ).group_by(
+                    SampleProcessGpu.cluster,
+                    SampleProcessGpu.job
+                ).subquery()
+
         query = select(
                     SampleSlurmJob,
-                    SampleSlurmJobAcc
+                    SampleSlurmJobAcc,
+                    gpus_subquery.c.used_gpu_uuids
                 ).join(subquery,#
                     (SampleSlurmJob.cluster == cluster) &
                     (subquery.c.job_id == SampleSlurmJob.job_id) &
@@ -1651,15 +1691,19 @@ class ClusterDB(Database):
                     (subquery.c.job_step == SampleSlurmJobAcc.job_step) &
                     (subquery.c.max_time == SampleSlurmJobAcc.time),
                     isouter=True
+                ).join(gpus_subquery,
+                    (gpus_subquery.c.cluster == cluster) &
+                    (gpus_subquery.c.job == SampleSlurmJob.job_id),
+                    isouter=True
                 )
 
         async with self.make_async_session() as session:
             data = (await session.execute(query)).all()
-
             samples = []
             for sample in data:
                 new_sample = dict(sample[0])
                 if sample[1]:
+                    new_sample['used_gpu_uuids'] = sample[2]
                     new_sample['sacct'] =  dict(sample[1])
                     del new_sample['sacct']['job_id']
                     del new_sample['sacct']['job_step']
@@ -1668,105 +1712,5 @@ class ClusterDB(Database):
                 samples.append(new_sample)
 
             return samples
-
-    
-    async def get_partitions(self, cluster: str,
-            time_in_s: int | None = None):
-
-        if time_in_s is None:
-            time_in_s = utcnow().timestamp()
-
-
-        query = select(
-                    Partition.cluster,
-                    Partition.partition,
-                    Partition.nodes,
-                    Partition.nodes_compact,
-                    func.max(Partition.time)
-                ).where(
-                    (Partition.cluster == cluster) &
-                    (Partition.time <= dt.datetime.fromtimestamp(time_in_s, dt.timezone.utc))
-                ).group_by(
-                    Partition.cluster,
-                    Partition.partition,
-                    Partition.nodes,
-                    Partition.nodes_compact
-                )
-
-        nodes = await self.get_nodes_info(cluster=cluster, time_in_s=time_in_s)
-
-        partitions = []
-        async with self.make_async_session() as session:
-            for x in (await session.execute(query)).all():
-                partition_name = x[1]
-                partition_nodes = x[2]
-
-                pending_jobs = await self.get_slurm_jobs(
-                        cluster=cluster,
-                        partition=partition_name,
-                        job_states=["PENDING"],
-                        start_time_in_s= time_in_s - 5*60,
-                        end_time_in_s= time_in_s + 5*60,
-                )
-
-                running_jobs = await self.get_slurm_jobs(
-                        cluster=cluster,
-                        partition=partition_name,
-                        job_states=["RUNNING"],
-                        start_time_in_s=time_in_s - 5*60,
-                        end_time_in_s=time_in_s + 5*60,
-                )
-
-                # logical cpus
-                total_cpus = []
-                total_gpus = 0
-                cards_in_use = []
-                for node, y in nodes.items():
-                    if node in partition_nodes:
-                        total_cpus.append(y['cores_per_socket']*y['sockets']*y['threads_per_core'])
-                        total_gpus += len(y['cards'])
-                        for card in y['cards']:
-                            last_active = card['last_active']
-                            if last_active and time_in_s - last_active.timestamp() < 5*60:
-                                cards_in_use.append(card['uuid'])
-
-                total_cpus = sum(total_cpus)
-
-                pending_max_submit_time = 0
-                if pending_jobs:
-                    pending_max_submit_time = max([x['submit_time'] for x in pending_jobs])
-                # for the latest running job -> wait time
-                wait_time = 0
-                latest_start_time = None
-
-                cards_reserved = 0
-                for job in running_jobs:
-                    start_time = job['start_time'] 
-                    if latest_start_time is None:
-                        latest_start_time = start_time
-                        wait_time = (start_time - job['submit_time']).total_seconds()
-                    elif start_time < latest_start_time:
-                        latest_start_time = start_time
-                        wait_time = (start_time - job['submit_time']).total_seconds()
-                    m = re.search(r"gpu=([0-9]+)", job['sacct']['AllocTRES'])
-                    if m:
-                        cards_reserved += int(m.groups(0)[0])
-
-                partitions.append({
-                    'cluster': x[0],
-                    'name': partition_name,
-                    'nodes': partition_nodes,
-                    'nodes_compact': x[3],
-                    'jobs_pending': pending_jobs,
-                    'jobs_running': running_jobs,
-                    'pending_max_submit_time': pending_max_submit_time,
-                    'running_latest_wait_time': wait_time,
-                    'total_cpus': total_cpus,
-                    'total_gpus': total_gpus,
-                    'gpus_reserved': cards_reserved,
-                    'gpus_in_use': cards_in_use,
-                    'time': x[4],
-                })
-        partitions.sort(key=lambda x: x['name'])
-        return partitions
+#### END JOBS #####################################################################
 

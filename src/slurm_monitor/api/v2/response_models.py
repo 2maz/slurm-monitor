@@ -23,6 +23,25 @@ class ClusterResponse(TimestampedModel):
     partitions: list[str]
     nodes: list[str]
 
+class SAcctResponse(BaseModel):
+    AllocTRES: str
+    ElapsedRaw: int
+
+    SystemCPU: int
+    UserCPU: int
+
+    AveVMSize: int
+    MaxVMSize: int
+
+    AveCPU: int
+    MinCPU: int
+
+    AveRSS: int
+    MaxRSS: int
+
+    AveDiskRead: int
+    AveDiskWrite: int
+
 class JobResponse(TimestampedModel):
     cluster: str
     job_id: int
@@ -58,6 +77,10 @@ class JobResponse(TimestampedModel):
     requested_memory_per_node: int
     requested_node_count: int
     minimum_cpus_per_node: int
+
+    used_gpu_uuids: list[str] | None
+
+    sacct: SAcctResponse | None = Field(default=None)
 
 
 class PartitionResponse(TimestampedModel):
@@ -247,9 +270,88 @@ class NodeSampleProcessGpuAccResponse(RootModel):
             if not isinstance(gpus, dict):
                 raise ValueError(f"Nodes need to map to dict of gpu-uuid to timeseries data, but {key=} maps to {gpus=}")
             for gpu_uuid, gpu_data in gpus.items():
-                if not isinstance(gpu_data, dict):
-                    raise ValueError(f"GPU data needs to be a single accumulated data response, but {gpu_uuid=} maps to {gpu_data=}")
+                if not isinstance(gpu_data, SampleProcessGpuAccResponse):
+                    raise ValueError(f"GPU data should be SampleProcessGpuAccResponse, but {gpu_uuid=} maps to {gpu_data=}")
         return values
+
+
+class NodeSampleProcessAccResponse(RootModel):
+    root: dict[str, dict[str, SampleProcessAccResponse]]
+
+    @model_validator(mode="before")
+    def check_nested_structure(cls, values) -> dict[str, dict[str, SampleProcessGpuAccResponse]]:
+        if not isinstance(values, dict):
+            raise ValueError(f"Response must be a dictionary: keys are nodenames - response was {type(values)}")
+        return values
+
+## DASHBOARD
+#export interface FetchedJobQueryResultItem {
+#  job: string;
+#  user: string;
+#  host: string;
+#  duration: string;
+#  start: string;
+#  end: string;
+#  'cpu-peak': number;
+#  'res-peak': number;
+#  'mem-peak': number;
+#  'gpu-peak': number;
+#  'gpumem-peak': number;
+#  cmd: string;
+#}
+
+class JobQueryResultItem(BaseModel):
+    job: str
+    user: str
+    host: str
+    duration: str
+    start: str
+    end: str
+    cmd: str
+
+    cpu_peak: float = Field(default=0.0, serialization_alias='cpu-peak')
+    res_peak: float = Field(default=0.0, serialization_alias='res-peak')
+    mem_peak: float = Field(default=0.0, serialization_alias='mem-peak')
+    gpu_peak: float = Field(default=0.0, serialization_alias='gpu-peak')
+    gpumem_peak: float = Field(default=0.0, serialization_alias='gpumem-peak')
+
+
+#export interface FetchedJobProfileResultItem {
+#  time: string;
+#  job: number;
+#  points: ProcessPoint[];
+#}
+#
+#interface ProcessPoint {
+#  command: string;
+#  pid: number;
+#  cpu: number;
+#  mem: number;
+#  res: number;
+#  gpu: number;
+#  gpumem: number;
+#  nproc: number;
+#}
+
+class ProcessPoint(BaseModel):
+    command: str
+    pid: int
+    nproc: int
+
+    cpu: float
+    mem: float
+    res: float
+
+    gpu: float
+    gpumem: float
+
+class JobProfileResultItem(BaseModel):
+    job: int
+    time: str
+
+    points: list[ProcessPoint]
+
+
 
 
 
