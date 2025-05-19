@@ -48,6 +48,7 @@ dependencies = [
     "pydantic-settings",
     "pyyaml",
     "psycopg2-binary",
+    "python-snappy",
     "sqlalchemy",
     "sqlalchemy-schemadisplay",
     "tqdm",
