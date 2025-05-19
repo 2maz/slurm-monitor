@@ -294,24 +294,92 @@ class UUID(types.TypeDecorator):
     impl = String
     cache_ok = True
 
+class Cluster(TableBase):
+    __tablename__ = "cluster"
+    __table_args__ = (
+        {
+            'timescaledb_hypertable': {
+                'time_column_name': 'time',
+                'chunk_time_interval': '24 hours',
+                'compression': {
+                    'segmentby': 'cluster',
+                    'orderby': 'time',
+                    'interval': '7 days'
+                }
+            }
+        }
+    )
+    cluster = Column(String, primary_key=True, index=True)
+    slurm = Column(Boolean, default=True)
+    partitions = Column(ARRAY(String))
+    nodes = Column(ARRAY(String))
+
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
 class Node(TableBase):
     __tablename__ = "node"
-    __table_args__ = (
-        {}
-    )
     cluster = Column(String, primary_key=True)
     node = Column(String, primary_key=True)
 
     architecture = Column(String)
 
+    __table_args__ = (
+        {}
+    )
+
+
+class NodeState(TableBase):
+    __tablename__ = "node_state"
+
+    cluster = Column(String, primary_key=True)
+    node = Column(String, primary_key=True)
+    states = Column(ARRAY(String))
+
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
+        {
+            'timescaledb_hypertable': {
+                'time_column_name': 'time',
+                'chunk_time_interval': '24 hours',
+                'compression': {
+                    'segmentby': 'cluster, node',
+                    'orderby': 'time',
+                    'interval': '7 days'
+                }
+            }
+        }
+    )
+
+
+class Partition(TableBase):
+    __tablename__ = "partition"
+    __table_args__ = (
+        {
+            'timescaledb_hypertable': {
+                'time_column_name': 'time',
+                'chunk_time_interval': '24 hours',
+                'compression': {
+                    'segmentby': 'cluster',
+                    'orderby': 'time',
+                    'interval': '7 days'
+                }
+            }
+        }
+    )
+    cluster = Column(String, primary_key=True, index=True)
+    partition = Column(String, primary_key=True, index=True)
+    nodes = Column(ARRAY(String))
+    nodes_compact = Column(ARRAY(String))
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
 class SysinfoAttributes(TableBase):
     __tablename__ = "sysinfo_attributes"
 
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
-    cluster = Column(Text, primary_key=True)
-    node = Column(Text, primary_key=True)
+    cluster = Column(String, primary_key=True)
+    node = Column(String, primary_key=True)
 
     os_name = Column(String)
     os_release = Column(String)
@@ -351,12 +419,16 @@ class SysinfoAttributes(TableBase):
 
 class SysinfoSoftwareVersion(TableBase):
     __tablename__ = "sysinfo_software_version"
-    cluster = Column(Text, primary_key=True)
-    node = Column(Text, primary_key=True)
+    cluster = Column(String, primary_key=True)
+    node = Column(String, primary_key=True)
 
     key = Column(String, primary_key=True)
     name = Column(String)
     version = Column(String, primary_key=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
+    )
 
 class SysinfoGpuCard(TableBase):
     """
@@ -370,9 +442,9 @@ class SysinfoGpuCard(TableBase):
 
     uuid = Column(UUID, primary_key=True)
 
-    manufacturer = Column(Text)
-    model = Column(Text)
-    architecture = Column(Text)
+    manufacturer = Column(String)
+    model = Column(String)
+    architecture = Column(String)
     memory = Column(BigInteger)
 
 class SysinfoGpuCardConfig(TableBase):
@@ -385,8 +457,8 @@ class SysinfoGpuCardConfig(TableBase):
     uuid = Column(UUID, ForeignKey('sysinfo_gpu_card.uuid'), primary_key=True)
 
     # Card local index
-    index = Column(Integer, primary_key=True)
-    address = Column(Text)
+    index = Column(Integer, index=True)
+    address = Column(String)
 
     driver = Column(String)
     firmware = Column(String)
@@ -516,8 +588,8 @@ class SampleProcessGpu(TableBase):
         }
     )
 
-    cluster = Column(Text, primary_key=True)
-    node = Column(Text, primary_key=True)
+    cluster = Column(String, primary_key=True)
+    node = Column(String, primary_key=True)
 
     job = Column(BigInteger, primary_key=True)
     epoch = Column(BigInteger,
@@ -654,6 +726,49 @@ class SlurmJobState(enum.Enum):
 
 class SampleSlurmJob(TableBase):
     __tablename__ = "sample_slurm_job"
+    cluster = Column(String, index=True, primary_key=True)
+
+    # JobID
+    # The number of the job or job step. It is in the form: job.jobstep.
+    # Meanwhile here - we
+    job_id = Column(BigInteger, index=True, primary_key=True)  # ": 244843,
+    job_step = Column(String, index=True, primary_key=True)
+    job_name = Column(String)
+#    job_state = Column(Enum(SlurmJobState))
+    job_state = Column(String)
+
+    array_job_id = Column(BigInteger, nullable=True)  # 244843
+    array_task_id = Column(Integer, nullable=True)  # 984
+
+    het_job_id = Column(BigInteger)
+    het_job_offset = Column(Integer)
+
+    user_name = Column(String)
+    account = Column(String)
+
+    start_time = Column(DateTimeTZAware, nullable=True)
+    suspend_time = Column(BigInteger)
+
+    submit_time = Column(DateTimeTZAware)
+    time_limit = Column(Integer)
+    end_time = Column(DateTimeTZAware, nullable=True)
+    exit_code = Column(Integer, nullable=True)
+
+    partition = Column(String)
+    reservation = Column(String)
+
+    nodes = Column(ARRAY(String))
+    priority = Column(Xint)
+    distribution = Column(String)
+
+    gres_detail = Column(ARRAY(String), nullable=True)
+    requested_cpus = Column(Integer)
+    requested_memory_per_node = Column(Integer)
+    requested_node_count = Column(Integer)
+    minimum_cpus_per_node = Column(Integer)
+
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
+
     __table_args__ = (
         *ensure_non_negative(
             'job_id',
@@ -680,51 +795,35 @@ class SampleSlurmJob(TableBase):
             }
         }
     )
-    cluster = Column(String, index=True, primary_key=True)
-
-    # JobID
-    # The number of the job or job step. It is in the form: job.jobstep.
-    # Meanwhile here - we
-    job_id = Column(BigInteger, index=True, primary_key=True)  # ": 244843,
-    job_step = Column(String, index=True, primary_key=True)
-    job_name = Column(String)
-#    job_state = Column(Enum(SlurmJobState))
-    job_state = Column(String)
-
-    array_job_id = Column(BigInteger, nullable=True)  # 244843
-    array_task_id = Column(Integer, nullable=True)  # 984
-
-    het_job_id = Column(BigInteger)
-    het_job_offset = Column(Integer)
-
-    user_name = Column(String)
-    account = Column(Text)
-
-    start_time = Column(DateTimeTZAware, nullable=True)
-    suspend_time = Column(BigInteger)
-
-    submit_time = Column(DateTimeTZAware)
-    time_limit = Column(Integer)
-    end_time = Column(DateTimeTZAware, nullable=True)
-    exit_code = Column(Integer, nullable=True)
-
-    partition = Column(Text)
-    reservation = Column(String)
-
-    nodes = Column(ARRAY(String))
-    priority = Column(Xint)
-    distribution = Column(String)
-
-    gres_detail = Column(ARRAY(String), nullable=True)
-    requested_cpus = Column(Integer)
-    requested_memory_per_node = Column(Integer)
-    requested_node_count = Column(Integer)
-    minimum_cpus_per_node = Column(Integer)
-
-    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
 class SampleSlurmJobAcc(TableBase):
     __tablename__ = "sample_slurm_job_acc"
+    cluster = Column(String, index=True, primary_key=True)
+
+    job_id = Column(BigInteger, primary_key=True, index=True)
+    job_step = Column(String, index=True, primary_key=True)
+
+    AllocTRES = Column(String)
+
+    ElapsedRaw = Column(BigInteger)
+
+    SystemCPU = Column(BigInteger)
+    UserCPU = Column(BigInteger)
+
+    AveVMSize = Column(BigInteger)
+    MaxVMSize = Column(BigInteger)
+
+    AveCPU = Column(BigInteger)
+    MinCPU = Column(BigInteger)
+
+    AveRSS = Column(BigInteger)
+    MaxRSS = Column(BigInteger)
+
+    AveDiskRead = Column(BigInteger)
+    AveDiskWrite = Column(BigInteger)
+
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
+
     __table_args__ = (
         *ensure_non_negative(
             'job_id',
@@ -752,31 +851,6 @@ class SampleSlurmJobAcc(TableBase):
             }
         }
     )
-    cluster = Column(String, index=True, primary_key=True)
-
-    job_id = Column(BigInteger, primary_key=True, index=True)
-    job_step = Column(String, index=True, primary_key=True)
-
-    AllocTRES = Column(String)
-
-    ElapsedRaw = Column(BigInteger)
-
-    SystemCPU = Column(BigInteger)
-    UserCPU = Column(BigInteger)
-
-    AveVMSize = Column(BigInteger)
-    MaxVMSize = Column(BigInteger)
-
-    AveCPU = Column(BigInteger)
-    MinCPU = Column(BigInteger)
-
-    AveRSS = Column(BigInteger)
-    MaxRSS = Column(BigInteger)
-
-    AveDiskRead = Column(BigInteger)
-    AveDiskWrite = Column(BigInteger)
-
-    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
     ## JobIDRaw
     ## In case of job array print the JobId instead of the ArrayJobId. For non
@@ -925,67 +999,3 @@ class SampleSlurmJobAcc(TableBase):
         return cls(**mapped_data)
 
 
-class Cluster(TableBase):
-    __tablename__ = "cluster"
-    __table_args__ = (
-        {
-            'timescaledb_hypertable': {
-                'time_column_name': 'time',
-                'chunk_time_interval': '24 hours',
-                'compression': {
-                    'segmentby': 'cluster',
-                    'orderby': 'time',
-                    'interval': '7 days'
-                }
-            }
-        }
-    )
-    cluster = Column(String, primary_key=True, index=True)
-    slurm = Column(Boolean, default=True)
-    partitions = Column(ARRAY(String))
-    nodes = Column(ARRAY(String))
-
-    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
-
-class Partition(TableBase):
-    __tablename__ = "partition"
-    __table_args__ = (
-        {
-            'timescaledb_hypertable': {
-                'time_column_name': 'time',
-                'chunk_time_interval': '24 hours',
-                'compression': {
-                    'segmentby': 'cluster',
-                    'orderby': 'time',
-                    'interval': '7 days'
-                }
-            }
-        }
-    )
-    cluster = Column(String, primary_key=True, index=True)
-    partition = Column(String, primary_key=True, index=True)
-    nodes = Column(ARRAY(String))
-    nodes_compact = Column(ARRAY(String))
-    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
-
-class NodeState(TableBase):
-    __tablename__ = "node_state"
-    __table_args__ = (
-        {
-            'timescaledb_hypertable': {
-                'time_column_name': 'time',
-                'chunk_time_interval': '24 hours',
-                'compression': {
-                    'segmentby': 'cluster, node',
-                    'orderby': 'time',
-                    'interval': '7 days'
-                }
-            }
-        }
-    )
-
-    cluster = Column(String, primary_key=True)
-    node = Column(String, primary_key=True)
-    states = Column(ARRAY(String))
-
-    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
