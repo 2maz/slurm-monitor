@@ -600,7 +600,7 @@ async def dashboard_job_query(
         host: str = '',
         job_id: str = '',
         to: str = '',
-        _from: str = Query(alias='from'),
+        _from: str = Query(default='', alias='from'),
         fmt: str = ''
     ):
 
@@ -618,6 +618,16 @@ async def dashboard_job_query(
     users = user.split(",")
     hosts = host.split(",")
     jobs = job_id.split(",")
+
+    #dbi = db_ops.get_database_v2()
+    #await jobs = dbi.query_jobs(
+    #    cluster=cluster,
+    #    user_id=None if user == '-' else user,
+    #    node=host if host != '' else None,
+    #    job_id=int(job_id) if job_id != '' else None,
+    #    start_after_in_s=dt.datetime.fromisoformat(_from) if _from != '' else None,
+    #    end_after_in_s=dt.datetime.fromisoformat(to) if to != '' else None
+    #)
 
 
     return [{
