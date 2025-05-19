@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from slurm_monitor.cli.base import BaseParser
-from slurm_monitor.db.v2.db_subscriber import DBJsonImporter
+from slurm_monitor.db.v2.data_subscriber import DBJsonImporter
 
 from slurm_monitor.db.v2.db import ClusterDB
 from slurm_monitor.app_settings import AppSettings

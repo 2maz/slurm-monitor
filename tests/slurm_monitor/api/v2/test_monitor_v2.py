@@ -6,7 +6,7 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 import re
 
-from slurm_monitor.main import app
+from slurm_monitor.v2 import app
 from slurm_monitor.utils.slurm import Slurm
 
 v2_routes = []

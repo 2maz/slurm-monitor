@@ -3,7 +3,7 @@ import pytest_asyncio
 import datetime as dt
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from slurm_monitor.main import app
+from slurm_monitor.v1 import app
 from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.api.v1.monitor import load_node_infos, validate_interval
 from slurm_monitor.db.v1.db_tables import CPUStatus

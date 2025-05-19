@@ -1,3 +1,4 @@
+from kafka import KafkaConsumer
 from slurm_monitor.db.v2.db_tables import (
     Cluster,
     Node,
@@ -19,10 +20,15 @@ from slurm_monitor.db.v2.db import (
     ClusterDB
 )
 
-import json
-import re
 import dataclasses
-from datetime import datetime as dt
+import datetime as dt
+import json
+import logging
+import re
+import time
+import traceback as tb
+
+logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass
@@ -102,7 +108,7 @@ class DBJsonImporter:
         cluster = attributes.get('cluster', '')
         node = attributes['node']
 
-        time = dt.fromisoformat(attributes["time"])
+        time = dt.datetime.fromisoformat(attributes["time"])
         del attributes['time']
 
         gpu_uuids = []
@@ -159,7 +165,7 @@ class DBJsonImporter:
     @classmethod
     def parse_sample(cls, msg: Message) -> list[TableBase | list[TableBase]]:
         attributes = msg.data.attributes
-        time = dt.fromisoformat(attributes["time"])
+        time = dt.datetime.fromisoformat(attributes["time"])
         del attributes['time']
 
         system = attributes["system"]
@@ -226,7 +232,7 @@ class DBJsonImporter:
         cluster_id = attributes.get('cluster', '')
         slurm = attributes['slurm']
 
-        time = dt.fromisoformat(attributes["time"])
+        time = dt.datetime.fromisoformat(attributes["time"])
         del attributes['time']
 
 
@@ -276,7 +282,7 @@ class DBJsonImporter:
         cluster = attributes.get('cluster', '')
         slurm_jobs = attributes['slurm_jobs']
 
-        time = dt.fromisoformat(attributes["time"])
+        time = dt.datetime.fromisoformat(attributes["time"])
         del attributes['time']
 
 
@@ -312,5 +318,59 @@ class DBJsonImporter:
         samples = DBJsonImporter.parse(message)
         for sample in samples:
             if sample:
-                self.db.insert(sample)
+                self.db.insert_or_update(sample)
+
+def main(*,
+        host: str, port: int,
+        cluster_name: str,
+        topic: list[str] | None,
+        database: ClusterDB | None = None,
+        retry_timeout_in_s: int = 5,
+        verbose: bool = False,
+        ):
+
+    msg_handler = None
+    if database:
+        msg_handler = DBJsonImporter(db=database)
+    else:
+        print(f"No database specified. Will only run in plain listen mode")
+    
+    if topic:
+        topics = topic.split(",")
+    else:
+        topics = [f"{cluster_name}.{x}" for x in ['cluster', 'job', 'sample', 'sysinfo']]
+
+    while True:
+        try:
+            # https://kafka-python.readthedocs.io/en/master/apidoc/KafkaConsumer.html
+            logger.info(f"Subscribing to topics: {topics}")
+            consumer = KafkaConsumer(
+                        *topics,
+                        bootstrap_servers=f"{host}:{port}"
+                        )
+            start_time = dt.datetime.now(dt.timezone.utc)
+            while True:
+                for idx, consumer_record in enumerate(consumer, 1):
+                    try:
+                        if msg_handler:
+                            topic = consumer_record.topic
+                            msg = consumer_record.value.decode("UTF-8")
+                            if verbose:
+                                print(msg)
+
+                            msg_handler.insert(json.loads(msg))
+                            print(f"{dt.datetime.now(dt.timezone.utc)} messages consumed: {idx} since {start_time}\r", flush=True, end='')
+                        else:
+                            print(msg.value.decode("UTF-8"))
+                    except Exception as e:
+                        tb.print_tb(e.__traceback__)
+                        logger.warning(f"Message processing failed: {e}")
+
+        except TimeoutError:
+            raise
+        except Exception as e:
+            logger.warning(f"Connection failed - retrying in 5s - {e}")
+            time.sleep(retry_timeout_in_s)
+
+    logger.info("All tasks gracefully stopped")
 

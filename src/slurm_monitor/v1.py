@@ -18,13 +18,11 @@ import traceback
 
 
 from slurm_monitor.utils.slurm import Slurm
-from slurm_monitor.app_settings import AppSettings, AppSettingsV2
+from slurm_monitor.app_settings import AppSettings
+
 from slurm_monitor.api.v1.router import app as api_v1_app
 from slurm_monitor.db.v1.data_collector import start_jobs_collection
 from slurm_monitor.db.v1.db import SlurmMonitorDB
-
-from slurm_monitor.api.v2.router import app as api_v2_app
-from slurm_monitor.db.v2.db import ClusterDB
 
 import logging
 from logging import getLogger
@@ -45,7 +43,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("Setting up database ...")
     app_settings = AppSettings.initialize()
-    app_settings_v2 = AppSettingsV2.initialize()
+    app_settings.db_schema_version = "v1"
 
     database = SlurmMonitorDB(app_settings.database)
 
@@ -122,4 +120,3 @@ async def runtime_exception_handler(request: Request, exc: Exception):
 # Serve API. We want the API to take full charge of its prefix, not involve the SPA mount
 # at all, hence we use a submount rather than subrouter.
 app.mount(api_v1_app.root_path, api_v1_app)
-app.mount(api_v2_app.root_path, api_v2_app)

@@ -17,7 +17,7 @@ from slurm_monitor.utils import utcnow, fromtimestamp
 from slurm_monitor.utils.command import Command
 from slurm_monitor.utils.slurm import Slurm
 
-from slurm_monitor.app_settings import AppSettingsV2
+from slurm_monitor.app_settings import AppSettings
 import slurm_monitor.db_operations as db_ops
 
 from .response_models import (
@@ -92,7 +92,7 @@ async def cluster(time_in_s: int | None = None):
     """
     Get the list of clusters (available at a particular point in time)
     """
-    dbi = db_ops.get_database_v2()
+    dbi = db_ops.get_database()
     return await dbi.get_clusters(time_in_s=time_in_s)
 
 
@@ -104,7 +104,7 @@ async def partitions(
     """
     Get status of partitions of a cluster (for a specific time point)
     """
-    dbi = db_ops.get_database_v2()
+    dbi = db_ops.get_database()
     return await dbi.get_partitions(cluster, time_in_s)
 
 
@@ -120,7 +120,7 @@ async def nodes_sysinfo(cluster: str,
     Get information about nodes in a cluster
     """
 
-    dbi = db_ops.get_database_v2()
+    dbi = db_ops.get_database()
     return await dbi.get_nodes_sysinfo(cluster, nodename, time_in_s)
 
 @api_router.get("/cluster/{cluster}/nodes/states", response_model=list[NodeStateResponse])
@@ -131,7 +131,7 @@ async def nodes_states(cluster: str, nodename: str | None = None,
     """
     Get the state(s) of nodes in a given cluster
     """
-    dbi = db_ops.get_database_v2()
+    dbi = db_ops.get_database()
     return await dbi.get_nodes_states(cluster, nodename, time_in_s)
 
 @api_router.get("/cluster/{cluster}/nodes/{nodename}/topology", response_model=None)
@@ -139,7 +139,7 @@ async def nodes_nodename_topology(cluster: str, nodename: str):
     """
     Get the topology information for a node (if available)
     """
-    dbi = db_ops.get_database_v2()
+    dbi = db_ops.get_database()
     node_config = await dbi.get_nodes_sysinfo(cluster, nodename)
     data = node_config[nodename].get('topo_svg', None)
     if data:
@@ -154,7 +154,7 @@ async def nodes_last_probe_timestamp(cluster: str):
     """
     Retrieve the last known timestamps of records added for nodes in the cluster
     """
-    dbi = db_ops.get_database_v2()
+    dbi = db_ops.get_database()
     return await dbi.get_last_probe_timestamp(cluster=cluster)
 
 
@@ -169,7 +169,7 @@ async def nodes_process_gpu_util(
     """
     Retrieve the latest gpu utilization
     """
-    dbi = db_ops.get_database_v2()
+    dbi = db_ops.get_database()
 
     nodes = [nodename] if nodename else (await dbi.get_nodes(cluster))
     tasks = {}
@@ -194,7 +194,7 @@ async def nodes_sample_process_gpu(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi=Depends(db_ops.get_database_v2),
+    dbi=Depends(db_ops.get_database),
 ):
     """
     Get node-related timeseries for processes running on gpu
@@ -227,7 +227,7 @@ async def job_sample_process_system(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi=Depends(db_ops.get_database_v2),
+    dbi=Depends(db_ops.get_database),
 ):
     """
     Get job-related timeseries for all processes running on cpu and gpu
@@ -259,7 +259,7 @@ async def job_sample_process_gpu_timeseries(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi=Depends(db_ops.get_database_v2),
+    dbi=Depends(db_ops.get_database),
 ):
     """
     Get job-related timeseries data for processes running on gpu
@@ -290,7 +290,7 @@ async def job_sample_process_gpu_timeseries(
 #    start_time_in_s: float | None = None,
 #    end_time_in_s: float | None = None,
 #    resolution_in_s: int | None = None,
-#    dbi=Depends(db_ops.get_database_v2),
+#    dbi=Depends(db_ops.get_database),
 #):
 #    """
 #    Get node-related timeseries data for processes running on cpu
@@ -326,7 +326,7 @@ async def nodes_process_cpu_memory_timeseries(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi=Depends(db_ops.get_database_v2),
+    dbi=Depends(db_ops.get_database),
 ):
     """
     Get node-related timeseries data for processes running on memory
@@ -364,7 +364,7 @@ async def nodes_process_cpu_memory_timeseries(
 #    start_time_in_s: float | None = None,
 #    end_time_in_s: float | None = None,
 #    resolution_in_s: int | None = None,
-#    dbi=Depends(db_ops.get_database_v2),
+#    dbi=Depends(db_ops.get_database),
 #):
 #    try:
 #        start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
@@ -414,7 +414,7 @@ async def nodes_sample_gpu(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi=Depends(db_ops.get_database_v2),
+    dbi=Depends(db_ops.get_database),
 ):
     try:
         start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
@@ -453,7 +453,7 @@ async def job_gpu_status(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi=Depends(db_ops.get_database_v2),
+    dbi=Depends(db_ops.get_database),
 ):
     start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
             start_time_in_s=start_time_in_s,
@@ -506,7 +506,7 @@ async def jobs(cluster: str,
         start_time_in_s: int | None = None,
         end_time_in_s: int | None = None,
         states: str | None = None,
-        dbi=Depends(db_ops.get_database_v2),
+        dbi=Depends(db_ops.get_database),
    ):
     """
     Check current status of jobs
@@ -541,7 +541,7 @@ async def job_status(
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
     states: str | None = None,
-    dbi=Depends(db_ops.get_database_v2),
+    dbi=Depends(db_ops.get_database),
 ):
     job_states = None
     if states:
@@ -573,7 +573,7 @@ async def jobs_query(
     states: str = "",
     limit: int = 100,
 ):
-    dbi = db_ops.get_database_v2()
+    dbi = db_ops.get_database()
     return {"jobs": await dbi.query_jobs(
         cluster=cluster,
         user=user,
@@ -619,7 +619,7 @@ async def dashboard_job_query(
     hosts = host.split(",")
     jobs = job_id.split(",")
 
-    #dbi = db_ops.get_database_v2()
+    #dbi = db_ops.get_database()
     #await jobs = dbi.query_jobs(
     #    cluster=cluster,
     #    user_id=None if user == '-' else user,

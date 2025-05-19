@@ -12,7 +12,7 @@ from slurm_monitor.db.v2.db_tables import (
     SysinfoGpuCardConfig,
 )
 
-from slurm_monitor.db.v2.db_subscriber import DBJsonImporter
+from slurm_monitor.db.v2.data_subscriber import DBJsonImporter
 from slurm_monitor.utils.command import Command
 from slurm_monitor.utils import utcnow
 import time
