@@ -70,7 +70,7 @@ async def test_get_slurm_jobs(test_db_v2, db_config):
     running_jobs = await test_db_v2.get_slurm_jobs(
             cluster="cluster-0",
             partition="cluster-0-partition-0",
-            job_states=["RUNNING"],
+            states=["RUNNING"],
             start_time_in_s=time_in_s - 5*60,
             end_time_in_s=time_in_s + 5*60
     )
@@ -99,9 +99,9 @@ async def test_clusters(test_db_v2, db_config):
         assert p['gpus_reserved'] == db_config.number_of_jobs*db_config.number_of_nodes
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_get_sample_gpu_timeseries(test_db_v2):
+async def test_get_node_sample_gpu_timeseries(test_db_v2):
 
-    gpu_timeseries = await test_db_v2.get_sample_gpu_timeseries(
+    gpu_timeseries = await test_db_v2.get_node_sample_gpu_timeseries(
                 cluster="cluster-0",
                 node='cluster-0-node-1',
                 start_time_in_s=utcnow().timestamp() - 3600,
@@ -142,7 +142,7 @@ async def test_nodes_info(test_db_v2, db_config):
     clusters = await test_db_v2.get_clusters()
     assert len(clusters) == db_config.number_of_clusters
 
-    nodes = await test_db_v2.get_nodes_info(cluster="cluster-1")
+    nodes = await test_db_v2.get_nodes_sysinfo(cluster="cluster-1")
     for node, value in nodes.items():
         assert len(value['cards']) == db_config.number_of_gpus
 
