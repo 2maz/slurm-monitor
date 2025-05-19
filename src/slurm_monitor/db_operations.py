@@ -18,6 +18,8 @@ def get_database(app_settings: AppSettings | None = None):
         elif app_settings.db_schema_version == "v2":
             from slurm_monitor.db.v2.db import ClusterDB
             return ClusterDB(app_settings.database)
+        else:
+            raise RuntimeError("AppSettings.db_schema_version is not set")
 
     except sqlalchemy.exc.OperationalError:
         raise HTTPException(

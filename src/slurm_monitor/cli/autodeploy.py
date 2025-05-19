@@ -14,7 +14,8 @@ class AutoDeployParser(BaseParser):
     def execute(self, args):
         super().execute(args)
 
-        AppSettings.initialize()
+        app_settings = AppSettings.initialize()
+        app_settings.db_schema_version = "v1"
 
         deployer = AutoDeployer()
         deployer.start()

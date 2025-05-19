@@ -10,6 +10,7 @@ def test_autodeployer(test_db, test_db_uri, number_of_nodes, monkeypatch):
         redeploy_nodes.append(node)
 
     app_settings = AppSettings()
+    app_settings.db_schema_version = "v1"
     app_settings.database = DatabaseSettings(
             uri=test_db_uri,
     )
