@@ -277,7 +277,6 @@ class ClusterDB(Database):
         async with self.make_async_session() as session:
             return [dict(x[0]) for x in (await session.execute(query)).all()]
 
-
     async def get_nodes(self, cluster: str, time_in_s: int | None = None) -> list[str]:
         where = Cluster.cluster == cluster
         if time_in_s:
@@ -428,15 +427,22 @@ class ClusterDB(Database):
 
         query = select(
                     Partition.partition,
-                    Partition.nodes
+                    Partition.nodes,
+                    func.max(Partition.time).label('max_time')
                 ).where(
                     where
+                ).group_by(
+                    Partition.partition,
+                    Partition.nodes
                 )
 
         nodes_partitions = {}
         async with self.make_async_session() as session:
             for partition in (await session.execute(query)).all():
                 for n in partition[1]:
+                    if n not in nodes:
+                        continue
+
                     value = nodes_partitions.get(n, [])
                     nodes_partitions[n] = value + [partition[0]]
 
@@ -538,6 +544,7 @@ class ClusterDB(Database):
                 nodes=nodelist,
                 time_in_s=time_in_s
         )
+
         nodes_partitions = await self.get_nodes_partitions(cluster=cluster,
                 nodes=[x.node for x in node_configs],
                 time_in_s=time_in_s
