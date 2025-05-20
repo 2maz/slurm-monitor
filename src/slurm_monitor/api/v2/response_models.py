@@ -1,4 +1,5 @@
 from pydantic import (
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -15,7 +16,7 @@ class SimpleModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class TimestampedModel(SimpleModel):
-    time: dt.datetime
+    time: AwareDatetime
 
 class ClusterResponse(TimestampedModel):
     cluster: str
@@ -49,20 +50,21 @@ class JobResponse(TimestampedModel):
     job_name: str
     job_state: str
 
-    array_job_id: int | None
-    array_task_id: int | None
+    array_job_id: int | None = Field(default=None)
+    array_task_id: int | None = Field(default=None)
 
     het_job_id: int
     het_job_offset: int
     user_name: str
     account: str
 
-    start_time: dt.datetime
+    # Pending jobs might have no start time set
+    start_time: AwareDatetime | None = Field(default=None)
     suspend_time: int
-    submit_time: dt.datetime
+    submit_time: AwareDatetime
     time_limit: int
-    end_time: dt.datetime | None
-    exit_code: int | None
+    end_time: AwareDatetime | None = Field(default=None)
+    exit_code: int | None = Field(default=None)
 
     partition: str
     reservation: str
@@ -72,13 +74,13 @@ class JobResponse(TimestampedModel):
     priority: int
     distribution: str
 
-    gres_detail: list[str] | None
+    gres_detail: list[str] | None = Field(default=None)
     requested_cpus: int
     requested_memory_per_node: int
     requested_node_count: int
     minimum_cpus_per_node: int
 
-    used_gpu_uuids: list[str] | None
+    used_gpu_uuids: list[str] | None = Field(default=None)
 
     sacct: SAcctResponse | None = Field(default=None)
 
@@ -91,7 +93,7 @@ class PartitionResponse(TimestampedModel):
 
    jobs_pending: list[JobResponse]
    jobs_running: list[JobResponse]
-   pending_max_submit_time: dt.datetime
+   pending_max_submit_time: AwareDatetime
    running_latest_wait_time: int
    total_cpus: int
    total_gpus: int
@@ -175,21 +177,21 @@ class SampleProcessResponse(TimestampedModel):
 
     cpu_avg: float
     cpu_util: float
-    cpu_time: int
+    cpu_time: float
 
     rolled_up: int
 
 
 class SampleProcessAccResponse(TimestampedModel):
-    memory_resident: int
-    memory_virtual: int
+    memory_resident: float
+    memory_virtual: float
     memory_util: float
 
     cpu_avg: float
     cpu_util: float
-    cpu_time: int
+    cpu_time: float
 
-    processes_avg: int
+    processes_avg: float
 
 class NodeResponse(TimestampedModel):
     cluster: str
