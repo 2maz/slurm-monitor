@@ -274,7 +274,9 @@ class DBJsonImporter:
             time=time
         )
 
-        return [ cluster ]  + partitions + nodes_states
+        cluster_nodes = [Node(cluster=cluster_id, node=x) for x in nodes]
+
+        return [ cluster ]  + partitions + cluster_nodes + nodes_states
 
     @classmethod
     def parse_job(cls, msg: Message) -> list[TableBase | list[TableBase]]:
