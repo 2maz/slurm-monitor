@@ -128,8 +128,7 @@ class DBJsonImporter:
                         data[field] = card[field]
                         del card[field]
 
-                gpu_uuid = card['uuid'],
-
+                gpu_uuid = card['uuid']
                 gpu_cards.append(SysinfoGpuCard(
                         uuid=gpu_uuid,
                         **data,
