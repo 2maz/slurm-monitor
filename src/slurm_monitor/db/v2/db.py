@@ -688,10 +688,12 @@ class ClusterDB(Database):
         return []
 
 
-    async def get_last_probe_timestamp(self, cluster: str) -> Awaitable[dict[str, dt.datetime]]:
+    async def get_last_probe_timestamp(self, cluster: str) -> Awaitable[dict[str, dt.datetime | None]]:
         """
         Get the timestamp of the lastest sample for all nodes in this cluster
         """
+        nodes = await self.get_nodes(cluster=cluster)
+
         query = select(
                      SampleProcess.node,
                      func.max(SampleProcess.time).label('max_time')
@@ -707,7 +709,12 @@ class ClusterDB(Database):
                 # result:
                 #   list of tuple - (node, max_timestamp)
                 #   merge into a single dictionary
-                return {x[0]: x[1] for x in timestamps}
+                timestamps = {x[0]: x[1] for x in timestamps}
+
+                unseen = set(nodes) - set(timestamps.keys())
+                for n in unseen:
+                    timestamps[n] = None
+                return timestamps
 
         return {}
 
