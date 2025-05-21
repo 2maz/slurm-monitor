@@ -1186,11 +1186,11 @@ class ClusterDB(Database):
                )
 
         async with self.make_async_session() as session:
-            node_configs = (await session.execute(query)).all()
+            sysinfos = (await session.execute(query)).all()
 
-        for node_config in node_configs:
+        for sysinfo in sysinfos:
             return await self.get_sample_gpu_timeseries(
-                uuids=node_config[2],
+                uuids=sysinfo[2],
                 start_time_in_s=start_time_in_s,
                 end_time_in_s=end_time_in_s,
                 resolution_in_s=resolution_in_s
