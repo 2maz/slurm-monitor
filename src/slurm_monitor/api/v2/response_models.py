@@ -153,11 +153,11 @@ class SampleProcessGpuResponse(TimestampedModel):
     index: int
 
     gpu_util: float
-    gpu_memory: int
+    gpu_memory: float
     gpu_memory_util: float
 
 class SampleProcessGpuAccResponse(TimestampedModel):
-    gpu_memory: int
+    gpu_memory: float
     gpu_util: float
     gpu_memory_util: float
     pids: list[int]
