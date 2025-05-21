@@ -33,7 +33,7 @@ from .response_models import (
     SampleProcessGpuResponse,
     SampleProcessGpuAccResponse,
     NodeStateResponse,
-    NodeResponse,
+    NodeInfoResponse,
     SystemProcessTimeseriesResponse,
     NodeJobSampleProcessTimeseriesResponse,
     NodeGpuJobSampleProcessGpuTimeseriesResponse,
@@ -108,16 +108,32 @@ async def partitions(
     return await dbi.get_partitions(cluster, time_in_s)
 
 
-@api_router.get("/cluster/{cluster}/nodes", response_model=dict[str, NodeResponse])
-@api_router.get("/cluster/{cluster}/nodes/info", response_model=dict[str, NodeResponse])
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/info", response_model=dict[str, NodeResponse])
+@api_router.get("/cluster/{cluster}/nodes", response_model=list[str])
+@cache(expire=3600)
+async def nodes(
+        cluster: str,
+        time_in_s: int | None = None
+    ):
+    """
+    Get the list of node names in a cluster
+    """
+
+    dbi = db_ops.get_database()
+    return await dbi.get_nodes(cluster, time_in_s)
+
+
+@api_router.get("/cluster/{cluster}/nodes/info", response_model=dict[str, NodeInfoResponse])
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/info", response_model=dict[str, NodeInfoResponse])
 @cache(expire=3600)
 async def nodes_sysinfo(cluster: str,
         nodename: str | None = None,
         time_in_s: int | None = None
     ):
     """
-    Get information about nodes in a cluster
+    Get available information about nodes in a cluster
+
+    It will only contain information about reporting nodes - in some case a node might exist in a cluster, but
+    not system information has been received yet. To check - compare with the complete node list /cluster/{cluster}/nodes
     """
 
     dbi = db_ops.get_database()

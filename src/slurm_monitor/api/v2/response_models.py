@@ -193,7 +193,7 @@ class SampleProcessAccResponse(TimestampedModel):
 
     processes_avg: float
 
-class NodeResponse(TimestampedModel):
+class NodeInfoResponse(TimestampedModel):
     cluster: str
     node: str
     os_name: str
