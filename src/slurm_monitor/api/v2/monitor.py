@@ -124,7 +124,6 @@ async def nodes(
 
 @api_router.get("/cluster/{cluster}/nodes/info", response_model=dict[str, NodeInfoResponse])
 @api_router.get("/cluster/{cluster}/nodes/{nodename}/info", response_model=dict[str, NodeInfoResponse])
-@cache(expire=3600)
 async def nodes_sysinfo(cluster: str,
         nodename: str | None = None,
         time_in_s: int | None = None
