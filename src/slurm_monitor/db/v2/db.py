@@ -261,21 +261,31 @@ class ClusterDB(Database):
                 session.query(table).delete()
 
     async def get_clusters(self, time_in_s: int | None = None) -> list[str]:
-        where = sqlalchemy.sql.true()
-        if time_in_s:
-            where &= (Cluster.time <= fromtimestamp(time_in_s))
+        if not time_in_s:
+            time_in_s = utcnow().timestamp()
 
-        query = select(
-            Cluster,
+        where = (Cluster.time <= fromtimestamp(time_in_s))
+        subquery = select(
+            Cluster.cluster.label('cluster'),
             func.max(Cluster.time).label('max_time')
         ).where(
             where
         ).group_by(
-           Cluster
-        )
+            Cluster.cluster
+        ).subquery()
+
+        query = select(
+                    Cluster
+                ).select_from(
+                    subquery
+                ).where(
+                    (Cluster.cluster == subquery.c.cluster)
+                    & (Cluster.time == subquery.c.max_time)
+                )
 
         async with self.make_async_session() as session:
-            return [dict(x[0]) for x in (await session.execute(query)).all()]
+            result = (await session.execute(query)).all()
+            return [dict(x[0]) for x in result]
 
     async def get_nodes(self, cluster: str, time_in_s: int | None = None) -> list[str]:
         where = Cluster.cluster == cluster
@@ -313,21 +323,28 @@ class ClusterDB(Database):
         if time_in_s is None:
             time_in_s = utcnow().timestamp()
 
+        # identify the most recent update time with respect
+        # to the given time_in_s
+        # since this information comes with a single slurm message
+        # the timestamp is unique
+        subquery = select(
+                        func.max(Partition.time).label('max_time')
+                   ).where(
+                       (Partition.cluster == cluster) &
+                       (Partition.time <= fromtimestamp(time_in_s))
+                   ).subquery()
 
         query = select(
                     Partition.cluster,
                     Partition.partition,
                     Partition.nodes,
                     Partition.nodes_compact,
-                    func.max(Partition.time)
+                    Partition.time
+                ).select_from(
+                    subquery
                 ).where(
                     (Partition.cluster == cluster) &
-                    (Partition.time <= fromtimestamp(time_in_s))
-                ).group_by(
-                    Partition.cluster,
-                    Partition.partition,
-                    Partition.nodes,
-                    Partition.nodes_compact
+                    (Partition.time == subquery.c.max_time)
                 )
 
         nodes = await self.get_nodes_sysinfo(cluster=cluster, time_in_s=time_in_s)
@@ -425,15 +442,19 @@ class ClusterDB(Database):
         if time_in_s:
             where &= (Partition.time <= fromtimestamp(time_in_s))
 
+        subquery = select(
+                        func.max(Partition.time).label('max_time')
+                    ).where(
+                        where
+                    ).subquery()
+
         query = select(
                     Partition.partition,
                     Partition.nodes,
-                    func.max(Partition.time).label('max_time')
+                ).select_from(
+                    subquery
                 ).where(
-                    where
-                ).group_by(
-                    Partition.partition,
-                    Partition.nodes
+                    Partition.time == subquery.c.max_time
                 )
 
         nodes_partitions = {}
@@ -538,7 +559,7 @@ class ClusterDB(Database):
         """
         Get the (full) sysinfo information for all nodes
         """
-
+        
         node_configs = await self.get_nodes_sysinfo_attributes(
                 cluster=cluster,
                 nodes=nodelist,
