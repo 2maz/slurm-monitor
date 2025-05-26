@@ -86,9 +86,13 @@ class DBJsonImporter:
 
     @classmethod
     def to_message(cls, message: dict[str, any]) -> Message:
+        if not 'meta' in message:
+            raise ValueError(f"Missing 'meta' in {message=}")
+        if not 'data' in message:
+            raise ValueError(f"Missing 'data' in {message=}")
+
         meta = Meta(**message['meta'])
         data = Data(**message['data'])
-
         return Message(meta=meta, data=data)
 
     @classmethod
