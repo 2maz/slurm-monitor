@@ -13,7 +13,6 @@ from pydantic_settings import BaseSettings
 
 import slurm_monitor.db_operations as db_ops
 from slurm_monitor.app_settings import AppSettings
-from slurm_monitor.db.v1.db import SlurmMonitorDB
 from slurm_monitor.utils import utcnow
 from slurm_monitor.utils.command import Command
 
@@ -37,18 +36,30 @@ class AutoDeployer:
     stats: AutoDeployerStats
     stats_filename: str | Path
 
-    dbi: SlurmMonitorDB
+    app_settings: AppSettings
+    cluster_name: str
+    deploy_command: str
 
     def __init__(self,
             app_settings: AppSettings | None = None,
             sampling_interval_in_s: float = 5*60,
-            stats_filename: str | Path = SLURM_MONITOR_AUTODEPLOYER_JSON):
+            stats_filename: str | Path = SLURM_MONITOR_AUTODEPLOYER_JSON,
+            cluster_name: str | None = None,
+            deploy_command: str | None = None,
+            allow_list: list[str] | None = None
+        ):
+        self.app_settings = app_settings
         self.dbi = db_ops.get_database(app_settings=app_settings)
+
         self.thread = Thread(target=self.run, args=())
         self._sampling_interval_in_s = sampling_interval_in_s
 
         self.stats = AutoDeployerStats(nodes={})
         self.stats_filename = stats_filename
+
+        self.cluster_name = cluster_name
+        self.deploy_command = deploy_command
+        self.allow_list = allow_list
 
     def start(self):
         self._stop = False
@@ -62,7 +73,7 @@ class AutoDeployer:
         response = Command.run(f"sinfo -n {node} -N -h -o '%t'")
         return response.startswith("drain")
 
-    def deploy(self, node: str) -> str:
+    async def deploy(self, node: str) -> str:
         response = Command.run(f"slurm-monitor-probes-ctl -n {node} deploy")
         logger.info(response)
 
@@ -95,9 +106,25 @@ class AutoDeployer:
             now = utcnow()
             os.system("clear")
             print(f"-- autodeploy check: {now}")
-            last_probe_timestamp = loop.run_until_complete(self.dbi.get_last_probe_timestamp())
+
+            last_probe_timestamp = None
+            if self.app_settings.db_schema_version == "v1":
+                last_probe_timestamp = loop.run_until_complete(self.dbi.get_last_probe_timestamp())
+            else:
+                if self.cluster_name is None:
+                    raise ValueError("Missing cluster_name")
+
+                last_probe_timestamp = loop.run_until_complete(self.dbi.get_last_probe_timestamp(cluster=self.cluster_name))
+                logger.info(last_probe_timestamp)
+
             for node in sorted(last_probe_timestamp.keys()):
-                node_time = last_probe_timestamp[node].replace(tzinfo=dt.timezone.utc)
+                node_time = last_probe_timestamp[node]
+                if not node_time:
+                    if self.allow_list is None or node in self.allow_list:
+                        self.deploy(node)
+                    continue
+
+                node_time = node_time.replace(tzinfo=dt.timezone.utc)
                 if node not in self.stats.nodes:
                     self.stats.nodes[node] = AutoDeployerNodeStats(last_seen=node_time)
                 else:
@@ -105,14 +132,43 @@ class AutoDeployer:
 
                 last_seen_in_s = (now - node_time).total_seconds()
                 msg = f"{node} last seen: {last_seen_in_s:10.1f} s ago"
-                if last_seen_in_s > self._sampling_interval_in_s:
-                    if not self.is_drained(node):
-                        print(f"{msg} -- requires redeployment of probe")
-                        self.deploy(node)
-                    else:
-                        print(f"{msg} -- but node is drained")
-                else:
-                    print(msg)
+                if self.allow_list is None or node in self.allow_list:
+                    if last_seen_in_s > self._sampling_interval_in_s:
+                        if not loop.run_until_complete(self.is_drained(node)):
+                            msg = f"{msg} -- requires redeployment of probe"
+                            self.deploy(node)
+                        else:
+                            msg = f"{msg} -- but node is drained"
+                print(msg)
 
             self.save_stats()
             start_time = utcnow()
+
+class AutoDeployerSonar(AutoDeployer):
+    async def is_drained(self, node: str) -> bool:
+        node_states = await dbi.get_nodes_states(
+            cluster=self.cluster_name,
+            nodelist=node,
+        )
+        if not node_states:
+            return False
+
+        for state in node_states[0].states:
+            if state.startswith("drain"):
+                return True
+
+        return False
+                
+
+    def deploy(self, node: str) -> str:
+        logger.info(f"Deploying with deploy_command={self.deploy_command}")
+        response = Command.run(f"{self.deploy_command} {node}")
+        logger.info(response)
+
+        if node not in self.stats.nodes:
+            logger.warning(f"Node '{node}' has not been registered in stats yet")
+            self.stats.nodes[node] = AutoDeployerNodeStats(last_seen=utcnow())
+
+        self.stats.nodes[node].deploy.append(utcnow())
+
+
