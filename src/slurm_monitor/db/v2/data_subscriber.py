@@ -1,6 +1,7 @@
 from kafka import KafkaConsumer
 from slurm_monitor.db.v2.db_tables import (
     Cluster,
+    ErrorMessage,
     Node,
     NodeState,
     Partition,
@@ -12,11 +13,9 @@ from slurm_monitor.db.v2.db_tables import (
     SysinfoAttributes,
     SysinfoGpuCard,
     SysinfoGpuCardConfig,
-    SysinfoSoftwareVersion,
     TableBase
 )
 from slurm_monitor.db.v2.db import (
-    DatabaseSettings,
     ClusterDB
 )
 
@@ -44,7 +43,9 @@ class Data:
 @dataclasses.dataclass
 class Message:
     meta: Meta
-    data: Data
+    data: Data | None
+    errors: list[ErrorMessage] | None
+
 
 def expand_node_names(names: str) -> list[str]:
     nodes = []
@@ -86,22 +87,34 @@ class DBJsonImporter:
 
     @classmethod
     def to_message(cls, message: dict[str, any]) -> Message:
-        if not 'meta' in message:
+        if "meta" not in message:
             raise ValueError(f"Missing 'meta' in {message=}")
-        if not 'data' in message:
-            raise ValueError(f"Missing 'data' in {message=}")
 
         meta = Meta(**message['meta'])
-        data = Data(**message['data'])
-        return Message(meta=meta, data=data)
+
+        data = None
+        if "data" not in message and "errors" not in message:
+            raise ValueError(f"Either 'data' or 'errors' must be present in {message=}")
+
+        if 'data' in message:
+            data = Data(**message['data'])
+
+
+        errors = None
+        if 'errors' in message:
+            errors = [ErroMessager(**x) for x in message['errors']]
+
+        return Message(meta=meta, data=data, errors=errors)
 
     @classmethod
     def parse(cls, message: dict[str, any]):
         msg = DBJsonImporter.to_message(message)
-        msg_type = msg.data.type
+
+        msg_type = "errors"
+        if msg.errors is None:
+            msg_type = msg.data.type
         if not hasattr(cls, f"parse_{msg_type}"):
             raise NotImplementedError(f"No parser for message type: {msg_type} implemented")
-
         parser_fn = getattr(cls, f"parse_{msg_type}")
         return parser_fn(msg)
 
@@ -172,8 +185,8 @@ class DBJsonImporter:
         del attributes['time']
 
         system = attributes["system"]
-        used_memory = system["used_memory"]
-        cpus = system["cpus"]
+        system["used_memory"]
+        system["cpus"]
 
         gpu_samples = []
         if "gpus" in system:
@@ -319,6 +332,13 @@ class DBJsonImporter:
                 )
         return slurm_job_samples
 
+    @classmethod
+    def parse_errors(cls, msg: Message) -> list[TableBase | list[TableBase]]:
+        error_messages = []
+        for error in msg.errors:
+            error_messages.append(ErrorMessage(**error))
+        return error_messages
+
     def insert(self, message: dict[str, any]):
         samples = DBJsonImporter.parse(message)
         for sample in samples:
@@ -338,8 +358,8 @@ def main(*,
     if database:
         msg_handler = DBJsonImporter(db=database)
     else:
-        print(f"No database specified. Will only run in plain listen mode")
-    
+        print("No database specified. Will only run in plain listen mode")
+
     if topic:
         topics = topic.split(",")
     else:
@@ -378,4 +398,3 @@ def main(*,
             time.sleep(retry_timeout_in_s)
 
     logger.info("All tasks gracefully stopped")
-

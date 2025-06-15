@@ -1,5 +1,4 @@
 from __future__ import annotations
-import slurm_monitor.timescaledb
 import logging
 import sqlalchemy
 import json
@@ -25,6 +24,10 @@ from sqlalchemy.orm import as_declarative, class_mapper
 
 from sqlalchemy.sql.functions import GenericFunction
 from sqlalchemy.ext.compiler import compiles
+
+import slurm_monitor.timescaledb as timescaledb
+
+__all__ = [ "timescaledb" ]
 
 logger = logging.getLogger(__name__)
 

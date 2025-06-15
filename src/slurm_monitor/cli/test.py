@@ -60,5 +60,3 @@ class TestParser(BaseParser):
 
         create_test_db(uri)
         print(uri)
-
-
