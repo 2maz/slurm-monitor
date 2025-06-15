@@ -1,5 +1,3 @@
-import asyncio
-from tqdm import tqdm
 import os
 from collections.abc import Awaitable
 import datetime as dt
@@ -15,14 +13,11 @@ from sqlalchemy import (
         event,
         create_engine,
         func,
-        select,
-        column,
-        over
+        select
 )
 from sqlalchemy.ext.asyncio import (
         create_async_engine,
         async_sessionmaker,
-        AsyncEngine,
         AsyncSession
 )
 
@@ -32,8 +27,7 @@ from slurm_monitor.api.v2.response_models import (
     ErrorMessageResponse,
     JobResponse,
     SampleProcessGpuAccResponse,
-    SampleProcessAccResponse,
-    NodeJobSampleProcessTimeseriesResponse
+    SampleProcessAccResponse
 )
 
 logger = logging.getLogger(__name__)
@@ -55,7 +49,6 @@ from .db_tables import (
     SysinfoGpuCard,
     SysinfoGpuCardConfig,
     SysinfoSoftwareVersion,
-    TableMetadata,
     TableBase,
     time_bucket
 )
@@ -1696,13 +1689,13 @@ class ClusterDB(Database):
         """
         Get the SLURM job status for all jobs in a cluster
         """
+        where = (SampleSlurmJob.cluster == cluster)
         if end_time_in_s is None:
             end_time_in_s = utcnow().timestamp()
 
         if start_time_in_s is None:
             start_time_in_s = end_time_in_s - 300
 
-        where = (SampleSlurmJob.cluster == cluster)
         where &= (SampleSlurmJob.time >= fromtimestamp(start_time_in_s))
         where &= (SampleSlurmJob.time <= fromtimestamp(end_time_in_s))
 
@@ -1724,7 +1717,12 @@ class ClusterDB(Database):
             ).group_by(
                 SampleSlurmJob.job_id,
                 SampleSlurmJob.job_step
-            ).subquery()
+            )
+
+        async with self.make_async_session() as session:
+            (await session.execute(subquery)).all()
+
+        subquery = subquery.subquery()
 
         gpus_subquery = select(
                     SampleProcessGpu.cluster,
@@ -1775,4 +1773,3 @@ class ClusterDB(Database):
 
             return samples
 #### END JOBS #####################################################################
-

@@ -12,7 +12,6 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
-    Enum,
     Float,
     ForeignKey,
     ForeignKeyConstraint,
@@ -35,6 +34,9 @@ from sqlalchemy.dialects.postgresql import (
 
 from sqlalchemy.sql.functions import GenericFunction
 from sqlalchemy.ext.compiler import compiles
+import slurm_monitor.timescaledb as timescaledb
+
+__all__ = [ "timescaledb" ]
 
 
 logger = logging.getLogger(__name__)
@@ -390,15 +392,12 @@ class SysinfoAttributes(TableBase):
     threads_per_core = Column(BigInteger)
     cpu_model = Column(String)
 
-    # FIXME: does it exists?
-    description = Column(Text)
-
     memory = Column(BigInteger, desc="primary memory", unit="kilobyte")
     topo_svg = Column(Text, default=None, nullable=True)
 
     cards = Column(ARRAY(UUID), desc="Array of gpu-card uuid", default=[])
 
-    # FIXME: 
+    # FIXME:
     # software SysinfoSoftwareVersion
 
     __table_args__ = (
@@ -986,7 +985,7 @@ class SampleSlurmJobAcc(TableBase):
     ## id = Column(Integer) # 244843
 
     @classmethod
-    def from_json(cls, data) -> SlurmJobStatus:
+    def from_json(cls, data) -> SampleSlurmJobAcc:
         mapper = class_mapper(cls)
         mapped_data = {}
         for k, v in data.items():
