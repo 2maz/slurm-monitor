@@ -158,7 +158,7 @@ class AutoDeployerSonar(AutoDeployer):
                 return True
 
         return False
-                
+
 
     def deploy(self, node: str) -> str:
         logger.info(f"Deploying with deploy_command={self.deploy_command}")
@@ -170,5 +170,3 @@ class AutoDeployerSonar(AutoDeployer):
             self.stats.nodes[node] = AutoDeployerNodeStats(last_seen=utcnow())
 
         self.stats.nodes[node].deploy.append(utcnow())
-
-

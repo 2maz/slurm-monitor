@@ -52,4 +52,3 @@ class ImportParser(BaseParser):
 
         if args.fake_timeseries:
             db.fake_timeseries()
-

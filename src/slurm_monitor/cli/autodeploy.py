@@ -48,7 +48,7 @@ class AutoDeployParser(BaseParser):
                     allow_list=args.allow_list)
         else:
             deployer = AutoDeployerSonar(
-                    app_settings=app_settings, 
+                    app_settings=app_settings,
                     cluster_name=args.cluster_name,
                     deploy_command=args.command,
                     allow_list=args.allow_list)

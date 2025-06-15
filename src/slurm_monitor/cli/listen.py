@@ -13,7 +13,7 @@ class ListenParser(BaseParser):
 
         parser.add_argument("--cluster-name",
                 type=str,
-                help=f"Cluster to for which the topics shall be extracted"
+                help="Cluster to for which the topics shall be extracted"
         )
 
         parser.add_argument("--topic",
@@ -34,7 +34,7 @@ class ListenParser(BaseParser):
                 default="v2",
                 help="Use this API and DB version"
         )
-        
+
 
     def execute(self, args):
         super().execute(args)
@@ -68,5 +68,3 @@ class ListenParser(BaseParser):
                 cluster_name=args.cluster_name,
                 verbose=args.verbose,
             )
-
-
