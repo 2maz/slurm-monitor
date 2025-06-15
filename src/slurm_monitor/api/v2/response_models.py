@@ -353,7 +353,9 @@ class JobProfileResultItem(BaseModel):
 
     points: list[ProcessPoint]
 
+class ErrorMessageResponse(BaseModel):
+    cluster: str
+    node: str
 
-
-
-
+    details: str
+    time: str

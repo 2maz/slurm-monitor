@@ -998,4 +998,23 @@ class SampleSlurmJobAcc(TableBase):
 
         return cls(**mapped_data)
 
+class ErrorMessage(TableBase):
+    __tablename__ = "error_message"
+    __table_args__ = (
+        {
+            'timescaledb_hypertable': {
+                'time_column_name': 'time',
+                'chunk_time_interval': '24 hours',
+                'compression': {
+                    'segmentby': 'cluster, node',
+                    'orderby': 'time',
+                    'interval': '7 days'
+                }
+            }
+        }
+    )
+    cluster = Column(String, primary_key=True, index=True)
+    node = Column(String, primary_key=True, index=True)
+    details = Column(Text)
 
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)

@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import (
 import logging
 from slurm_monitor.utils import utcnow, fromtimestamp
 from slurm_monitor.api.v2.response_models import (
+    ErrorMessageResponse,
     JobResponse,
     SampleProcessGpuAccResponse,
     SampleProcessAccResponse,
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 from .db_tables import (
     Cluster,
     EpochFn,
+    ErrorMessage,
     Node,
     NodeState,
     Partition,
@@ -253,6 +255,8 @@ class ClusterDB(Database):
     SysinfoGpuCardConfig = SysinfoGpuCardConfig
     SysinfoSoftwareVersion = SysinfoSoftwareVersion
 
+    ErrorMessage = ErrorMessage
+
     #TableMetadata = TableMetadata
 
     def clear(self):
@@ -286,6 +290,29 @@ class ClusterDB(Database):
         async with self.make_async_session() as session:
             result = (await session.execute(query)).all()
             return [dict(x[0]) for x in result]
+
+    async def get_error_messages(self, cluster: str, node: str | None, time_in_s: int | None = None) -> dict[str, list[ErrorMessageResponse]]:
+        where = ErrorMessage.cluster == cluster
+        if time_in_s:
+            where &= (ErrorMessage.time <= fromtimestamp(time_in_s))
+
+        if node:
+            where &= (ErrorMessage.node == node)
+
+        query = select(
+                    ErrorMessage
+                ).where(
+                    where
+                )
+
+        async with self.make_async_session() as session:
+            msgs = (await session.execute(query)).all()
+            results = {}
+            for x in msgs:
+                value = results.get(x.node, [])
+                value.append(ErrorMessageResponse(**x))
+                results[x.node] = value
+            return results
 
     async def get_nodes(self, cluster: str, time_in_s: int | None = None) -> list[str]:
         where = Cluster.cluster == cluster
@@ -559,7 +586,7 @@ class ClusterDB(Database):
         """
         Get the (full) sysinfo information for all nodes
         """
-        
+
         node_configs = await self.get_nodes_sysinfo_attributes(
                 cluster=cluster,
                 nodes=nodelist,

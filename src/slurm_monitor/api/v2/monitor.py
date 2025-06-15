@@ -7,43 +7,29 @@ from fastapi_cache.decorator import cache
 from logging import getLogger, Logger
 import pandas as pd
 from pathlib import Path
-import re
-import tempfile
-from tqdm import tqdm
-import traceback
 
 from slurm_monitor.utils import utcnow, fromtimestamp
-
-from slurm_monitor.utils.command import Command
-from slurm_monitor.utils.slurm import Slurm
-
 from slurm_monitor.app_settings import AppSettings
 import slurm_monitor.db_operations as db_ops
 
 from .response_models import (
     ClusterResponse,
-    CPUMemoryProcessTimeSeriesResponse,
+    ErrorMessageResponse,
     JobResponse,
     PartitionResponse,
     JobsResponse,
-    GPUCardResponse,
-    SampleGpuResponse,
-    SampleProcessResponse,
     SampleProcessAccResponse,
-    SampleProcessGpuResponse,
-    SampleProcessGpuAccResponse,
     NodeStateResponse,
     NodeInfoResponse,
     SystemProcessTimeseriesResponse,
-    NodeJobSampleProcessTimeseriesResponse,
     NodeGpuJobSampleProcessGpuTimeseriesResponse,
     NodeSampleProcessGpuAccResponse,
     JobNodeSampleProcessGpuTimeseriesResponse,
-    JobNodeSampleProcessTimeseriesResponse,
-    # Dashboard
     JobQueryResultItem,
     JobProfileResultItem,
 )
+
+from slurm_monitor.db.v2.query import QueryMaker
 
 logger: Logger = getLogger(__name__)
 
@@ -120,6 +106,18 @@ async def nodes(
 
     dbi = db_ops.get_database()
     return await dbi.get_nodes(cluster, time_in_s)
+
+@api_router.get("/cluster/{cluster}/error_messages", response_model=dict[str,ErrorMessageResponse])
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/error_messages", response_model=dict[str, ErrorMessageResponse])
+async def error_messages(
+        cluster: str,
+        nodename: str | None = None,
+        time_in_s: int | None = None):
+    """
+    Get error_message of a cluster (for a specific time point) (or nodes)
+    """
+    dbi = db_ops.get_database()
+    return await dbi.get_error_messages(cluster, nodename, time_in_s)
 
 
 @api_router.get("/cluster/{cluster}/nodes/info", response_model=dict[str, NodeInfoResponse])
@@ -533,8 +531,7 @@ async def jobs(cluster: str,
         end_time_in_s = utcnow().timestamp()
 
     if start_time_in_s is None:
-        # FIXME: WINDOW SIZE
-        start_time_in_s = end_time_in_s - 1000000
+        start_time_in_s = end_time_in_s - 60*15 # last 15 min
 
     job_states = None
     if states:
@@ -702,6 +699,27 @@ async def dashboard_job_profile(
 
         return samples
 
+@api_router.get("/cluster/{cluster}/queries")
+@api_router.get("/cluster/{cluster}/queries/{query_name}")
+async def queries(
+    cluster: str,
+    query_name: str = None,
+):
+    if query_name is None:
+        return { 'queries': QueryMaker.list_available() }
+
+    try:
+        query_maker = QueryMaker(db_ops.get_database())
+        query = query_maker.create(query_name, { 'cluster': cluster })
+        df = await query.execute_async()
+
+        return df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(
+                status_code=404,
+                detail=f"Failed to execute query: '{query_name}' -- {e}"
+        )
+
 
 ####### v1 ###############################
 if False:
@@ -743,28 +761,6 @@ if False:
         logger.info(f"Job Data Export: {zip_filename}")
         return FileResponse(path=zip_filename, filename=f"job-data-{job_id}.zip")
 
-
-    @api_router.get("/queries")
-    @api_router.get("/queries/{query_name}")
-    async def queries(
-        query_name: str = None,
-        start_time_in_s: float | None = None,
-        end_time_in_s: float | None = None,
-    ):
-        if query_name is None:
-            return { 'queries': QueryMaker.list_available() }
-
-        try:
-            query_maker = QueryMaker(db_ops.get_database())
-            query = query_maker.create(query_name)
-            df = await query.execute_async()
-
-            return df.to_dict(orient="records")
-        except Exception as e:
-            raise HTTPException(
-                    status_code=404,
-                    detail=f"Failed to execute query: '{query_name}' -- {e}"
-            )
 
 
     @api_router.get("/benchmarks/{benchmark_name}")
