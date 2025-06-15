@@ -1,8 +1,7 @@
-import pytest
 from pydantic import BaseModel
 from pathlib import Path
 
-import slurm_monitor.timescaledb
+import slurm_monitor.timescaledb as timescaledb
 from slurm_monitor.db.v2.db import ClusterDB, DatabaseSettings
 from slurm_monitor.db.v2.db_tables import (
         Cluster,
@@ -24,6 +23,8 @@ from slurm_monitor.utils.command import Command
 from time import sleep
 
 import logging
+
+__all__ = ["timescaledb"]
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -307,4 +308,3 @@ def create_test_db(
                         )
                     sample_time += dt.timedelta(seconds=config.sampling_interval_in_s)
     return dbi
-

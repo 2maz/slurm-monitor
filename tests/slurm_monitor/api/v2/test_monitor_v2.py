@@ -1,7 +1,5 @@
 import pytest
 import pytest_asyncio
-import datetime as dt
-from fastapi import HTTPException
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 import re

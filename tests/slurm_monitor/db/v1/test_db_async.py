@@ -1,8 +1,6 @@
 import pytest
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from slurm_monitor.db.v1.db_tables import GPUStatus, ProcessStatus, TableBase
+from slurm_monitor.db.v1.db_tables import GPUStatus
 
 #@pytest.mark.asyncio(loop_scope="module")
 #async def test_gpu_infos(test_db, number_of_nodes, number_of_gpus):

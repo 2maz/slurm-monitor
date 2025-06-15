@@ -26,4 +26,3 @@ def get_database(app_settings: AppSettings | None = None):
             status_code=500,
             detail=f"Cannot access monitor database - {app_settings.database.uri}",
         )
-

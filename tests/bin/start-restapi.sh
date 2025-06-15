@@ -9,4 +9,3 @@ SLURM_MONITOR_DATABASE_URI=$(slurm-monitor test --port $PORT)
 export SLURM_MONITOR_DATABASE_URI
 
 python3 -m uvicorn --reload slurm_monitor.main:app --port 12001 --host 0.0.0.0
-

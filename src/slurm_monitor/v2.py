@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-import os
 
 from fastapi import FastAPI, Request, exception_handlers, HTTPException
 from fastapi.exceptions import RequestValidationError
@@ -16,11 +15,9 @@ from prometheus_fastapi_instrumentator import Instrumentator
 import traceback
 
 
-from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.app_settings import AppSettings
 
 from slurm_monitor.api.v2.router import app as api_v2_app
-from slurm_monitor.db.v2.db import ClusterDB
 
 import logging
 from logging import getLogger
