@@ -6,10 +6,16 @@ from pydantic import (
     model_validator,
     RootModel
 )
-import datetime as dt
 from typing import TypeVar, Generic
 
 UUID = str
+
+# Here we defined the response model for the REST API
+# There is a strong similarity with the sqlalchemy tables types,
+# but their might be deviations - mainly to augment fields
+# or to facilitate processing.
+#
+# Augmented / computed fields will be marked as 'computed field'
 
 class SimpleModel(BaseModel):
     # https://docs.pydantic.dev/2.10/api/config/#pydantic.config.ConfigDict.from_attributes
@@ -80,25 +86,36 @@ class JobResponse(TimestampedModel):
     requested_node_count: int
     minimum_cpus_per_node: int
 
+    # computed field: list of the actually used GPU uuids
+    #    what can be oberved in the process data)
     used_gpu_uuids: list[str] | None = Field(default=None)
 
     sacct: SAcctResponse | None = Field(default=None)
 
 
 class PartitionResponse(TimestampedModel):
-   cluster: str
-   name: str
-   nodes: list[str]
-   nodes_compact: list[str]
+    cluster: str
+    name: str
+    nodes: list[str]
+    nodes_compact: list[str]
 
-   jobs_pending: list[JobResponse]
-   jobs_running: list[JobResponse]
-   pending_max_submit_time: AwareDatetime
-   running_latest_wait_time: int
-   total_cpus: int
-   total_gpus: int
-   gpus_reserved: int
-   gpus_in_use: list[str]
+    # computed field: list of jobs that have status PENDING
+    jobs_pending: list[JobResponse]
+    # computed field: list of jobs that have status RUNNING
+    jobs_running: list[JobResponse]
+    # computed field: the time of the longest job in PENDING
+    pending_max_submit_time: AwareDatetime
+    # computed field: the time from submit to start for job in RUNNING
+    running_latest_wait_time: int
+
+    # computed field: total number of cpus (sum of node cpus)
+    total_cpus: int
+    # computed field: total number of gpus (sum of node gpus)
+    total_gpus: int
+    # computed field: number of gpus that are reserved (from slurm jobs)
+    gpus_reserved: int
+    # computed field: list of uuids that are in use, actually observed
+    gpus_in_use: list[str]
 
 class JobsResponse(BaseModel):
     jobs: list[JobResponse]
@@ -203,11 +220,11 @@ class NodeInfoResponse(TimestampedModel):
     cores_per_socket: int
     threads_per_core: int
     cpu_model: str
-    description: str
     memory: int
     topo_svg: str | None
     cards: list[GPUCardResponse]
-    #
+
+    # augmented field: partitions this node is part of
     partitions: list[str]
 
 
@@ -252,6 +269,9 @@ class JobNodeSampleProcessTimeseriesResponse(BaseModel):
 
 
 #### GPU
+# Note: using RootModel, we can describ dictionary with out
+#    requiring a top-level key
+
 # Uuid top-level
 class GpuJobSampleProcessGpuTimeseriesResponse(RootModel):
     # uuid > list[job-timeseries]
