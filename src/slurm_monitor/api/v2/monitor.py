@@ -23,6 +23,7 @@ from .response_models import (
     NodeInfoResponse,
     SystemProcessTimeseriesResponse,
     NodeGpuJobSampleProcessGpuTimeseriesResponse,
+    NodeGpuTimeseriesResponse,
     NodeSampleProcessGpuAccResponse,
     JobNodeSampleProcessGpuTimeseriesResponse,
     JobQueryResultItem,
@@ -72,7 +73,11 @@ def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None
     return start_time_in_s, end_time_in_s, resolution_in_s
 
 #### Results sorted by nodes
-@api_router.get("/cluster", response_model=list[ClusterResponse])
+@api_router.get("/cluster",
+        summary="Available clusters",
+        tags=["cluster"],
+        response_model=list[ClusterResponse]
+)
 @cache(expire=3600)
 async def cluster(time_in_s: int | None = None):
     """
@@ -82,7 +87,11 @@ async def cluster(time_in_s: int | None = None):
     return await dbi.get_clusters(time_in_s=time_in_s)
 
 
-@api_router.get("/cluster/{cluster}/partitions", response_model=list[PartitionResponse])
+@api_router.get("/cluster/{cluster}/partitions",
+        summary="Partitions available in a given cluster",
+        tags=["cluster"],
+        response_model=list[PartitionResponse]
+)
 @cache(expire=3600)
 async def partitions(
         cluster: str,
@@ -94,7 +103,11 @@ async def partitions(
     return await dbi.get_partitions(cluster, time_in_s)
 
 
-@api_router.get("/cluster/{cluster}/nodes", response_model=list[str])
+@api_router.get("/cluster/{cluster}/nodes",
+        summary="Nodes available in a given cluster",
+        tags=["cluster"],
+        response_model=list[str]
+)
 @cache(expire=3600)
 async def nodes(
         cluster: str,
@@ -107,8 +120,16 @@ async def nodes(
     dbi = db_ops.get_database()
     return await dbi.get_nodes(cluster, time_in_s)
 
-@api_router.get("/cluster/{cluster}/error_messages", response_model=dict[str,ErrorMessageResponse])
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/error_messages", response_model=dict[str, ErrorMessageResponse])
+@api_router.get("/cluster/{cluster}/error_messages", 
+        summary="Error messages collected for the entire cluster",
+        tags=["cluster"],
+        response_model=dict[str,ErrorMessageResponse]
+)
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/error_messages",
+        summary="Node-specific error messages",
+        tags=["node"],
+        response_model=dict[str, ErrorMessageResponse]
+)
 async def error_messages(
         cluster: str,
         nodename: str | None = None,
@@ -120,8 +141,16 @@ async def error_messages(
     return await dbi.get_error_messages(cluster, nodename, time_in_s)
 
 
-@api_router.get("/cluster/{cluster}/nodes/info", response_model=dict[str, NodeInfoResponse])
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/info", response_model=dict[str, NodeInfoResponse])
+@api_router.get("/cluster/{cluster}/nodes/info",
+        summary="Detailed information about nodes in a cluster",
+        tags=["cluster"],
+        response_model=dict[str, NodeInfoResponse]
+)
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/info",
+        summary="Detailed information about a single node in a cluster",
+        tags=["node"],
+        response_model=dict[str, NodeInfoResponse]
+)
 async def nodes_sysinfo(cluster: str,
         nodename: str | None = None,
         time_in_s: int | None = None
@@ -136,8 +165,16 @@ async def nodes_sysinfo(cluster: str,
     dbi = db_ops.get_database()
     return await dbi.get_nodes_sysinfo(cluster, nodename, time_in_s)
 
-@api_router.get("/cluster/{cluster}/nodes/states", response_model=list[NodeStateResponse])
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/states", response_model=list[NodeStateResponse])
+@api_router.get("/cluster/{cluster}/nodes/states",
+        summary="Information about the states of all nodes in a cluster",
+        tags=["cluster"],
+        response_model=list[NodeStateResponse]
+)
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/states",
+        summary="Information about the state(s) of a specific nodes in a cluster",
+        tags=["node"],
+        response_model=list[NodeStateResponse]
+)
 async def nodes_states(cluster: str, nodename: str | None = None,
         time_in_s: int | None = None,
         ):
@@ -147,7 +184,10 @@ async def nodes_states(cluster: str, nodename: str | None = None,
     dbi = db_ops.get_database()
     return await dbi.get_nodes_states(cluster, nodename, time_in_s)
 
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/topology", response_model=None)
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/topology",
+        summary="Topology information (as image/svg+xml) for a specific node in a cluster",
+        tags=["node"],
+        response_model=None)
 async def nodes_nodename_topology(cluster: str, nodename: str):
     """
     Get the topology information for a node (if available)
@@ -162,7 +202,10 @@ async def nodes_nodename_topology(cluster: str, nodename: str):
                 detail=f"No topology information available for {nodename=} {cluster=}")
 
 
-@api_router.get("/cluster/{cluster}/nodes/last_probe_timestamp", response_model=dict[str, dt.datetime | None])
+@api_router.get("/cluster/{cluster}/nodes/last_probe_timestamp",
+        summary="Get the timestamp of the last message received for each node in the given cluster",
+        tags=["cluster"],
+        response_model=dict[str, dt.datetime | None])
 async def nodes_last_probe_timestamp(cluster: str):
     """
     Retrieve the last known timestamps of records added for nodes in the cluster
@@ -174,8 +217,14 @@ async def nodes_last_probe_timestamp(cluster: str):
     return await dbi.get_last_probe_timestamp(cluster=cluster)
 
 
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/process/gpu/util", response_model=NodeSampleProcessGpuAccResponse)
-@api_router.get("/cluster/{cluster}/nodes/process/gpu/util", response_model=NodeSampleProcessGpuAccResponse)
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/process/gpu/util",
+        tags=["node"],
+        response_model=NodeSampleProcessGpuAccResponse
+)
+@api_router.get("/cluster/{cluster}/nodes/process/gpu/util",
+        tags=["cluster"],
+        response_model=NodeSampleProcessGpuAccResponse
+)
 async def nodes_process_gpu_util(
     cluster: str,
     nodename: str | None = None,
@@ -199,9 +248,19 @@ async def nodes_process_gpu_util(
         )
     return { x: (await task) for x, task in tasks.items()}
 
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/process/gpu/timeseries", response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse)
-@api_router.get("/cluster/{cluster}/nodes/process/gpu/timeseries", response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse)
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/jobs/{job_id}/process/gpu/timeseries", response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse)
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/process/gpu/timeseries",
+        tags=["node"],
+        response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse
+)
+@api_router.get("/cluster/{cluster}/nodes/process/gpu/timeseries",
+        tags=["cluster"],
+        response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse
+)
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/jobs/{job_id}/process/gpu/timeseries",
+        summary="Get **node**-related and **job**-related timeseries of GPU samples",
+        tags=["node"],
+        response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse
+)
 async def nodes_sample_process_gpu(
     cluster: str,
     nodename: str | None = None,
@@ -233,7 +292,11 @@ async def nodes_sample_process_gpu(
         )
 
 #### Results sorted by jobs
-@api_router.get("/cluster/{cluster}/jobs/process/timeseries", response_model=list[SystemProcessTimeseriesResponse])
+@api_router.get("/cluster/{cluster}/jobs/process/timeseries",
+        summary="Get all jobs process timeseries-data on a given cluster",
+        tags=["job"],
+        response_model=list[SystemProcessTimeseriesResponse]
+)
 @api_router.get("/cluster/{cluster}/jobs/{job_id}/process/timeseries", response_model=list[SystemProcessTimeseriesResponse])
 async def job_sample_process_system(
     cluster: str,
@@ -247,6 +310,9 @@ async def job_sample_process_system(
 ):
     """
     Get job-related timeseries for all processes running on cpu and gpu
+
+    By default this related to SLURM jobs (epoch set to 0).
+    To relate to non-SLURM jobs, provide the epoch as parameter to the query".
     """
     start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
             start_time_in_s=start_time_in_s,
@@ -265,8 +331,16 @@ async def job_sample_process_system(
             resolution_in_s=resolution_in_s
         )
 
-@api_router.get("/cluster/{cluster}/jobs/process/gpu/timeseries", response_model=list[JobNodeSampleProcessGpuTimeseriesResponse])
-@api_router.get("/cluster/{cluster}/jobs/{job_id}/process/gpu/timeseries", response_model=list[JobNodeSampleProcessGpuTimeseriesResponse])
+@api_router.get("/cluster/{cluster}/jobs/process/gpu/timeseries",
+        summary="Get GPU samples as timeseries, aggregated per job (for all jobs) and process on a given cluster",
+        tags=["cluster"],
+        response_model=list[JobNodeSampleProcessGpuTimeseriesResponse]
+)
+@api_router.get("/cluster/{cluster}/jobs/{job_id}/process/gpu/timeseries", 
+        summary="Get GPU sample as timeseries aggregate for a specific job on a given cluster",
+        tags=["job"],
+        response_model=list[JobNodeSampleProcessGpuTimeseriesResponse]
+)
 async def job_sample_process_gpu_timeseries(
     cluster: str,
     job_id: int | None = None,
@@ -332,10 +406,26 @@ async def job_sample_process_gpu_timeseries(
 #    raise HTTPException(status_code=500,
 #            detail=str(e))
 
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/cpu/timeseries", response_model=dict[str, list[SampleProcessAccResponse]])
-@api_router.get("/cluster/{cluster}/nodes/cpu/timeseries", response_model=dict[str, list[SampleProcessAccResponse]])
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/memory/timeseries", response_model=dict[str, list[SampleProcessAccResponse]])
-@api_router.get("/cluster/{cluster}/nodes/memory/timeseries", response_model=dict[str, list[SampleProcessAccResponse]])
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/cpu/timeseries",
+        summary="Get **node**-specific timeseries data of CPU samples",
+        tags=["node"],
+        response_model=dict[str, list[SampleProcessAccResponse]]
+)
+@api_router.get("/cluster/{cluster}/nodes/cpu/timeseries",
+        summary="Get timeseries data of CPU samples for all nodes in a given cluster",
+        tags=["cluster"],
+        response_model=dict[str, list[SampleProcessAccResponse]]
+)
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/memory/timeseries",
+        summary="Get **node**-specific timeseries data of Memory samples",
+        tags=["node"],
+        response_model=dict[str, list[SampleProcessAccResponse]]
+)
+@api_router.get("/cluster/{cluster}/nodes/memory/timeseries",
+        summary="Get timeseries data of Memory samples for all nodes in a given cluster",
+        tags=["cluster"],
+        response_model=dict[str, list[SampleProcessAccResponse]]
+)
 async def nodes_process_cpu_memory_timeseries(
     cluster: str,
     nodename: str | None = None,
@@ -422,8 +512,16 @@ async def nodes_process_cpu_memory_timeseries(
 #        raise HTTPException(status_code=500,
 #                detail=str(e))
 
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/gpu/timeseries")
-@api_router.get("/cluster/{cluster}/nodes/gpu/timeseries")
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/gpu/timeseries",
+        summary="Get **node**-specific timeseries data of GPU samples",
+        tags=["node"],
+        response_model=NodeGpuTimeseriesResponse,
+        )
+@api_router.get("/cluster/{cluster}/nodes/gpu/timeseries",
+        summary="Get timeseries data of GPU samples for all nodes in a given cluster",
+        tags=["cluster"],
+        response_model=NodeGpuTimeseriesResponse,
+        )
 async def nodes_sample_gpu(
     cluster: str,
     nodename: str | None = None,

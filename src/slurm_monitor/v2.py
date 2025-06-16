@@ -44,8 +44,31 @@ async def lifespan(app: FastAPI):
 
     logger.info("Shutting down ...")
 
+tags_metadata = [
+    {
+        "name": "cluster",
+        "description": "Operations that give a high-level **cluster**-specific result",
+        
+    },
+    {
+        "name": "node",
+        "description": "Operations that give **node**-specific results",
+        "externalDocs": {
+            "description": "test external",
+            "url": "https://fastapi.tiangolo.com",
+        },
+        
+    },
+    {
+        "name": "job",
+        "description": "Operations that give **job**-specific results",
+        
+    },
+]
+
 app = FastAPI(
-    title="slurm-monitor", description="slurm monitor", version="0.2", lifespan=lifespan
+    title="slurm-monitor", description="slurm monitor", version="0.2", lifespan=lifespan,
+    openapi_tags=tags_metadata
 )
 
 

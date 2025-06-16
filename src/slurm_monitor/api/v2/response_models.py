@@ -144,20 +144,32 @@ class GPUCardResponse(TimestampedModel):
     max_ce_clock: int
     max_memory_clock: int
 
-class SampleGpuResponse(TimestampedModel):
+class SampleGpuBaseResponse(TimestampedModel):
+    failing: int
+    fan: float
+    compute_mode: str
+    performance_state: float
+    memory: float
+    memory_util: float
+    memory_clock: float
+    ce_util: float
+    ce_clock: float
+    temperature: float
+    power: float
+    power_limit: float
+
+class SampleGpuResponse(SampleGpuBaseResponse):
     uuid: str
     index: int
-    failing: int
-    fan: int
-    compute_mode: str
-    performance_state: int
-    memory: int
-    ce_util: int
-    memory_util: int
-    temperature: int
-    power: int
-    power_limit: int
-    memory_clock: int
+
+class SampleGpuTimeseriesResponse(BaseModel):
+    """
+    Used GPU uuid and (local) index to identify the GPU and 
+    provide the timeseries of samples
+    """
+    uuid: str
+    index: int
+    data: list[SampleGpuBaseResponse]
 
 class SampleProcessGpuResponse(TimestampedModel):
     cluster: str
@@ -280,6 +292,12 @@ class GpuJobSampleProcessGpuTimeseriesResponse(RootModel):
 # Node top-level
 class NodeGpuJobSampleProcessGpuTimeseriesResponse(RootModel):
     root: dict[str, GpuJobSampleProcessGpuTimeseriesResponse]
+
+class NodeGpuTimeseriesResponse(RootModel):
+    """
+        List of timeseries data per GPU
+    """
+    root: dict[str, list[SampleGpuTimeseriesResponse]]
 
 class NodeSampleProcessGpuAccResponse(RootModel):
     root: dict[str, dict[str, SampleProcessGpuAccResponse]]

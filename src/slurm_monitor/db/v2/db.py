@@ -27,7 +27,9 @@ from slurm_monitor.api.v2.response_models import (
     ErrorMessageResponse,
     JobResponse,
     SampleProcessGpuAccResponse,
-    SampleProcessAccResponse
+    SampleProcessAccResponse,
+    SampleGpuBaseResponse,
+    SampleGpuTimeseriesResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -1147,7 +1149,10 @@ class ClusterDB(Database):
             start_time_in_s: int,
             end_time_in_s: int,
             resolution_in_s: int
-        ):
+    ) -> list[SampleGpuTimeseriesResponse]:
+            """
+            Get the SampleGpu timeseries for a list of GPU uuids
+            """
             uuid_sample_gpu = []
             for card_uuid in uuids:
                 where = SampleGpu.uuid == card_uuid
@@ -1159,12 +1164,16 @@ class ClusterDB(Database):
 
                 query = select(
                         func.count(SampleGpu.failing).label("failure_count"),
+                        func.avg(SampleGpu.fan),
+                        func.max(SampleGpu.compute_mode),
+                        func.max(SampleGpu.performance_state),
                         func.avg(SampleGpu.memory),
                         func.avg(SampleGpu.memory_util),
                         func.avg(SampleGpu.ce_util),
                         func.avg(SampleGpu.temperature),
                         func.avg(SampleGpu.power),
                         func.avg(SampleGpu.power_limit),
+                        func.avg(SampleGpu.ce_clock),
                         func.avg(SampleGpu.memory_clock),
                         func.min(SampleGpu.index),
                         time_bucket(resolution_in_s, SampleGpu.time).label('bucket')
@@ -1186,20 +1195,31 @@ class ClusterDB(Database):
                     gpu_samples = (await session.execute(query)).all()
 
                     if gpu_samples:
-                        local_index = gpu_samples[0][8]
-                        timeseries_data = [{
-                                'failure_count': x[0],
-                                'memory': round(x[1],2),
-                                'memory_util': round(x[2],2),
-                                'ce_util': round(x[3],2),
-                                'temperature': round(x[4],2),
-                                'power': round(x[5],2),
-                                'power_limit': round(x[6],2),
-                                'memory_clock': round(x[7],2),
-                                'time': x[9]
-                            } for x in gpu_samples]
+                        local_index = gpu_samples[0][12]
+                        timeseries_data = [SampleGpuBaseResponse(
+                                failing=x[0],
+                                fan=round(x[1],2),
+                                compute_mode=x[2],
+                                performance_state=x[3],
+                                memory=round(x[4],2),
+                                memory_util=round(x[5],2),
+                                ce_util=round(x[6],2),
+                                temperature=round(x[7],2),
+                                power=round(x[8],2),
+                                power_limit=round(x[9],2),
+                                ce_clock=round(x[10],2),
+                                memory_clock=round(x[11],2),
+                                time=x[13]
+                            ) for x in gpu_samples]
 
-                        uuid_sample_gpu.append({'uuid': card_uuid, 'local_index': local_index, 'data': timeseries_data })
+
+                        uuid_sample_gpu.append(
+                                SampleGpuTimeseriesResponse(
+                                    uuid=card_uuid,
+                                    index=local_index,
+                                    data=timeseries_data,
+                                )
+                        )
             return uuid_sample_gpu
 
     async def get_node_sample_gpu_timeseries(
