@@ -209,7 +209,6 @@ def create_test_db(
                     cores_per_socket=24,
                     threads_per_core=2,
                     cpu_model="Intel Xeon",
-                    description=f"This is {n}",
                     memory=256*1024**2,
                     topo_svg=None,
                     cards=cards

@@ -191,11 +191,6 @@ class SampleProcessGpuAccResponse(TimestampedModel):
     gpu_memory_util: float
     pids: list[int]
 
-class SampleProcessGpuAccTimeseriesResponse:
-    uuid: str
-    index: str
-    data: list[SampleProcessGpuAccResponse]
-
 class SampleProcessResponse(TimestampedModel):
     cluster: str
     node: str
@@ -290,9 +285,9 @@ class JobNodeSampleProcessTimeseriesResponse(BaseModel):
 #    requiring a top-level key
 
 # Uuid top-level
-class GpuJobSampleProcessGpuTimeseriesResponse(RootModel):
-    # uuid > list[job-timeseries]
-    root: dict[str, list[JobSpecificTimeseriesResponse]]
+class GpuJobSampleProcessGpuTimeseriesResponse(BaseModel):
+    # gpus: { uuid : list[job-timeseries] }
+    gpus: dict[str, list[JobSpecificTimeseriesResponse]]
 
 # Node top-level
 class NodeGpuJobSampleProcessGpuTimeseriesResponse(RootModel):
@@ -402,3 +397,6 @@ class ErrorMessageResponse(BaseModel):
 
     details: str
     time: str
+
+class QueriesResponse(BaseModel):
+    queries: list[str]

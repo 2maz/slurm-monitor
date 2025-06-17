@@ -25,6 +25,7 @@ from .response_models import (
     NodeGpuJobSampleProcessGpuTimeseriesResponse,
     NodeGpuTimeseriesResponse,
     NodeSampleProcessGpuAccResponse,
+    QueriesResponse,
     JobNodeSampleProcessGpuTimeseriesResponse,
     JobQueryResultItem,
     JobProfileResultItem,
@@ -768,7 +769,7 @@ async def dashboard_job_profile(
 @api_router.get("/cluster/{cluster}/queries",
         summary="Get the list of 'named' predefined queries",
         tags=["cluster"],
-        response_model=list[str]
+        response_model=QueriesResponse
 )
 async def list_queries(
     cluster: str,

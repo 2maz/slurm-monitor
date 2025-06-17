@@ -13,11 +13,16 @@ for route in app.routes:
         for api_route in route.routes:
             if type(api_route) == APIRoute:
                 r = api_route.path
+
+                if re.search("{query_name}", r):
+                    continue
+
                 r = r.replace("{cluster}","cluster-0")
                 r = r.replace("{nodename}","cluster-0-node-0")
                 r = r.replace("{partition}","cluster-0-partition-0")
                 r = r.replace("{job_id}","1")
                 r = r.replace("{epoch}","0")
+
 
                 m = re.search(r"[{}]",r)
                 assert m is None, f"API Route should be expanded {r}"

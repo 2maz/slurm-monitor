@@ -811,8 +811,8 @@ class ClusterDB(Database):
 
             nodes_data = {}
             for gpu_job in gpu_status:
-                if jid == gpu_job['job'] and epoch == gpu_job["epoch"]:
-                    nodes_data = gpu_job['nodes']
+                if jid == gpu_job.job and epoch == gpu_job.epoch:
+                    nodes_data = gpu_job.nodes
                     break
 
             for node in nodes:
@@ -829,6 +829,8 @@ class ClusterDB(Database):
                     nodes_data[node] = { 'cpu_memory': {}, 'gpus': {}}
 
                 if cpu_status_timeseries:
+                    # Resolve pydantic type
+                    nodes_data[node] = dict(nodes_data[node])
                     nodes_data[node]['cpu_memory'] = cpu_status_timeseries
 
             all_jobs.append({ 'job': jid, 'epoch': epoch, 'nodes': nodes_data})
@@ -923,7 +925,6 @@ class ClusterDB(Database):
                 )
 
             nodes_sample_process_gpu[node_config.node] = processes
-
         return nodes_sample_process_gpu
 
 
