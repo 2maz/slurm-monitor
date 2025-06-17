@@ -26,6 +26,9 @@ from slurm_monitor.utils import utcnow, fromtimestamp
 from slurm_monitor.api.v2.response_models import (
     ErrorMessageResponse,
     JobResponse,
+    GpusProcessTimeSeriesResponse,
+    JobNodeSampleProcessGpuTimeseriesResponse,
+    JobSpecificTimeseriesResponse,
     SampleProcessGpuAccResponse,
     SampleProcessAccResponse,
     SampleGpuBaseResponse,
@@ -895,10 +898,11 @@ class ClusterDB(Database):
             async with self.make_async_session() as session:
                 process_ids = (await session.execute(subquery)).all()
 
-            processes = {}
+            processes = {'gpus': {}}
             for process_id in process_ids:
+                # ignoring pid since timeseries will be accumulated for the complete job
                 job, epoch, pid, uuid = process_id
-                timeseries_data = await self.get_sample_process_gpu_timeseries(
+                timeseries_data : list[SampleProcessGpuAccResponse] = await self.get_sample_process_gpu_timeseries(
                         uuid=uuid,
                         job=job,
                         epoch=epoch,
@@ -908,14 +912,14 @@ class ClusterDB(Database):
                 )
 
                 if uuid not in processes:
-                    processes[uuid] = []
+                    processes['gpus'][uuid] = []
 
-                processes[uuid].append(
-                    {
-                      "job": job,
-                      "epoch": epoch,
-                      "data": timeseries_data
-                    }
+                processes['gpus'][uuid].append(
+                    JobSpecificTimeseriesResponse[SampleProcessGpuAccResponse](
+                      job=job,
+                      epoch=epoch,
+                      data=timeseries_data
+                    )
                 )
 
             nodes_sample_process_gpu[node_config.node] = processes
@@ -932,7 +936,7 @@ class ClusterDB(Database):
             end_time_in_s: int,
             resolution_in_s: int,
             nodes: list[str] | None = None
-            ):
+            ) -> list[JobNodeSampleProcessGpuTimeseriesResponse]:
         """
         Get the SampleProcessGpu timeseries for jobs in a cluster.
 
@@ -996,8 +1000,11 @@ class ClusterDB(Database):
                         end_time_in_s=end_time_in_s,
                         resolution_in_s=resolution_in_s
                     )
-                nodes[node] = { 'gpus': card_data }
-            job_sample_process_gpu.append({'job': job_id, 'epoch': epoch, 'nodes': nodes})
+                nodes[node] = GpusProcessTimeSeriesResponse(gpus=card_data)
+
+            job_sample_process_gpu.append(
+                JobNodeSampleProcessGpuTimeseriesResponse(job=job_id, epoch=epoch, nodes=nodes)
+            )
         return job_sample_process_gpu
 
     async def get_sample_process_gpu_timeseries(self,
@@ -1006,7 +1013,7 @@ class ClusterDB(Database):
             epoch: int,
             start_time_in_s: int,
             end_time_in_s: int,
-            resolution_in_s: int) -> Awaitable[list[dict[str, any]]]:
+            resolution_in_s: int) -> Awaitable[list[SampleProcessGpuAccResponse]]:
         """
         Get the SampleProcessGpu timeseries for a given GPU (by uuid) and a job
         identified by job and epoch
@@ -1036,13 +1043,13 @@ class ClusterDB(Database):
         async with self.make_async_session() as session:
             timeseries = (await session.execute(query)).all()
             return [
-                    {
-                        'gpu_util': x[0],
-                        'gpu_memory': x[1],
-                        'gpu_memory_util': x[2],
-                        'pids': x[3],
-                        'time': x[4]
-                    } for x in timeseries
+                    SampleProcessGpuAccResponse(
+                        gpu_util=x[0],
+                        gpu_memory=x[1],
+                        gpu_memory_util=x[2],
+                        pids=x[3],
+                        time=x[4]
+                    ) for x in timeseries
             ]
 
     async def get_node_sample_process_gpu_util(self,

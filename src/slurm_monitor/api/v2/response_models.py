@@ -191,6 +191,11 @@ class SampleProcessGpuAccResponse(TimestampedModel):
     gpu_memory_util: float
     pids: list[int]
 
+class SampleProcessGpuAccTimeseriesResponse:
+    uuid: str
+    index: str
+    data: list[SampleProcessGpuAccResponse]
+
 class SampleProcessResponse(TimestampedModel):
     cluster: str
     node: str
