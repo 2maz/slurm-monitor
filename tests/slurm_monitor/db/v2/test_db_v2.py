@@ -108,7 +108,7 @@ async def test_get_node_sample_gpu_timeseries(test_db_v2):
                 end_time_in_s=utcnow().timestamp(),
                 resolution_in_s=30,
             )
-    gpu_data = gpu_timeseries[0]['data']
+    gpu_data = gpu_timeseries[0].data
     assert len(gpu_data) > 0
 
 
@@ -124,7 +124,7 @@ async def test_job_sample_process_gpu_timeseries(test_db_v2):
                 resolution_in_s=30,
                 nodes=["cluster-0-node-0"]
             )
-    gpu_data = gpu_timeseries[0]['nodes']['cluster-0-node-0']['gpus']
+    gpu_data = gpu_timeseries[0].nodes['cluster-0-node-0'].gpus
     assert len(gpu_data) == 2
     for gpu, samples in gpu_data.items():
         assert len(samples) > 0
