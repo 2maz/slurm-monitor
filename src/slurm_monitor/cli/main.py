@@ -11,7 +11,11 @@ from slurm_monitor.cli.autodeploy import AutoDeployParser
 from slurm_monitor.cli.query import QueryParser
 from slurm_monitor.cli.data_import import ImportParser
 from slurm_monitor.cli.test import TestParser
+
 from slurm_monitor import __version__
+
+import slurm_monitor.timescaledb.dialect #noqa
+import slurm_monitor.timescaledb.functions #noqa
 
 logger = getLogger(__name__)
 logger.setLevel(logging.INFO)
