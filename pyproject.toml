@@ -38,6 +38,7 @@ dependencies = [
     "fastparquet",
     "fastapi",
     "fastapi-cache2[memcache]",
+    "greenlet",
     "kafka-python-ng",
     "numpy",
     "pandas",
