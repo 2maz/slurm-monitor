@@ -380,21 +380,16 @@ class ClusterDB(Database):
                 partition_name = x[1]
                 partition_nodes = x[2]
 
-                pending_jobs = await self.get_slurm_jobs(
+                jobs = await self.get_slurm_jobs(
                         cluster=cluster,
                         partition=partition_name,
-                        states=["PENDING"],
-                        start_time_in_s= time_in_s - 5*60,
-                        end_time_in_s= time_in_s + 5*60,
-                )
-
-                running_jobs = await self.get_slurm_jobs(
-                        cluster=cluster,
-                        partition=partition_name,
-                        states=["RUNNING"],
+                        states=["PENDING","RUNNING"],
                         start_time_in_s=time_in_s - 5*60,
                         end_time_in_s=time_in_s + 5*60,
                 )
+
+                pending_jobs = [x for x in jobs if x["job_state"] == "PENDING"]
+                running_jobs = [x for x in jobs if x["job_state"] == "RUNNING"]
 
                 # logical cpus
                 total_cpus = []
@@ -590,7 +585,6 @@ class ClusterDB(Database):
                 nodes=nodelist,
                 time_in_s=time_in_s
         )
-
         nodes_partitions = await self.get_nodes_partitions(cluster=cluster,
                 nodes=[x.node for x in node_configs],
                 time_in_s=time_in_s
@@ -677,7 +671,6 @@ class ClusterDB(Database):
                 where_last_active = SampleProcessGpu.time <= time
             else:
                 where_last_active = sqlalchemy.sql.true()
-
 
             # Find the lastest configuration in a particular timewindow
             subquery = select(
@@ -1627,6 +1620,8 @@ class ClusterDB(Database):
             user: str | None = None,
             user_id: int | None = None,
             job_id: int | None = None,
+            partition: str | None = None,
+            nodelist: list[str] | None = None,
             start_before_in_s: float | None = None,
             start_after_in_s: float | None = None,
             end_before_in_s: float | None = None,
@@ -1648,6 +1643,12 @@ class ClusterDB(Database):
 
         if job_id:
             where &= SampleSlurmJob.job_id == job_id
+
+        if partition:
+            where &= SampleSlurmJob.partition == partition
+
+        if nodelist:
+            where &= (SampleSlurmJob.nodes.overlap(nodelist))
 
         if start_before_in_s is not None:
             reference_time = fromtimestamp(start_before_in_s).replace(tzinfo=None)
@@ -1715,11 +1716,14 @@ class ClusterDB(Database):
             end_time_in_s: int | None = None,
         ):
         """
-        Get the SLURM job status for all jobs in a cluster
+        Get the SLURM job status for all jobs in a cluster (on the queue or recently completed)
         """
         where = (SampleSlurmJob.cluster == cluster)
         if end_time_in_s is None:
             end_time_in_s = utcnow().timestamp()
+
+        if start_time_in_s is None:
+            start_time_in_s = end_time_in_s - 300
 
         if start_time_in_s is None:
             start_time_in_s = end_time_in_s - 300
@@ -1736,6 +1740,7 @@ class ClusterDB(Database):
         if nodelist:
             where &= (SampleSlurmJob.nodes.overlap(nodelist))
 
+        # identify the latest job sample
         subquery = select(
                 SampleSlurmJob.job_id,
                 SampleSlurmJob.job_step,
@@ -1745,12 +1750,7 @@ class ClusterDB(Database):
             ).group_by(
                 SampleSlurmJob.job_id,
                 SampleSlurmJob.job_step
-            )
-
-        async with self.make_async_session() as session:
-            (await session.execute(subquery)).all()
-
-        subquery = subquery.subquery()
+            ).subquery()
 
         gpus_subquery = select(
                     SampleProcessGpu.cluster,
@@ -1758,7 +1758,9 @@ class ClusterDB(Database):
                     func.array_agg(SampleProcessGpu.uuid.distinct()).label("used_gpu_uuids")
                 ).where(
                     (SampleProcessGpu.cluster == cluster) &
-                    (SampleProcessGpu.epoch == 0)
+                    (SampleProcessGpu.epoch == 0) &
+                    (SampleProcessGpu.time >= fromtimestamp(start_time_in_s)) &
+                    (SampleProcessGpu.time <= fromtimestamp(end_time_in_s))
                 ).group_by(
                     SampleProcessGpu.cluster,
                     SampleProcessGpu.job
@@ -1777,7 +1779,9 @@ class ClusterDB(Database):
                     (SampleSlurmJobAcc.cluster == cluster) &
                     (subquery.c.job_id == SampleSlurmJobAcc.job_id) &
                     (subquery.c.job_step == SampleSlurmJobAcc.job_step) &
-                    (subquery.c.max_time == SampleSlurmJobAcc.time),
+                    (subquery.c.max_time == SampleSlurmJobAcc.time) &
+                    (SampleSlurmJobAcc.time >= fromtimestamp(start_time_in_s)) &
+                    (SampleSlurmJobAcc.time <= fromtimestamp(end_time_in_s)),
                     isouter=True
                 ).join(gpus_subquery,
                     (gpus_subquery.c.cluster == cluster) &

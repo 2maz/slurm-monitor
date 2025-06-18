@@ -93,7 +93,7 @@ async def cluster(time_in_s: int | None = None):
         tags=["cluster"],
         response_model=list[PartitionResponse]
 )
-@cache(expire=3600)
+#@cache(expire=3600)
 async def partitions(
         cluster: str,
         time_in_s: int | None = None):

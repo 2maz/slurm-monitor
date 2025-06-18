@@ -16,6 +16,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     BigInteger,
+    Index,
     Integer,
     inspect,
     types,
@@ -571,26 +572,11 @@ class SampleGpu(TableBase):
 
 class SampleProcessGpu(TableBase):
     __tablename__ = "sample_process_gpu"
-    __table_args__ = (
-        ForeignKeyConstraint(["cluster", "node"], [Node.cluster, Node.node]),
-        {
-            'timescaledb_hypertable': {
-                'time_column_name': 'time',
-                'chunk_time_interval': '24 hours',
-                'compression': {
-                    'segmentby': 'cluster, job, epoch',
-                    'orderby': 'time',
-                    'interval': '7 days'
-                }
-            }
-
-        }
-    )
 
     cluster = Column(String, primary_key=True)
     node = Column(String, primary_key=True)
 
-    job = Column(BigInteger, primary_key=True)
+    job = Column(BigInteger, index=True, primary_key=True)
     epoch = Column(BigInteger,
             desc="Bootcycle presentation of node - continuously increasing number",
             primary_key=True)
@@ -609,6 +595,24 @@ class SampleProcessGpu(TableBase):
     gpu_memory_util = Column(Float)
 
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
+
+    __table_args__ = (
+        Index("ix_sample_process_gpu__cluster_job_time","cluster", "job", time.desc()),
+        Index("ix_sample_process_gpu__uuid_time", "uuid", "time"),
+        ForeignKeyConstraint(["cluster", "node"], [Node.cluster, Node.node]),
+        {
+            'timescaledb_hypertable': {
+                'time_column_name': 'time',
+                'chunk_time_interval': '24 hours',
+                'compression': {
+                    'segmentby': 'cluster, job, epoch',
+                    'orderby': 'time',
+                    'interval': '7 days'
+                }
+            }
+
+        }
+    )
 
 class SampleProcess(TableBase):
     __tablename__ = "sample_process"
