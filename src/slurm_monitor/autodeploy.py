@@ -69,11 +69,11 @@ class AutoDeployer:
         self._stop = True
         self.thread.join()
 
-    def is_drained(self, node: str) -> bool:
+    async def is_drained(self, node: str) -> bool:
         response = Command.run(f"sinfo -n {node} -N -h -o '%t'")
         return response.startswith("drain")
 
-    async def deploy(self, node: str) -> str:
+    def deploy(self, node: str) -> str:
         response = Command.run(f"slurm-monitor-probes-ctl -n {node} deploy")
         logger.info(response)
 
