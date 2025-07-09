@@ -121,7 +121,7 @@ async def nodes(
     dbi = db_ops.get_database()
     return await dbi.get_nodes(cluster, time_in_s)
 
-@api_router.get("/cluster/{cluster}/error_messages", 
+@api_router.get("/cluster/{cluster}/error_messages",
         summary="Error messages collected for the entire cluster",
         tags=["cluster"],
         response_model=dict[str,ErrorMessageResponse]
@@ -343,7 +343,7 @@ async def job_sample_process_system(
         tags=["cluster"],
         response_model=list[JobNodeSampleProcessGpuTimeseriesResponse]
 )
-@api_router.get("/cluster/{cluster}/jobs/{job_id}/process/gpu/timeseries", 
+@api_router.get("/cluster/{cluster}/jobs/{job_id}/process/gpu/timeseries",
         summary="Get GPU sample as timeseries aggregate for a specific job on a given cluster",
         tags=["job"],
         response_model=list[JobNodeSampleProcessGpuTimeseriesResponse]
@@ -591,7 +591,7 @@ async def jobs(cluster: str,
                 states=job_states
         )}
 
-@api_router.get("/cluster/{cluster}/job/{job_id}",
+@api_router.get("/cluster/{cluster}/jobs/{job_id}",
         summary="Get SLURM job information by id for the given cluster",
         tags=["job"],
         response_model=JobResponse
@@ -601,7 +601,7 @@ async def jobs(cluster: str,
         tags=["job"],
         response_model=JobResponse
 )
-@api_router.get("/cluster/{cluster}/job/{job_id}/epoch/{epoch}", 
+@api_router.get("/cluster/{cluster}/jobs/{job_id}/epoch/{epoch}",
         summary="Get job information by id and epoch for the given cluster",
         tags=["job"],
         response_model=JobResponse)
@@ -798,33 +798,24 @@ async def queries(
         )
 
 
+@api_router.get("/benchmarks/{benchmark_name}")
+def benchmarks(benchmark_name: str = "lambdal"):
+    app_settings = AppSettings.initialize()
+    if app_settings.data_dir is None:
+        return {}
+
+    path = Path(app_settings.data_dir) / f"{benchmark_name}-benchmark-results.csv"
+    if not path.exists():
+        return {}
+
+    df = pd.read_csv(str(path))
+    df = df.fillna(-1)
+    del df['Unnamed: 0']
+    return df.to_dict(orient="records")
+
+
 ####### v1 ###############################
 if False:
-    @api_router.get("/nodes/{nodename}/memory_status")
-    @api_router.get("/nodes/memory_status")
-    async def memory_status(
-        nodename: str | None = None,
-        start_time_in_s: float | None = None,
-        end_time_in_s: float | None = None,
-        resolution_in_s: int | None = None,
-        dbi=Depends(db_ops.get_database),
-    ):
-        start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
-                start_time_in_s=start_time_in_s,
-                end_time_in_s=end_time_in_s,
-                resolution_in_s=resolution_in_s
-        )
-
-        nodes = [] if nodename is None else [nodename]
-        return {
-            "memory_status": await dbi.get_memory_status_timeseries_list(
-                nodes=nodes,
-                start_time_in_s=start_time_in_s,
-                end_time_in_s=end_time_in_s,
-                resolution_in_s=resolution_in_s,
-            )
-        }
-
     @api_router.get("/jobs/{job_id}/export")
     async def job_export(
             job_id: int,
@@ -837,20 +828,3 @@ if False:
 
         logger.info(f"Job Data Export: {zip_filename}")
         return FileResponse(path=zip_filename, filename=f"job-data-{job_id}.zip")
-
-
-
-    @api_router.get("/benchmarks/{benchmark_name}")
-    def benchmarks(benchmark_name: str = "lambdal"):
-        app_settings = AppSettings.initialize()
-        if app_settings.data_dir is None:
-            return {}
-
-        path = Path(app_settings.data_dir) / f"{benchmark_name}-benchmark-results.csv"
-        if not path.exists():
-            return {}
-
-        df = pd.read_csv(str(path))
-        df = df.fillna(-1)
-        del df['Unnamed: 0']
-        return df.to_dict(orient="records")

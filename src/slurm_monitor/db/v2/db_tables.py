@@ -639,6 +639,11 @@ class SampleProcess(TableBase):
     pid = Column(BigInteger, primary_key=True)
     ppid = Column(BigInteger)
 
+    num_threads = Column(Integer,
+            desc="""
+            Number of threads in the process, minus 1 (main thread is not counted
+            """)
+
     cpu_avg = Column(Float,
             desc="""
             The running average CPU percentage over the true lifetime of the process
@@ -716,14 +721,23 @@ class TableMetadata(TableBase):
 
 
 class SlurmJobState(enum.Enum):
+    """
+    Slurm job states
+    see also https://slurm.schedmd.com/job_state_codes.html
+    """
     # The key names are relevant here, not the values
+    
+    BOOT_FAIL = 'BOOT_FAIL'
     CANCELLED = 'CANCELLED'
     COMPLETED = 'COMPLETED'
     DEADLINE = 'DEADLINE'
     FAILED = 'FAILED'
-    PENDING = 'PENDING'
-    RUNNING = 'RUNNING'
+    NODE_FAIL = 'NODE_FAIL'
     OUT_OF_MEMORY = 'OUT_OF_MEMORY'
+    PENDING = 'PENDING'
+    PREMPTED = 'PREMPTED'
+    RUNNING = 'RUNNING'
+    SUSPENDED = 'SUSPENDED'
     TIMEOUT = 'TIMEOUT'
 
 

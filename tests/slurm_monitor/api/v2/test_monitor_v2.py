@@ -22,6 +22,7 @@ for route in app.routes:
                 r = r.replace("{partition}","cluster-0-partition-0")
                 r = r.replace("{job_id}","1")
                 r = r.replace("{epoch}","0")
+                r = r.replace("{benchmark_name}","lambdal")
 
 
                 m = re.search(r"[{}]",r)
