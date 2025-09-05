@@ -561,17 +561,28 @@ class SampleGpu(TableBase):
     # current performance level, card-specific >= 0, 0 for 'unknown'
     performance_state = Column(Xint)
 
-    # kB of memory_use
-    memory = Column(BigInteger)
+    # kB of memory used
+    memory = Column(BigInteger,
+            desc="Memory used",
+            unit='kilobyte'
+            )
 
-    # percent of computing element capability used
-    ce_util = Column(BigInteger)
+    ce_util = Column(BigInteger,
+            desc="""
+            percent of computing element capability used
+            """,
+            unit='percent'
+    )
 
     # percent of memory used
-    memory_util = Column(BigInteger)
+    memory_util = Column(BigInteger,
+            unit='percent'
+            )
 
     # degree C card temperature at primary sensor
-    temperature = Column(Integer)
+    temperature = Column(Integer,
+            unit='deg Celsius'
+            )
 
     # current power usage in W
     power = Column(BigInteger)
@@ -630,6 +641,10 @@ class SampleProcessGpu(TableBase):
     )
 
 class SampleProcess(TableBase):
+    """
+    SampleProcess (see also https://github.com/NordicHPC/sonar/blob/main/doc/NEW-FORMAT.md)
+    """
+
     __tablename__ = "sample_process"
 
     cluster = Column(String, primary_key=True)
@@ -648,7 +663,10 @@ class SampleProcess(TableBase):
     # virtual data+stack memory
     virtual_memory = Column(BigInteger, unit='kilobyte')
     # command (not the command line) - '_unknown_' for zombie processes
-    cmd = Column(Text)
+    cmd = Column(Text, 
+            desc="""
+            The command (not the command line), zombie processes get an extra annotation at the end, a la ps.
+            """)
 
     # rest of process sample
     pid = Column(BigInteger,
@@ -668,11 +686,6 @@ class SampleProcess(TableBase):
             transmission for most processes).
             """
             )
-
-    num_threads = Column(Integer,
-            desc="""
-            Number of threads in the process, minus 1 (main thread is not counted
-            """)
 
     cpu_avg = Column(Float,
             desc="""
@@ -717,7 +730,6 @@ class SampleProcess(TableBase):
             unit='kilebyte')
 
     # gpus implemented in separate table
-
     rolledup = Column(Integer,
                       desc="""
                       The number of additional samples for processes that are
