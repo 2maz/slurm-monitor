@@ -29,7 +29,7 @@ for route in app.routes:
                 assert m is None, f"API Route should be expanded {r}"
                 v2_routes.append(r)
 
-@pytest_asyncio.fixture(scope="module")
+@pytest_asyncio.fixture(loop_scope="module")
 def client(mock_slurm_command_hint, test_db_v2, timescaledb, monkeypatch_module):
     Slurm._BIN_HINTS = [ mock_slurm_command_hint ]
 

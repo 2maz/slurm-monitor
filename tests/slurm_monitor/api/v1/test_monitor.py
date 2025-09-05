@@ -11,7 +11,7 @@ from slurm_monitor.db.v1.query import QueryMaker
 
 
 
-@pytest_asyncio.fixture(scope="module")
+@pytest_asyncio.fixture(loop_scope="module")
 def client(mock_slurm_command_hint, test_db_uri, monkeypatch_module):
     Slurm._BIN_HINTS = [ mock_slurm_command_hint ]
     monkeypatch_module.setenv("SLURM_MONITOR_DATABASE_URI", f"{test_db_uri}")
