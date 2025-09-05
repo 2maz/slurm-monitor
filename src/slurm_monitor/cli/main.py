@@ -4,6 +4,7 @@ import logging
 from logging import basicConfig, getLogger
 
 from slurm_monitor.cli.base import BaseParser
+from slurm_monitor.cli.db import DBParser
 from slurm_monitor.cli.probe import ProbeParser
 from slurm_monitor.cli.listen import ListenParser
 from slurm_monitor.cli.system_info import SystemInfoParser
@@ -53,6 +54,12 @@ def run():
         subcommand="auto-deploy",
         help="Watch status messages and auto-deploy nodes if needed",
         parser_klass=AutoDeployParser
+    )
+
+    main_parser.attach_subcommand_parser(
+        subcommand="db",
+        help="Connect (create/upgrade) to database",
+        parser_klass=DBParser
     )
 
     main_parser.attach_subcommand_parser(
