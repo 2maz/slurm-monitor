@@ -50,6 +50,7 @@ from .db_tables import (
     SampleProcessGpu,
     SampleSlurmJob,
     SampleSlurmJobAcc,
+    SampleSystem,
     SysinfoAttributes,
     SysinfoGpuCard,
     SysinfoGpuCardConfig,
@@ -247,6 +248,8 @@ class ClusterDB(Database):
 
     SampleSlurmJob = SampleSlurmJob
     SampleSlurmJobAcc = SampleSlurmJobAcc
+
+    SampleSystem = SampleSystem
 
     SysinfoAttributes = SysinfoAttributes
     SysinfoGpuCard = SysinfoGpuCard

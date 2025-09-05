@@ -10,6 +10,7 @@ from slurm_monitor.db.v2.db_tables import (
     SampleProcessGpu,
     SampleSlurmJob,
     SampleSlurmJobAcc,
+    SampleSystem,
     SysinfoAttributes,
     SysinfoGpuCard,
     SysinfoGpuCardConfig,
@@ -185,12 +186,11 @@ class DBJsonImporter:
         del attributes['time']
 
         system = attributes["system"]
-        system["used_memory"]
-        system["cpus"]
 
         gpu_samples = []
         if "gpus" in system:
             gpus = system["gpus"]
+            del system["gpus"]
 
             for gpu in gpus:
                 gpu_status = SampleGpu(
@@ -201,6 +201,14 @@ class DBJsonImporter:
 
         cluster = attributes.get('cluster','')
         node = attributes['node']
+
+        # consume remaining items from SampleSystem
+        sample_system = SampleSystem(
+                cluster=cluster,
+                node=node,
+                **system,
+                time=time
+        )
 
         jobs = attributes["jobs"]
         process_stati = []
@@ -240,7 +248,7 @@ class DBJsonImporter:
 
                    **process)
                 )
-        return [gpu_samples, gpu_card_process_stati, process_stati]
+        return [gpu_samples, gpu_card_process_stati, process_stati, sample_system]
 
     @classmethod
     def parse_cluster(cls, msg: Message) -> list[TableBase | list[TableBase]]:
@@ -267,8 +275,6 @@ class DBJsonImporter:
                         time=time
                     )
                 )
-
-
 
         partitions = []
         for p in attributes['partitions']:

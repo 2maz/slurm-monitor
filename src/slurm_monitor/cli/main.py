@@ -9,6 +9,7 @@ from slurm_monitor.cli.listen import ListenParser
 from slurm_monitor.cli.system_info import SystemInfoParser
 from slurm_monitor.cli.autodeploy import AutoDeployParser
 from slurm_monitor.cli.query import QueryParser
+from slurm_monitor.cli.spec import SpecParser
 from slurm_monitor.cli.data_import import ImportParser
 from slurm_monitor.cli.test import TestParser
 
@@ -27,15 +28,18 @@ class MainParser(ArgumentParser):
 
         self.description = "slurm-monitor - components for monitoring (slurm) nodes"
         self.add_argument("--log-level", type=str, default="INFO", help="Logging level")
-        self.add_argument("--version","-v", action="store_true", help="Show version")
-        self.subparsers = self.add_subparsers(help="sub-command help")
+        self.add_argument("--version", "-i", action="store_true", help="Show version")
 
     def attach_subcommand_parser(
         self, subcommand: str, help: str, parser_klass: BaseParser
     ):
-        parser = self.subparsers.add_parser(subcommand, help=help)
-        parser_klass(parser=parser)
+        if not hasattr(self, 'subparsers'):
+            # lazy initialization, since it cannot be part of the __init__ function
+            # otherwise random errors
+            self.subparsers = self.add_subparsers(help="sub-command help")
 
+        subparser = self.subparsers.add_parser(subcommand)
+        parser_klass(parser=subparser)
 
 def run():
     basicConfig(
@@ -76,6 +80,12 @@ def run():
     )
 
     main_parser.attach_subcommand_parser(
+        subcommand="spec",
+        help="Validate implementation of specs",
+        parser_klass=SpecParser
+    )
+
+    main_parser.attach_subcommand_parser(
         subcommand="system-info",
         help="Extract system information",
         parser_klass=SystemInfoParser
@@ -94,7 +104,11 @@ def run():
         sys.exit(0)
 
     if hasattr(args, "active_subparser"):
-        getattr(args, "active_subparser").execute(args)
+        try:
+            getattr(args, "active_subparser").execute(args)
+        except Exception as e:
+            print(f"Error: {e}")
+            sys.exit(-1)
 
     for logger in [logging.getLogger(x) for x in logging.root.manager.loggerDict]:
         logger.setLevel(logging.getLevelName(args.log_level))

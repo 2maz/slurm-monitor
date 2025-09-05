@@ -298,9 +298,10 @@ class UUID(types.TypeDecorator):
     cache_ok = True
 
 class Cluster(TableBase):
-    __tablename__ = "cluster"
+    __tablename__ = "cluster_attributes"
     __table_args__ = (
         {
+            'info': { 'sonar_spec': 'ClusterAttributes' },
             'timescaledb_hypertable': {
                 'time_column_name': 'time',
                 'chunk_time_interval': '24 hours',
@@ -321,15 +322,15 @@ class Cluster(TableBase):
 
 class Node(TableBase):
     __tablename__ = "node"
+
     cluster = Column(String, primary_key=True)
     node = Column(String, primary_key=True)
 
     architecture = Column(String)
 
     __table_args__ = (
-        {}
+            { 'info': { 'comment': 'Auxiliary class to permit foreign key constraints on cluster/node' } }
     )
-
 
 class NodeState(TableBase):
     __tablename__ = "node_state"
@@ -343,6 +344,7 @@ class NodeState(TableBase):
     __table_args__ = (
         ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
         {
+            'info': { 'sonar_spec' : "ClusterAttributes.nodes" },
             'timescaledb_hypertable': {
                 'time_column_name': 'time',
                 'chunk_time_interval': '24 hours',
@@ -355,11 +357,14 @@ class NodeState(TableBase):
         }
     )
 
-
 class Partition(TableBase):
     __tablename__ = "partition"
     __table_args__ = (
         {
+            'info' : {
+                      'sonar_spec' : "ClusterAttributes.partitions"
+                     }
+            ,
             'timescaledb_hypertable': {
                 'time_column_name': 'time',
                 'chunk_time_interval': '24 hours',
@@ -405,6 +410,7 @@ class SysinfoAttributes(TableBase):
         *ensure_non_negative("sockets", "cores_per_socket", "threads_per_core", "memory"),
         ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
         {
+            'info': { 'sonar_spec': 'SysinfoAttributes' },
             'timescaledb_hypertable': {
                 'time_column_name': 'time',
                 'chunk_time_interval': '24 hours',
@@ -428,16 +434,19 @@ class SysinfoSoftwareVersion(TableBase):
 
     __table_args__ = (
         ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
+        {
+            'info': { 'sonar_spec': 'SysinfoSoftwareVersion' }
+        }
     )
 
 class SysinfoGpuCard(TableBase):
     """
-    Collect dynamic properties of the GPU in this table
+    Collect static properties of the GPU in this table
     """
     __tablename__ = "sysinfo_gpu_card"
     __table_args__ = (
         *ensure_non_negative('memory'),
-        {}
+        { 'info': { 'sonar_spec': 'SysinfoGpuCard', 'requires_tables': ['sysinfo_gpu_card_config'] } }
     )
 
     uuid = Column(UUID, primary_key=True)
@@ -448,6 +457,9 @@ class SysinfoGpuCard(TableBase):
     memory = Column(BigInteger)
 
 class SysinfoGpuCardConfig(TableBase):
+    """
+    Collect dynamic properties of the GPU in this table
+    """
     __tablename__ = "sysinfo_gpu_card_config"
 
     # node name the card is attached to
@@ -487,6 +499,7 @@ class SysinfoGpuCardConfig(TableBase):
         ),
         ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
         {
+            'info': { 'sonar_spec': 'SysinfoGpuCard', 'requires_tables': ['sysinfo_gpu_card'] },
             'timescaledb_hypertable': {
                 'time_column_name': 'time',
                 'chunk_time_interval': '24 hours',
@@ -496,7 +509,7 @@ class SysinfoGpuCardConfig(TableBase):
                     'interval': '7 days'
                 }
             }
-        }
+        },
     )
 
 
@@ -516,6 +529,7 @@ class SampleGpu(TableBase):
             'power_limit',
         ),
         {
+            'info': { 'sonar_spec': 'SampleSystem.gpus' },
             'timescaledb_hypertable': {
                 'time_column_name': 'time',
                 'chunk_time_interval': '24 hours',
@@ -601,6 +615,7 @@ class SampleProcessGpu(TableBase):
         Index("ix_sample_process_gpu__uuid_time", "uuid", "time"),
         ForeignKeyConstraint(["cluster", "node"], [Node.cluster, Node.node]),
         {
+            'info': {'sonar_spec': 'SampleProcess.gpus'},
             'timescaledb_hypertable': {
                 'time_column_name': 'time',
                 'chunk_time_interval': '24 hours',
@@ -636,8 +651,23 @@ class SampleProcess(TableBase):
     cmd = Column(Text)
 
     # rest of process sample
-    pid = Column(BigInteger, primary_key=True)
-    ppid = Column(BigInteger)
+    pid = Column(BigInteger,
+            desc="""
+            Process ID, zero is used for rolled-up samples
+            """,
+            primary_key=True)
+    ppid = Column(BigInteger,
+            desc="""
+            Parent-process ID
+            """)
+
+    num_threads = Column(BigInteger,
+            desc="""
+            The number of threads in the process, minus 1 - we don't count the
+            process's main thread (allowing this fields to be omitted in
+            transmission for most processes).
+            """
+            )
 
     num_threads = Column(Integer,
             desc="""
@@ -667,7 +697,34 @@ class SampleProcess(TableBase):
             """,
             unit='seconds')
 
-    rolled_up = Column(Integer)
+    data_read = Column(BigInteger,
+            desc="""
+            Kilobytes read with all sorts of read calls (rounded up).
+            """,
+            unit='kilobyte')
+
+    data_written = Column(BigInteger,
+            desc="""
+            Kilobytes written with all sorts of write calls (rounded up).
+            """,
+            unit='kilobyte')
+
+    data_cancelled = Column(BigInteger,
+            desc="""
+            Kilobytes written but never flushed to physical media (i.e., held in RAM but then made
+            obsolete by overwriting or file deletion or similar) (rounded up).
+            """,
+            unit='kilebyte')
+
+    # gpus implemented in separate table
+
+    rolledup = Column(Integer,
+                      desc="""
+                      The number of additional samples for processes that are
+                      "the same" that have been rolled into this one. That is,
+                      if the value is 1, the record represents the sum of the
+                      sample data for two processes."""
+               )
 
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
@@ -677,6 +734,7 @@ class SampleProcess(TableBase):
         CheckConstraint("job >= 0 and epoch >= 0", "job_or_epoch_non_negative"),
         *ensure_non_negative("pid","ppid"),
         {
+            'info': { 'sonar_spec': 'SampleProcess' },
             'timescaledb_hypertable': {
                 'time_column_name': 'time',
                 'chunk_time_interval': '24 hours',
@@ -687,6 +745,59 @@ class SampleProcess(TableBase):
                 }
             }
 
+        }
+    )
+
+class SampleSystem(TableBase):
+    __tablename__ = "sample_system"
+
+    cluster = Column(String, primary_key=True)
+    node = Column(String, primary_key=True)
+
+    cpus = Column(ARRAY(BigInteger),
+                  desc="The state of individual cores"
+           )
+
+    used_memory = Column(BigInteger,
+                         desc="The amount of primary memory in use in kilobytes",
+                         unit="kilobyte"
+                  )
+
+    load1 = Column(Float,
+                   desc="One-minute load average"
+            )
+
+    load5 = Column(Float,
+                   desc="Five-minute load average"
+            )
+
+    load15 = Column(Float,
+                   desc="Fivteen-minute load average"
+            )
+
+    runnable_entities = Column(BigInteger,
+                            desc="Number of currently runnable scheduling entities (processes, threads)"
+                        )
+    existing_entities = Column(BigInteger,
+                            desc="Number of currently existing scheduling entities (processes, threads)"
+                        )
+
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(["cluster", "node"], [Node.cluster, Node.node]),
+        *ensure_non_negative("runnable_entities","existing_entities", "used_memory"),
+        {
+            'info': { 'sonar_spec': 'SampleSystem' },
+            'timescaledb_hypertable': {
+                'time_column_name': 'time',
+                'chunk_time_interval': '24 hours',
+                'compression': {
+                    'segmentby': 'cluster, node',
+                    'orderby': 'time',
+                    'interval': '7 days'
+                }
+            }
         }
     )
 
@@ -726,7 +837,7 @@ class SlurmJobState(enum.Enum):
     see also https://slurm.schedmd.com/job_state_codes.html
     """
     # The key names are relevant here, not the values
-    
+
     BOOT_FAIL = 'BOOT_FAIL'
     CANCELLED = 'CANCELLED'
     COMPLETED = 'COMPLETED'
@@ -801,6 +912,7 @@ class SampleSlurmJob(TableBase):
             'exit_code',
         ),
         {
+            'info': { 'sonar_spec': 'JobsAttributes.slurm_jobs' },
             'timescaledb_hypertable': {
                 'time_column_name': 'time',
                 'chunk_time_interval': '24 hours',
@@ -857,6 +969,7 @@ class SampleSlurmJobAcc(TableBase):
             #'AveDiskWrite'
         ),
         {
+            'info': { 'sonar_spec': 'SlurmJob.sacct' },
             'timescaledb_hypertable': {
                 'time_column_name': 'time',
                 'chunk_time_interval': '24 hours',
@@ -1019,6 +1132,7 @@ class ErrorMessage(TableBase):
     __tablename__ = "error_message"
     __table_args__ = (
         {
+            'info': { 'sonar_spec': 'ErrorObject' },
             'timescaledb_hypertable': {
                 'time_column_name': 'time',
                 'chunk_time_interval': '24 hours',
@@ -1032,6 +1146,13 @@ class ErrorMessage(TableBase):
     )
     cluster = Column(String, primary_key=True, index=True)
     node = Column(String, primary_key=True, index=True)
-    details = Column(Text)
+    detail = Column(Text)
 
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
+
+
+# Note: SampleProcess table contains all required information
+# class SampleJob(TableBase):
+
+# Note: SlurmJob table contains all required information
+# class JobsAttributes(TableBase):
