@@ -113,7 +113,7 @@ pip install slurm-monitor/[restapi,dev]
 Prepare the data collection to record published messages via:
 
 ```
-slurm-monitor listen --host my-kafka-broker --db-uri sqlite:////tmp/my-db.sqlite
+slurm-monitor listen --host my-kafka-broker --db-uri timescaledb://my_db_user:my_db_user_password@db_hostname:10000/db_name
 ```
 
 ## REST Api:
@@ -154,55 +154,45 @@ To run with ssl, get or create a certificate and run as follows:
 
 ## Probe
 
-Now that the receiving end is in place, the probes can be started.
-(Note, that the probes can also be started independently.)
-
-In case you want to distribute the probe as a single binary, create a platform specific binary with the following steps:
-
-1. Ensure that python headers, g++, rust and cargo are available, and `module load` (on HPC system) or install if necessary, e.g., using the following (stick with the defaults):
-
-```
-    sudo apt install curl g++ python3-dev
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-    source $HOME/.cargo/env
-```
-
-2. Run the actual build:
-
-```
-    tox -e build-nuitka
-```
-
-The binary is then generated as: dist/&lt;arch&gt;/slurm-monitor
-
-Note, that there is no cross-compilation support at the moment. So the build is always targeting the architecture the program runs on.
+slurm-monitor relies on [sonar](https://github.com/NordicHPC/sonar) as a probe on the individual nodes.
+As such it should be set up so that it communicates with the kafka broker that the above described listener will attach to.
+Instruction for installation of sonar are found in the sonar repository - in addition to an example kafka configuratoin.
 
 
-Once the binary has been installed on the target system run it with:
+## Validation
+
+Since slurm-monitor consumes sonar data, it has to align with [types communicated by sonar](https://raw.githubusercontent.com/NordicHPC/sonar/refs/heads/main/doc/types.spec.yaml).
+In case you need to (re)generate the types.spec.yaml, please use the [documentation processor](https://github.com/NordicHPC/sonar/tree/main/util/process-doc) distributed with sonar.
+
+### Spec vs. DB Schema Definitions
+
+To check the degree of alignment of the database schema with sonar's types:
 
 ```
-    slurm-monitor probe --host my-kafka-broker
+wget https://raw.githubusercontent.com/NordicHPC/sonar/refs/heads/main/doc/types.spec.yaml
+slurm-monitor spec types.spec.yaml
 ```
 
-or to make it persist
+There is no complete one-to-one mapping from types to database schema, so that the current validation approach remains limited. Check the warnings.
+
+
+### DB Schema Definitions vs. Actual DB State
+
+When the database schema is updated, e.g., to align with the sonar spec, the actual state of the database might differ from the newly defind schema. 
+To identify required changes of the database use:
 
 ```
-    nohup slurm-monitor probe --host my-kafka-broker > /tmp/slurm-monitor-probe.log 2>&1 &
+slurm-monitor db --diff
 ```
 
-Per default messages are published under the 'node-status' topic. To customize the topic, e.g., for testing, use the option '--publisher-topic node-status-test'
-
-
+The command connects by default to the database configured in the .env, otherwise provide a database uri, for instance:
+```
+slurm-monitor db --diff --db-uri timescaledb://my_db_user:my_db_user_password@db_hostname:10000/db_name
+```
 
 ## Testing
 For testing one can run tox.
 
-For the sqlite3 version use
-```
-    tox
-```
-
-for testing against a timescaledb docker will be required:
 ```
     tox -e timescaledb
 ```
