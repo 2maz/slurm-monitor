@@ -40,7 +40,7 @@ def print_status(schema, status):
             print(f"{prefix}  {table}")
             for column_name in sorted(list(columns.keys())):
                 c_prefix = prefix
-                if c_prefix == " ":
+                if c_prefix.strip() == "":
                     if column_name in remove_columns:
                         c_prefix = "!-"
 
