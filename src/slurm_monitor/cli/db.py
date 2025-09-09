@@ -23,8 +23,12 @@ def get_db_schema(db):
         schema[table_name] = {x.name: x for x in table.columns}
     return schema
 
-def print_status(schema, status):
-        print("Tables")
+def print_status(schema, status, diff: bool = False):
+        if diff:
+            print("Tables (Diff)")
+        else:
+            print("Tables")
+
         for table, columns in status.items():
             prefix = "  "
             add_columns = []
@@ -37,12 +41,18 @@ def print_status(schema, status):
                 add_columns = columns_in_schema - set(columns.keys())
                 remove_columns = set(columns.keys()) - columns_in_schema
 
+            if diff and not (add_columns or remove_columns or table not in schema):
+                continue
+
             print(f"{prefix}  {table}")
             for column_name in sorted(list(columns.keys())):
                 c_prefix = prefix
                 if c_prefix.strip() == "":
                     if column_name in remove_columns:
                         c_prefix = "!-"
+                    elif diff:
+                        # create a compact view in 'diff' mode
+                        continue
 
                 column = columns[column_name]
                 print(f"{c_prefix}      {column['name'].ljust(20)} {column['type']}")
@@ -71,6 +81,12 @@ class DBParser(BaseParser):
                             help="Apply changes to the table of the current database"
                             )
 
+        parser.add_argument("--diff",
+                            action="store_true",
+                            help="Show only diff lines"
+                            )
+                    
+
     def execute(self, args):
         super().execute(args)
 
@@ -93,7 +109,7 @@ class DBParser(BaseParser):
             new_status = get_db_status(app_settings.database.uri)
             added_tables = set(new_status.keys()) - set(initial_status.keys())
 
-            print_status(schema, new_status)
+            print_status(schema, new_status, diff=args.diff)
 
             print()
             print(f"added: {[x for x in added_tables]}")
@@ -101,7 +117,7 @@ class DBParser(BaseParser):
         else:
             # what tables have not been defined in the schema
             to_be_added_tables = tables_in_schema - set(initial_status.keys())
-            print_status(schema, initial_status)
+            print_status(schema, initial_status, diff=args.diff)
 
             print()
             print(f"to be added: {[x for x in to_be_added_tables]}")
