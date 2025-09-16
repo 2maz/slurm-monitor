@@ -1247,15 +1247,13 @@ class ClusterDB(Database):
                 SysinfoAttributes.cluster,
                 SysinfoAttributes.node,
                 SysinfoAttributes.cards,
-                func.max(SysinfoAttributes.time)
+                SysinfoAttributes.time
                ).where(
                     (SysinfoAttributes.cluster == cluster),
                     (SysinfoAttributes.node == node)
-               ).group_by(
-                   SysinfoAttributes.cluster,
-                   SysinfoAttributes.node,
-                   SysinfoAttributes.cards
-               )
+               ).order_by(
+                    SysinfoAttributes.time.desc()
+               ).limit(1)
 
         async with self.make_async_session() as session:
             sysinfos = (await session.execute(query)).all()
