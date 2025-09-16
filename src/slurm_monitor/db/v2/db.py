@@ -1485,24 +1485,20 @@ class ClusterDB(Database):
                ).where(
                     (SysinfoAttributes.cluster == cluster),
                     (SysinfoAttributes.node == node),
-                    #(SysinfoAttributes.time <= fromtimestamp(time_in_s))
+                    (SysinfoAttributes.time <= fromtimestamp(time_in_s))
                ).group_by(
-                   SysinfoAttributes.memory
+                   SysinfoAttributes.memory,
                ).order_by(None)
 
         async with self.make_async_session() as session:
             node_config = (await session.execute(query)).all()
             if node_config:
-                memory = None
-                for n in node_config:
-                    if memory is None:
-                        memory, timestamp = n
-                    else:
-                        if memory != n[0]:
-                            raise RuntimeError("node memory: memory changed - might lead to inconsistent reporting")
-            else:
-                raise RuntimeError(f"node memory: missing node config for {node=}")
-        return memory, timestamp
+                if len(node_config) > 1:
+                    logger.warning(f"node memory: memory for {node=} changed over time {node_config} - might lead to inconsistent reporting")
+
+                memory, timestamp = node_config[0]
+                return memory, timestamp
+        raise RuntimeError(f"node memory: missing node config for {node=}")
 
 ##### END SAMPLE PROCESS (CPU) ######################################################
 
