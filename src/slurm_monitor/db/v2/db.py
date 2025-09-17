@@ -785,16 +785,13 @@ class ClusterDB(Database):
         active_jobs = await self.get_active_jobs(
                 cluster=cluster,
                 start_time_in_s=start_time_in_s,
-                end_time_in_s=end_time_in_s
+                end_time_in_s=end_time_in_s,
+                job_id=job_id,
             )
 
         all_jobs = []
         for job in active_jobs:
             jid, job_epoch, job_nodes = job
-
-            if job_id is not None and epoch is not None:
-                if jid != job_id or job_epoch != epoch:
-                    continue
 
             if nodes is None:
                 nodes = job_nodes
@@ -803,6 +800,7 @@ class ClusterDB(Database):
                 if not intersection:
                     # this jobs runs on nodes that are not
                     # relevant for this query
+                    all_jobs.append({'job': jid, 'epoch': epoch, 'nodes': {}})
                     continue
 
             nodes_data = {}
@@ -1507,21 +1505,27 @@ class ClusterDB(Database):
 
     async def get_active_jobs(self, cluster: str,
                 start_time_in_s: int,
-                end_time_in_s: int
+                end_time_in_s: int,
+                job_id: int | None = None,
                 ):
         """
             Get all active jobs in the cluster
             return
                 [ (job, epoch, nodes) ]
         """
+        where = (SampleProcess.cluster == cluster) & \
+                (SampleProcess.time >= fromtimestamp(start_time_in_s)) & \
+                (SampleProcess.time <= fromtimestamp(end_time_in_s))
+        
+        if job_id is not None:
+            where &= (SampleProcess.job == job_id)
+
         query = select(
                     SampleProcess.job,
                     SampleProcess.epoch,
                     func.array_agg(SampleProcess.node.distinct())
                 ).where(
-                    (SampleProcess.cluster == cluster) &
-                    (SampleProcess.time >= fromtimestamp(start_time_in_s)) &
-                    (SampleProcess.time <= fromtimestamp(end_time_in_s))
+                    where
                 ).group_by(
                     SampleProcess.job,
                     SampleProcess.epoch
