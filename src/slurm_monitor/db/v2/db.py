@@ -1413,7 +1413,7 @@ class ClusterDB(Database):
             Get CPU and memory sampling aggregated - per default for all jobs, or per job id
             """
 
-            memory, timestamp = await self.get_node_memory(cluster=cluster, node=node, time_in_s=start_time_in_s)
+            memory, timestamp = await self.get_node_memory(cluster=cluster, node=node, time_in_s=end_time_in_s)
             where = (SampleProcess.cluster == cluster) & (SampleProcess.node == node)
             if job_id:
                 where &= (SampleProcess.job == job_id) & (SampleProcess.epoch == epoch)

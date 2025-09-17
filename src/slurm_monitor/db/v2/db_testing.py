@@ -199,7 +199,7 @@ def create_test_db(
 
             dbi.insert(
                 SysinfoAttributes(
-                    time=time,
+                    time=start_time,
                     cluster=cluster_name,
                     node=n,
                     os_name="Linux",
