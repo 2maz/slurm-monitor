@@ -1,4 +1,5 @@
 import pytest
+from slurm_monitor.db.v2.validation import Specification
 from slurm_monitor.db.v2.db_tables import (
     Cluster,
     Partition,
@@ -145,6 +146,23 @@ async def test_nodes_info(test_db_v2, db_config):
     nodes = await test_db_v2.get_nodes_sysinfo(cluster="cluster-1")
     for node, value in nodes.items():
         assert len(value['cards']) == db_config.number_of_gpus
+
+@pytest.mark.parametrize("spec_table,db_schema_table,column",
+    [
+        ["SysinfoAttributes", "sysinfo_attributes", "cluster"],
+        ["SampleGpu", "sample_gpu", "index"],
+        ["SampleGpu", "sample_gpu", "uuid"],
+        ["SampleGpu", "sample_gpu", "failing"],
+        ["SampleProcess", "sample_process", "resident_memory"],
+        ["SampleProcess", "sample_process", "num_threads"],
+    ])
+def test_comments_from_spec(spec_table, db_schema_table, column, test_db_v2, db_config):
+    spec = Specification()
+
+    in_db_description = test_db_v2.get_column_description(db_schema_table, column)
+    spec_doc = spec[spec_table]['fields'][column]['doc']
+
+    assert spec_doc == in_db_description
 
 
 

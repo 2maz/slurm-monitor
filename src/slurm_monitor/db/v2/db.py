@@ -10,15 +10,16 @@ from sqlalchemy.engine.url import URL, make_url
 from sqlalchemy import (
         Integer,
         MetaData,
-        event,
         create_engine,
+        event,
         func,
-        select
+        select,
+        text,
 )
 from sqlalchemy.ext.asyncio import (
-        create_async_engine,
+        AsyncSession,
         async_sessionmaker,
-        AsyncSession
+        create_async_engine,
 )
 
 import logging
@@ -27,14 +28,14 @@ from slurm_monitor.db.v2.validation import Specification
 from slurm_monitor.utils import utcnow, fromtimestamp
 from slurm_monitor.api.v2.response_models import (
     ErrorMessageResponse,
-    JobResponse,
     GpusProcessTimeSeriesResponse,
     JobNodeSampleProcessGpuTimeseriesResponse,
+    JobResponse,
     JobSpecificTimeseriesResponse,
-    SampleProcessGpuAccResponse,
-    SampleProcessAccResponse,
     SampleGpuBaseResponse,
     SampleGpuTimeseriesResponse,
+    SampleProcessAccResponse,
+    SampleProcessGpuAccResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -146,6 +147,27 @@ class Database:
         #)
         #graph.write_png('/tmp/dbschema.png') # write out the file
 
+    def get_column_description(self, table, column) -> str | None:
+        statement = f"""
+            SELECT description FROM pg_catalog.pg_description
+                WHERE objsubid = (
+                    SELECT ordinal_position FROM information_schema.columns
+                        WHERE table_name='{table}' AND column_name='{column}'
+                    )
+                    and objoid = (
+                        SELECT oid FROM pg_class WHERE relname='{table}' and relnamespace =
+                            (
+                                SELECT oid FROM pg_catalog.pg_namespace
+                                    WHERE nspname = 'public'
+                            )
+                    );
+        """
+        with self.make_session() as session:
+            result = session.execute(text(statement))
+            description = result.fetchall()
+            if description:
+                return description[0][0]
+            return None
 
 
     def insert(self, db_obj):
@@ -156,6 +178,21 @@ class Database:
         with self.make_writeable_session() as session:
             for obj in _listify(db_obj):
                 session.merge(obj)
+
+    @contextmanager
+    def make_session(self):
+        session = self.session_factory()
+        try:
+            yield session
+            if session.deleted or session.dirty or session.new:
+                raise RuntimeError(
+                    "Found potentially modified state in a non-writable session"
+                )
+        except:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
     @contextmanager
     def make_writeable_session(self):

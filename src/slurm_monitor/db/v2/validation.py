@@ -19,6 +19,9 @@ class Specification:
         with open(filename) as f:
             self._spec = yaml.load(f, Loader=yaml.FullLoader)
 
+    def __getitem__(self, item: str):
+        return self._spec[item]
+
     def validate(self, tables, show: bool = False):
         ignored_tables = []
         covered_spec = {}
