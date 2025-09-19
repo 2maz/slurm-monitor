@@ -22,6 +22,8 @@ from sqlalchemy.ext.asyncio import (
 )
 
 import logging
+
+from slurm_monitor.db.v2.validation import Specification
 from slurm_monitor.utils import utcnow, fromtimestamp
 from slurm_monitor.api.v2.response_models import (
     ErrorMessageResponse,
@@ -87,6 +89,9 @@ class Database:
         db_url = self.db_url = create_url(
             db_settings.uri, db_settings.user, db_settings.password
         )
+
+        spec = Specification()
+        spec.augment(TableBase.metadata.tables)
 
         engine_kwargs = {}
         self.engine = create_engine(db_url, **engine_kwargs)

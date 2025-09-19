@@ -166,11 +166,17 @@ In case you need to (re)generate the types.spec.yaml, please use the [documentat
 
 ### Spec vs. DB Schema Definitions
 
-To check the degree of alignment of the database schema with sonar's types:
+To check the degree of alignment of the database schema with sonar's types, you can either
+check using the sonar type spec added to slurm-monitor:
+```
+slurm-monitor spec
+```
+
+or using an outside generated type spec via:
 
 ```
 wget https://raw.githubusercontent.com/NordicHPC/sonar/refs/heads/main/doc/types.spec.yaml
-slurm-monitor spec types.spec.yaml
+slurm-monitor spec --spec-file types.spec.yaml
 ```
 
 There is no complete one-to-one mapping from types to database schema, so that the current validation approach remains limited. Check the warnings.
