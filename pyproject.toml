@@ -56,9 +56,9 @@ dependencies = [
 ]
 
 [project.urls]
-homepage = "https://github.com/simula/slurm-monitor"
-documentation = "https://gitlab.com/simula/slurm-monitor"
-repository = "https://gitlab.com/simula/slurm-monitor"
+homepage = "https://github.com/2maz/slurm-monitor"
+documentation = "https://2maz.github.io/slurm-monitor"
+repository = "https://github.com/2maz/slurm-monitor"
 
 #[project.entry-points]
 
