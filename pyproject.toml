@@ -84,6 +84,7 @@ test = [
     "httpx",
     "pytest",
     "pytest-asyncio",
+    "pytest-console-scripts",
     "pytest-cov",
     "pytest-mock",
     "pydot",

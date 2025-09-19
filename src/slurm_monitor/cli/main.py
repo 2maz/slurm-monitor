@@ -116,6 +116,8 @@ def run():
         except Exception as e:
             print(f"Error: {e}")
             sys.exit(-1)
+    else:
+        main_parser.print_help()
 
     for logger in [logging.getLogger(x) for x in logging.root.manager.loggerDict]:
         logger.setLevel(logging.getLevelName(args.log_level))
