@@ -7,7 +7,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-SONAR_DEFAULT_SPEC_FILENAME = Path(__file__).parent.parent.parent / "resources" / "sonar-types.spec.yaml"
+SONAR_DEFAULT_SPEC_FILENAME = Path(__file__).parent.parent.parent / "resources" / "sonar-latest" / "types.spec.yaml"
 
 class Specification:
     _spec: dict[str, any]
