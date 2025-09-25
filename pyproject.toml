@@ -108,7 +108,7 @@ ignore_missing_imports = true
     ]
 
 [tool.setuptools.package-data]
-"slurm_monitor" = [ "resources/*" ]
+"slurm_monitor" = [ "resources/**/*" ]
 
 [tool.setuptools.dynamic]
 version = { attr = "slurm_monitor.__version__" }
