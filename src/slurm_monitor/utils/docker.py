@@ -80,7 +80,7 @@ class Docker:
         try:
             response = Command.run("pidof docker run")
             if response:
-                return [int(x) for x in response.split("\n")]
+                return [int(x) for x in response.strip().split(" ")]
 
         except RuntimeError:
             pass
