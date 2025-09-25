@@ -116,7 +116,7 @@ class Specification:
                             spec_column = self._spec[spec_object_name]['fields'][column.name]
                             if 'doc' in spec_column:
                                 column.comment = spec_column['doc']
-                                print(f"Found doc for {table}.{column.name}: {column.comment}")
+                                logger.debug(f"Found doc for {table}.{column.name}: {column.comment}")
                         except KeyError as e:
                             # The database schema can have more or deviating field, so generally ignore missing
                             # items here
