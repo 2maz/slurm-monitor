@@ -19,6 +19,7 @@ from slurm_monitor.cli.spec import SpecParser
 from slurm_monitor.cli.data_import import ImportParser
 from slurm_monitor.cli.test import TestParser
 
+from slurm_monitor.utils.command import Command
 
 @pytest.fixture
 def subparsers():
@@ -45,6 +46,7 @@ def test_help(subparsers, capsys, monkeypatch):
 
 @pytest.mark.parametrize("name, klass", [
     [ "spec", SpecParser ],
+    [ "db", DBParser ],
 ])
 def test_subparser(name, klass, script_runner):
     result = script_runner.run(['slurm-monitor', name, "--help"])
@@ -63,3 +65,10 @@ def test_subparser(name, klass, script_runner):
 def test_spec(script_runner):
     result = script_runner.run(['slurm-monitor', 'spec'])
     assert re.search("implemented", result.stdout) is not None, "Implemented"
+
+@pytest.mark.parametrize("timescaledb", [{'port': 7002, 'container-suffix': '-db_parser'}], indirect=["timescaledb"])
+def test_db_parser(script_runner, timescaledb):
+    cluster = "my-test-cluster"
+    result = script_runner.run(['slurm-monitor', 'db', '--db-uri', timescaledb, "--insert-test-samples", cluster])
+    cluster_result = Command.run("docker exec timescaledb-pytest-db_parser psql -U test test -tAq -c 'SELECT cluster from cluster_attributes'")
+    assert cluster_result == cluster

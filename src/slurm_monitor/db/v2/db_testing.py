@@ -30,6 +30,8 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 class TestDBConfig(BaseModel):
+    cluster_names: list = []
+
     number_of_clusters: int = 2
     number_of_partitions: int = 2
     number_of_nodes: int = 2
@@ -38,7 +40,6 @@ class TestDBConfig(BaseModel):
     number_of_jobs: int = 4
     number_of_samples: int = 25
     sampling_interval_in_s: int = 30
-
 
 def start_timescaledb_container(
         port: int = 7000,
@@ -88,21 +89,24 @@ def start_timescaledb_container(
 
 def create_test_db(
         uri: str,
-        config: TestDBConfig = TestDBConfig()
+        config: TestDBConfig = TestDBConfig(),
+        clear_existing: bool = True
     ) -> ClusterDB:
 
     db_settings = DatabaseSettings(uri=uri)
     dbi = ClusterDB(db_settings)
 
-    dbi.clear()
+    if clear_existing:
+        dbi.clear()
 
     time = utcnow()
+    if not config.cluster_names:
+        config.cluster_names = [f"cluster-{x}" for x in range(0, config.number_of_clusters)]
 
-    for c in range(0, config.number_of_clusters):
-        cluster_name = f"cluster-{c}"
+    for cluster_name in config.cluster_names:
 
-        partitions = [ f"cluster-{c}-partition-{p}" for p in range(0, config.number_of_partitions) ]
-        nodes = [ f"cluster-{c}-node-{n}" for n in range(0, config.number_of_nodes) ]
+        partitions = [ f"{cluster_name}-partition-{p}" for p in range(0, config.number_of_partitions) ]
+        nodes = [ f"{cluster_name}-node-{n}" for n in range(0, config.number_of_nodes) ]
 
         dbi.insert(Cluster(
                 cluster=cluster_name,
@@ -120,7 +124,7 @@ def create_test_db(
                     partition=p,
                     # just add all nodes
                     nodes=nodes,
-                    nodes_compact=[f"cluster-{c}-node-[0,{config.number_of_nodes-1}]"],
+                    nodes_compact=[f"{cluster_name}-node-[0,{config.number_of_nodes-1}]"],
                     time=time
             )
         )
@@ -243,7 +247,7 @@ def create_test_db(
                                 end_time=None,
                                 exit_code=None,
 
-                                partition=f"cluster-{c}-partition-0",
+                                partition=f"{cluster_name}-partition-0",
                                 reservation="",
                                 nodes=[n],
                                 priority=1,

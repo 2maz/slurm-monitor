@@ -514,8 +514,19 @@ def db_config() -> db_v2_testing.TestDBConfig:
 @pytest.fixture(scope="module")
 def timescaledb(request):
     container_name = "timescaledb-pytest"
+    port=7001,
+    # using this mechanism one can parametrize the fixture via
+    #   @pytest.mark.parametrize("timescaledb", [{'port': 7002}], indirect=["timescaledb"])
+    #   def test_XXX(timescaledb, ...):
+    #
+    if request.param:
+        if 'port' in request.param:
+            port = request.param['port']
+        if 'container-suffix' in request.param:
+            container_name += request.param['container-suffix']
+
     uri = db_v2_testing.start_timescaledb_container(
-            port=7001,
+            port=port,
             container_name=container_name
     )
 

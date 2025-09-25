@@ -85,6 +85,15 @@ class DBParser(BaseParser):
                             action="store_true",
                             help="Show only diff lines"
                             )
+
+        parser.add_argument("--insert-test-samples",
+                            metavar="CLUSTER",
+                            nargs="+",
+                            type=str,
+                            required=False,
+                            default=None,
+                            help="Insert test data for a given cluster"
+        )
                     
 
     def execute(self, args):
@@ -96,10 +105,16 @@ class DBParser(BaseParser):
         if args.db_uri:
             app_settings.database.uri = args.db_uri
 
+        if args.insert_test_samples:
+            from slurm_monitor.db.v2.db_testing import TestDBConfig, create_test_db
+            test_db_config  = TestDBConfig(cluster_names=args.insert_test_samples)
+            create_test_db(uri=app_settings.database.uri, config=test_db_config)
+
         initial_status = get_db_status(app_settings.database.uri)
 
         app_settings.database.create_missing = args.apply_changes
         db = db_ops.get_database(app_settings)
+
 
         schema = get_db_schema(db)
         tables_in_schema = schema.keys()
