@@ -401,10 +401,9 @@ class SysinfoAttributes(TableBase):
     memory = Column(BigInteger, desc="primary memory", unit="kilobyte")
     topo_svg = Column(Text, default=None, nullable=True)
 
-    cards = Column(ARRAY(UUID), desc="Array of gpu-card uuid", default=[])
+    distances = Column(ARRAY(Integer))
 
-    # FIXME:
-    # software SysinfoSoftwareVersion
+    cards = Column(ARRAY(UUID), desc="Array of gpu-card uuid", default=[])
 
     __table_args__ = (
         *ensure_non_negative("sockets", "cores_per_socket", "threads_per_core", "memory"),

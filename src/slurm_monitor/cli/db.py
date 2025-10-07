@@ -1,6 +1,6 @@
 from argparse import ArgumentParser
-from slurm_monitor.cli.base import BaseParser
 
+from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.app_settings import AppSettings
 import slurm_monitor.db_operations as db_ops
 
@@ -60,6 +60,44 @@ def print_status(schema, status, diff: bool = False):
             for column_name in add_columns:
                 print(f"!+      {column_name.ljust(20)} {schema[table][column_name].type}")
 
+def apply_changes(db, schema, status):
+    import sqlalchemy
+
+    for table, columns in status.items():
+        prefix = "  "
+        add_columns = []
+
+        if table in schema:
+            columns_in_schema = set(schema[table].keys())
+            add_columns = columns_in_schema - set(columns.keys())
+        else:
+            continue
+
+        for column_name in add_columns:
+
+            column = schema[table][column_name]
+            dialect_type = column.type.dialect_impl(db.engine.dialect).__visit_name__
+            if dialect_type == "ARRAY":
+                item_type = column.type.item_type.dialect_impl(db.engine.dialect).__visit_name__
+                typename = f"{item_type}[]"
+            else:
+                typename = dialect_type
+
+            comment = column.comment.strip()
+            alter_stmt = f"""
+                    ALTER TABLE {table} ADD COLUMN {column_name}
+                    {typename} NULL DEFAULT NULL
+            """
+            alter_comment_stmt = f"""
+                    COMMENT ON COLUMN {table}.{column_name} IS '{comment}'
+            """
+
+            print(f"Adding column: {column_name.ljust(20)} {schema[table][column_name].type} with comment '{comment}'")
+
+            with db.make_writeable_session() as session:
+                session.execute(sqlalchemy.text(alter_stmt))
+                session.execute(sqlalchemy.text(alter_comment_stmt))
+
 
 class DBParser(BaseParser):
     def __init__(self, parser: ArgumentParser):
@@ -94,7 +132,7 @@ class DBParser(BaseParser):
                             default=None,
                             help="Insert test data for a given cluster"
         )
-                    
+
 
     def execute(self, args):
         super().execute(args)
@@ -125,6 +163,7 @@ class DBParser(BaseParser):
             added_tables = set(new_status.keys()) - set(initial_status.keys())
 
             print_status(schema, new_status, diff=args.diff)
+            apply_changes(db, schema, new_status)
 
             print()
             print(f"added: {[x for x in added_tables]}")
