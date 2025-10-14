@@ -1,4 +1,4 @@
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, TopicPartition
 from slurm_monitor.db.v2.db_tables import (
     Cluster,
     ErrorMessage,
@@ -30,6 +30,8 @@ import traceback as tb
 
 logger = logging.getLogger(__name__)
 
+
+last_msg_per_node = {}
 
 @dataclasses.dataclass
 class Meta:
@@ -147,6 +149,10 @@ class DBJsonImporter:
                         del card[field]
 
                 gpu_uuid = card['uuid']
+                if gpu_uuid is None or gpu_uuid == '':
+                    logger.debug(f"SysInfo: skipping sample from {cluster=} {node=} due to missing 'uuid' {card=}")
+                    continue
+
                 gpu_cards.append(SysinfoGpuCard(
                         uuid=gpu_uuid,
                         **data,
@@ -185,7 +191,11 @@ class DBJsonImporter:
         time = dt.datetime.fromisoformat(attributes["time"])
         del attributes['time']
 
+        cluster = attributes.get('cluster','')
         system = attributes["system"]
+        node = attributes['node']
+
+        last_msg_per_node[node] = time
 
         gpu_samples = []
         if "gpus" in system:
@@ -193,14 +203,15 @@ class DBJsonImporter:
             del system["gpus"]
 
             for gpu in gpus:
+                if 'uuid' not in gpu:
+                    logger.debug(f"Sample: skipping sample due to missing 'uuid' {gpu=}")
+                    continue
+
                 gpu_status = SampleGpu(
                         **gpu,
                         time=time
                 )
                 gpu_samples.append(gpu_status)
-
-        cluster = attributes.get('cluster','')
-        node = attributes['node']
 
         # consume remaining items from SampleSystem
         sample_system = SampleSystem(
@@ -345,11 +356,17 @@ class DBJsonImporter:
             error_messages.append(ErrorMessage(**error))
         return error_messages
 
-    def insert(self, message: dict[str, any]):
+    def insert(self, message: dict[str, any], update: bool = True):
         samples = DBJsonImporter.parse(message)
         for sample in samples:
             if sample:
-                self.db.insert_or_update(sample)
+                try:
+                    if update:
+                        self.db.insert_or_update(sample)
+                    else:
+                        self.db.insert(sample)
+                except Exception as e:
+                    logger.warning(f"Inserting sample {sample} failed. -- {e}")
 
 def main(*,
         host: str, port: int,
@@ -377,25 +394,54 @@ def main(*,
             logger.info(f"Subscribing to topics: {topics}")
             consumer = KafkaConsumer(
                         *topics,
-                        bootstrap_servers=f"{host}:{port}"
+                        bootstrap_servers=f"{host}:{port}",
+                        max_poll_records=1000,
+                        fetch_max_bytes=200*1024**2,
+                        max_partition_fetch_bytes=200*1024**2,
                         )
             start_time = dt.datetime.now(dt.timezone.utc)
+
             while True:
+                interval_start_time = dt.datetime.now(dt.timezone.utc)
                 for idx, consumer_record in enumerate(consumer, 1):
                     try:
                         if msg_handler:
                             topic = consumer_record.topic
+                            offset = consumer_record.offset
+                            key = consumer_record.key
+
                             msg = consumer_record.value.decode("UTF-8")
                             if verbose:
                                 print(msg)
+                            
+                            if topic.endswith("sample"):
+                                msg_handler.insert(json.loads(msg), update=False)
+                            else:
+                                msg_handler.insert(json.loads(msg), update=True)
 
-                            msg_handler.insert(json.loads(msg))
                             print(f"{dt.datetime.now(dt.timezone.utc)} messages consumed: {idx} since {start_time}\r", flush=True, end='')
                         else:
                             print(msg.value.decode("UTF-8"))
+
+                        if (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds() > 60:
+                            interval_start_time = dt.datetime.now(dt.timezone.utc)
+                            max_delay = (interval_start_time - min(last_msg_per_node.values())).total_seconds()
+                            print(f"\n\nLast known messages - {interval_start_time} - {max_delay=} s")
+                            for node_num, node in enumerate(sorted(last_msg_per_node.keys())):
+                                print(f"{node_num:03} {node.ljust(20)} {last_msg_per_node[node]}")
+
+                            print(json.dumps(consumer.metrics(), indent=4))
+                            for topic in topics:
+                                tp = TopicPartition(topic, 0)
+                                current_pos = consumer.position(tp)
+                                highwater = consumer.highwater(tp)
+                                print(f"Partition: {topic.ljust(25)} -- {current_pos} / {highwater}")
+
                     except Exception as e:
                         tb.print_tb(e.__traceback__)
                         logger.warning(f"Message processing failed: {e}")
+
+
 
         except TimeoutError:
             raise
