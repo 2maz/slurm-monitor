@@ -54,6 +54,7 @@ dependencies = [
     "sqlalchemy",
     "sqlalchemy-schemadisplay",
     "tqdm",
+    "typing_inspect",
     "uvicorn"
 ]
 
