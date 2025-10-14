@@ -38,7 +38,7 @@ dependencies = [
     "fastapi",
     "fastapi-cache2[memcache]",
     "greenlet",
-    "kafka-python-ng",
+    "kafka-python>=2.2.15",
     "numpy",
     "pandas",
     "prometheus-fastapi-instrumentator",
