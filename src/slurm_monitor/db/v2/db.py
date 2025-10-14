@@ -8,6 +8,7 @@ from contextlib import contextmanager, asynccontextmanager
 import sqlalchemy
 from sqlalchemy.engine.url import URL, make_url
 from sqlalchemy import (
+        distinct,
         Integer,
         MetaData,
         create_engine,
@@ -21,12 +22,15 @@ from sqlalchemy.ext.asyncio import (
         async_sessionmaker,
         create_async_engine,
 )
-
+from tqdm import tqdm
 import logging
 
 from slurm_monitor.db.v2.validation import Specification
 from slurm_monitor.utils import utcnow, fromtimestamp
+from slurm_monitor.utils.slurm import Slurm
+from slurm_monitor.utils.cache import ttl_cache_async
 from slurm_monitor.api.v2.response_models import (
+    AllocTRES,
     ErrorMessageResponse,
     GpusProcessTimeSeriesResponse,
     JobNodeSampleProcessGpuTimeseriesResponse,
@@ -61,6 +65,9 @@ from .db_tables import (
     TableBase,
     time_bucket
 )
+
+# For performance reasons using half day as default history interval
+DEFAULT_HISTORY_INTERVAL_IN_S = 3600*12
 
 def create_url(url_str: str, username: str | None, password: str | None) -> URL:
     url = make_url(url_str)
@@ -370,11 +377,33 @@ class ClusterDB(Database):
                 return nodes[0][0]
             return nodes
 
-    async def get_gpu_nodes(self, cluster: str) -> list[str]:
+    async def get_gpu_nodes(self,
+                cluster: str,
+                time_in_s: int | None = None,
+                interval_in_s: int | None = DEFAULT_HISTORY_INTERVAL_IN_S,
+        ) -> list[str]:
+        """
+        Get the GPU nodes known to the cluster during that timeframe
+
+        If no time is given, then all nodes (ever) known to the cluster are being identified
+        """
+        where = (SysinfoAttributes.cluster == cluster)
+        if not time_in_s:
+            time_in_s = utcnow().timestamp()
+
+        where &= (SysinfoAttributes.time <= fromtimestamp(time_in_s))
+
+        if interval_in_s:
+            where &= (SysinfoAttributes.time >= fromtimestamp(time_in_s - interval_in_s))
+
         # SELECT node FROM (SELECT node, max(timestamp) as max, cards FROM node_config GROUP BY node, cards) WHERE cards != '{}';
         subquery = select(SysinfoAttributes.node, SysinfoAttributes.cluster, func.max(SysinfoAttributes.time), SysinfoAttributes.cards).where(
-                        SysinfoAttributes.cluster == cluster
-                    ).group_by(SysinfoAttributes.node, SysinfoAttributes.cluster, SysinfoAttributes.cards).subquery()
+                        where
+                    ).group_by(
+                        SysinfoAttributes.node,
+                        SysinfoAttributes.cluster,
+                        SysinfoAttributes.cards
+                    ).subquery()
 
         query = select(subquery.c.node).select_from(subquery).where(
                     # https://www.postgresql.org/docs/17/functions-array.html#ARRAY-FUNCTIONS-TABLE
@@ -493,7 +522,8 @@ class ClusterDB(Database):
     async def get_nodes_partitions(self,
             cluster,
             nodes: list[str] | str | None = None,
-            time_in_s: int | None = None
+            time_in_s: int | None = None,
+            interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S
             ) -> dict[str, list[str]]:
         """
         Get the list of partitions per node
@@ -503,9 +533,14 @@ class ClusterDB(Database):
         elif type(nodes) == str:
             nodes = [nodes]
 
+        if not time_in_s:
+            time_in_s = utcnow().timestamp()
+
         where = Partition.cluster == cluster
-        if time_in_s:
-            where &= (Partition.time <= fromtimestamp(time_in_s))
+        where &= (Partition.time <= fromtimestamp(time_in_s))
+
+        if interval_in_s:
+            where &= (Partition.time >= fromtimestamp(time_in_s - interval_in_s))
 
         subquery = select(
                         func.max(Partition.time).label('max_time')
@@ -519,7 +554,8 @@ class ClusterDB(Database):
                 ).select_from(
                     subquery
                 ).where(
-                    Partition.time == subquery.c.max_time
+                    (Partition.time == subquery.c.max_time) &
+                    where
                 )
 
         nodes_partitions = {}
@@ -534,10 +570,105 @@ class ClusterDB(Database):
 
         return nodes_partitions
 
+    @ttl_cache_async(ttl=90, maxsize=1024)
+    async def get_nodes_resource_allocations(self,
+            cluster,
+            nodes: list[str] | str | None = None,
+            time_in_s: int | None = None,
+            interval_in_s: int | None = 30*60,
+            ) -> dict[str, AllocTRES]:
+        """
+        Get the nodes resource allocation
+
+        By default using a time window back half an hour back
+
+        The decorator @ttl_cache_async helps to avoid unnecessary regeneration of the most recent data for the given
+        ttl period (90 seconds by default), so that subsequent calls within that timeframe 
+        can use the cached result.
+        """
+        if time_in_s is None:
+            time_in_s = utcnow().timestamp()
+
+
+        if not nodes:
+            nodes = await self.get_nodes(cluster=cluster, time_in_s=time_in_s)
+        elif type(nodes) == str:
+            nodes = [nodes]
+
+        where_timeframe = (SampleSlurmJob.time <= fromtimestamp(time_in_s)) \
+                & (SampleSlurmJob.time >= fromtimestamp(time_in_s - interval_in_s))
+
+        query = select(
+                    func.max(SampleSlurmJob.time)
+                ).where(
+                    (SampleSlurmJob.cluster == cluster) \
+                    & (SampleSlurmJob.job_state == 'RUNNING')
+                    & where_timeframe
+                )
+
+        async with self.make_async_session() as session:
+            result = (await session.execute(query)).all()
+            time_of_latest_update = result[0][0]
+
+        node_allocations = {}
+        for node in tqdm(sorted(nodes), total=len(nodes), desc="Get resource allocation"):
+            # expecting to have a job sample with a 5 min timeframe to identify
+            # an active allocation
+
+            # identify running jobs as of slurm
+            query = select(
+                        distinct(SampleSlurmJob.job_id)
+                    ).where(
+                        (SampleSlurmJob.cluster == cluster) \
+                        & (SampleSlurmJob.nodes.any(node)) \
+                        & (SampleSlurmJob.job_state == 'RUNNING') \
+                        & (SampleSlurmJob.time == time_of_latest_update )
+                        & where_timeframe
+                    )
+
+            async with self.make_async_session() as session:
+                job_ids = [x[0] for x in (await session.execute(query)).all()]
+
+
+            # identify running jobs by obervable processes
+            # this is necessary to ensure we do not take into account 'zombies' that slurm keeps
+            # reporting as jobs
+            observable_jobs = [x[0] for x in (await self.get_active_jobs(cluster=cluster, node=node,
+                    start_time_in_s=time_in_s - 15*60,
+                    end_time_in_s=time_in_s
+            ))]
+            jobs = [x for x in job_ids if x in observable_jobs]
+
+            query_tres_alloc = select(
+                        SampleSlurmJobAcc.job_id,
+                        SampleSlurmJobAcc.AllocTRES,
+                        func.max(SampleSlurmJobAcc.time),
+                    ).where(
+                        SampleSlurmJobAcc.job_id.in_(jobs) \
+                        & (SampleSlurmJobAcc.job_step == '') \
+                        & (SampleSlurmJobAcc.time == time_of_latest_update)
+                    ).group_by(
+                        SampleSlurmJobAcc.job_id,
+                        SampleSlurmJobAcc.AllocTRES
+                    )
+
+            node_allocations[node] = AllocTRES()
+            async with self.make_async_session() as session:
+                results = (await session.execute(query_tres_alloc)).all()
+                for traceable_resource_allocation in results:
+                    tres = AllocTRES(**Slurm.parse_sacct_tres(traceable_resource_allocation[1]))
+                    node_allocations[node].add(tres)
+
+            logger.debug(f"{node=} {node_allocations[node]}")
+
+        return node_allocations
+
     async def get_nodes_sysinfo_attributes(self,
             cluster: str,
             nodes: str | list[str] | None = None,
-            time_in_s: int | None = None) -> list[SysinfoAttributes]:
+            time_in_s: int | None = None,
+            interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S
+            ) -> list[SysinfoAttributes]:
         """
         Retrieve the node configuration that is active at the given point in time
         if not time is given, the current time (as of 'now') is used
@@ -550,10 +681,15 @@ class ClusterDB(Database):
 
         try:
             where = (SysinfoAttributes.cluster == cluster) & SysinfoAttributes.node.in_(nodelist)
-            if time_in_s:
-                where &= SysinfoAttributes.time <= fromtimestamp(time_in_s)
-            else:
-                where &= SysinfoAttributes.time <= utcnow()
+            if time_in_s is None:
+                time_in_s = utcnow().timestamp()
+
+            # Assuming that maximum 1 week has past since the last
+            # sysinfo update has been made (typical cadence should be much smaller)
+            if interval_in_s:
+                where &= (SysinfoAttributes.time >= fromtimestamp(time_in_s - interval_in_s))
+
+            where &= (SysinfoAttributes.time <= fromtimestamp(time_in_s))
 
             # Find the lastest configuration in a particular timewindow
             subquery = select(
@@ -573,7 +709,8 @@ class ClusterDB(Database):
                         subquery,
                         (SysinfoAttributes.cluster == subquery.c.cluster) &
                         (SysinfoAttributes.node == subquery.c.node) &
-                        (SysinfoAttributes.time == subquery.c.max_time)
+                        (SysinfoAttributes.time == subquery.c.max_time) &
+                        where
                     ).order_by(None)
 
 
@@ -616,29 +753,47 @@ class ClusterDB(Database):
 
         return []
 
+    @ttl_cache_async(ttl=90, maxsize=1024)
     async def get_nodes_sysinfo(self,
             cluster: str,
             nodelist: list[str] | str | None = None,
-            time_in_s: int | None = None
+            time_in_s: int | None = None,
+            interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S
         ):
         """
         Get the (full) sysinfo information for all nodes
+
+        The search back for sysinfo is per default limited to the past 7 days
         """
 
         node_configs = await self.get_nodes_sysinfo_attributes(
                 cluster=cluster,
                 nodes=nodelist,
-                time_in_s=time_in_s
+                time_in_s=time_in_s,
+                interval_in_s=interval_in_s
         )
+
+        nodes = [x.node for x in node_configs]
         nodes_partitions = await self.get_nodes_partitions(cluster=cluster,
-                nodes=[x.node for x in node_configs],
-                time_in_s=time_in_s
+                nodes=nodes,
+                time_in_s=time_in_s,
+                interval_in_s=interval_in_s
+        )
+
+        nodes_resource_allocation = await self.get_nodes_resource_allocations(cluster=cluster,
+                nodes=nodes,
+                time_in_s=time_in_s,
+                interval_in_s=interval_in_s
         )
 
         nodeinfo = {}
-        for node_config in node_configs:
+        time_start = utcnow()
+        for node_config in tqdm(node_configs, total=len(node_configs), desc="Collection node configurations"):
             nodename = node_config.node
             nodeinfo[nodename] = dict(node_config)
+
+            if nodename in nodes_resource_allocation:
+                nodeinfo[nodename]['alloc_tres'] = nodes_resource_allocation[nodename]
 
             if nodename in nodes_partitions:
                 nodeinfo[nodename].update({'partitions': nodes_partitions[nodename]})
@@ -648,10 +803,13 @@ class ClusterDB(Database):
                     nodeinfo[nodename].update({'cards': await self.get_sysinfo_gpu_card(
                         cluster=cluster,
                         node=nodename,
-                        time_in_s=time_in_s
+                        time_in_s=time_in_s,
+                        interval_in_s=interval_in_s
                         )})
                 except Exception as e:
                     logger.warn(f"Internal error: Retrieving GPU info for {nodename} failed -- {e}")
+
+        logger.info(f"Collection (including get_sysinfo_gpu_card): computed in {(utcnow() - time_start).total_seconds()} s")
         return nodeinfo
 
     async def get_nodes_states(self,
@@ -693,38 +851,54 @@ class ClusterDB(Database):
             return node_states
 
 ################################################################
-
+    @ttl_cache_async(ttl=90, maxsize=1024)
     async def get_sysinfo_gpu_card(self,
             cluster: str,
             node: str | list[str] | None = None,
-            time_in_s: int | None = None) -> list[SysinfoGpuCard]:
+            time_in_s: int | None = None,
+            interval_in_s: int | None = None
+            ) -> list[SysinfoGpuCard]:
         """
         Retrieve the GPUCard configuration at a given point in time
+
+        The decorator @ttl_cache_async helps to avoid unnecessary regeneration of the most recent data for the given
+        ttl period (90 seconds by default), so that subsequent calls within that timeframe 
+        can use the cached result.
         """
         nodelist = node
         if node is None:
-            nodelist = await self.get_nodes(cluster=cluster, time_in_s=time_in_s)
+            nodelist = await self.get_nodes(
+                    cluster=cluster,
+                    time_in_s=time_in_s,
+                    interval_in_s=interval_in_s
+            )
         elif type(node) == str:
             nodelist = [node]
 
         try:
             # Configuration needs to be active before or at that timepoint gvein
+            if not time_in_s:
+                time_in_s = utcnow().timestamp()
+        
+            time = fromtimestamp(time_in_s)
+
             where = (SysinfoGpuCardConfig.cluster == cluster) & SysinfoGpuCardConfig.node.in_(nodelist)
-            if time_in_s:
-                time = fromtimestamp(time_in_s)
-                where &= SysinfoGpuCardConfig.time <= time
-                where_last_active = SampleProcessGpu.time <= time
-            else:
-                where_last_active = sqlalchemy.sql.true()
+            where &= (SysinfoGpuCardConfig.time <= time)
+            where_last_active = SampleProcessGpu.time <= time
+
+            if interval_in_s:
+                where &= (SysinfoGpuCardConfig.time >= fromtimestamp(time_in_s - interval_in_s))
+                where_last_active &= (SampleProcessGpu.time >= fromtimestamp(time_in_s - interval_in_s))
 
             # Find the lastest configuration in a particular timewindow
+            # for a given node
             subquery = select(
-                         SysinfoGpuCardConfig.uuid,
+                         SysinfoGpuCardConfig.node,
                          func.max(SysinfoGpuCardConfig.time).label('max_time')
                        ).where(
                          where
                        ).group_by(
-                         SysinfoGpuCardConfig.uuid
+                         SysinfoGpuCardConfig.node
                        ).subquery()
 
             last_active_subquery = select(
@@ -740,9 +914,11 @@ class ClusterDB(Database):
                         SysinfoGpuCard,
                         SysinfoGpuCardConfig,
                         last_active_subquery.c.last_active
+                    ).where(
+                        where
                     ).join(
                         subquery,
-                        (SysinfoGpuCardConfig.uuid == subquery.c.uuid) &
+                        (SysinfoGpuCardConfig.node == subquery.c.node) &
                         (SysinfoGpuCardConfig.time == subquery.c.max_time)
                     ).join(
                         SysinfoGpuCard,
@@ -1198,6 +1374,8 @@ class ClusterDB(Database):
             Get the SampleGpu timeseries for a list of GPU uuids
             """
             uuid_sample_gpu = []
+            logger.info(f"get_sample_gpu_timeseries: {uuids=}")
+            logger.info(f"start={fromtimestamp(start_time_in_s)} end={fromtimestamp(end_time_in_s)}")
             for card_uuid in uuids:
                 where = SampleGpu.uuid == card_uuid
                 if start_time_in_s:
@@ -1545,9 +1723,11 @@ class ClusterDB(Database):
 
 #### BEGIN JOBS #####################################################################
 
-    async def get_active_jobs(self, cluster: str,
+    async def get_active_jobs(self, 
+                cluster: str,
                 start_time_in_s: int,
                 end_time_in_s: int,
+                node: str | None = None,
                 job_id: int | None = None,
                 ):
         """
@@ -1561,6 +1741,9 @@ class ClusterDB(Database):
         
         if job_id is not None:
             where &= (SampleProcess.job == job_id)
+
+        if node is not None:
+            where &= (SampleProcess.node == node)
 
         query = select(
                     SampleProcess.job,

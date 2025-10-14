@@ -90,3 +90,17 @@ class Slurm:
                     logger.warning(f"Line '{line}' does not match the expected format - {e}")
                     continue
         return pids
+
+    @classmethod
+    def parse_sacct_tres(cls, txt: str) -> dict[str, int]:
+        """
+        Parse TRES and return a dictionary mapping cpu,mem,gpu to the actual count
+        """
+        values = {}
+        for key in ["cpu", "mem", "gpu", "node", "billing"]:
+            values[key] = 0
+            m = re.search(key + "=([^,]+)", txt)
+            if m and m.groups():
+                values[key] = int(m.groups()[0])
+
+        return values

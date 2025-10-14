@@ -73,6 +73,11 @@ def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None
 
     return start_time_in_s, end_time_in_s, resolution_in_s
 
+@api_router.get("/clear_cache")
+async def clear_cache():
+    await FastAPICache.clear()
+    return {"message": "Cache cleared"}
+
 #### Results sorted by nodes
 @api_router.get("/cluster",
         summary="Available clusters",
@@ -93,7 +98,7 @@ async def cluster(time_in_s: int | None = None):
         tags=["cluster"],
         response_model=list[PartitionResponse]
 )
-#@cache(expire=3600)
+@cache(expire=120)
 async def partitions(
         cluster: str,
         time_in_s: int | None = None):
@@ -152,6 +157,7 @@ async def error_messages(
         tags=["node"],
         response_model=dict[str, NodeInfoResponse]
 )
+@cache(expire=90)
 async def nodes_sysinfo(cluster: str,
         nodename: str | None = None,
         time_in_s: int | None = None
@@ -303,6 +309,7 @@ async def nodes_sample_process_gpu(
         tags=["job"],
         response_model=list[SystemProcessTimeseriesResponse]
 )
+@cache(expire=90)
 async def job_sample_process_system(
     cluster: str,
     job_id: int | None = None,
@@ -568,12 +575,13 @@ async def nodes_sample_gpu(
 async def jobs(cluster: str,
         start_time_in_s: int | None = None,
         end_time_in_s: int | None = None,
-        states: str | None = None,
-        dbi=Depends(db_ops.get_database),
+        states: str | None = None
    ):
     """
     Check current status of jobs
     """
+    dbi = db_ops.get_database()
+
     if end_time_in_s is None:
         end_time_in_s = utcnow().timestamp()
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pydantic import (
     AwareDatetime,
     BaseModel,
@@ -169,6 +171,8 @@ class GPUCardResponse(TimestampedModel):
     max_ce_clock: int = Field(description="card-dependent, maximum clock of compute element")
     max_memory_clock: int = Field(description="card-dependent, maximum clock of GPU memory")
 
+    last_active: AwareDatetime | None = Field(description="Timezone Aware timestamp", default=None)
+
 class SampleGpuBaseResponse(TimestampedModel):
     failing: int = Field(description="If not zero and error code indicating a card failure state. Code=1 is 'generic failure'. Other codes TBD")
     fan: float = Field(description="Percent of primary fan's max speed, max exceed 100% on some cards in some cases")
@@ -271,8 +275,12 @@ class NodeInfoResponse(TimestampedModel):
     topo_svg: str | None = Field(description="The architecture topography (lstopo) as svg")
     cards: list[GPUCardResponse] = Field(description="List of GPUs")
 
+
     # augmented field: partitions this node is part of
     partitions: list[str] = Field(description="List of partitions that this node belongs to")
+
+    # augmented field: allocation of traceable resources
+    alloc_tres: AllocTRES = Field(description="Allocation of traceable resources")
 
 
 T = TypeVar('T')
@@ -435,3 +443,20 @@ class ErrorMessageResponse(BaseModel):
 
 class QueriesResponse(BaseModel):
     queries: list[str] = Field(description=f"List of available predefined queries")
+
+class AllocTRES(BaseModel):
+    cpu: int = Field(description=f"The reserved cpu count", default=0)
+    memory: int = Field(description=f"The reserved memory", default=0)
+    gpu: int = Field(description=f"The reserved number of gpus", default=0)
+    node: int = Field(description=f"The involved number of nodes", default=0)
+    billing: int = Field(description=f"The actual billing count", default=0)
+
+    def add(self, other: AllocTRES):
+        """
+        Add the results of another AllocTRES 
+        """
+        self.cpu += other.cpu
+        self.memory += other.memory
+        self.gpu += other.gpu
+        self.node += other.node
+        self.billing += other.billing

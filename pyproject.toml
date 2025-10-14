@@ -34,9 +34,11 @@ classifiers = [
 dependencies = [
     "asyncpg",
     "aiosqlite",
+    "cachetools",
     "fastparquet",
     "fastapi",
     "fastapi-cache2[memcache]",
+    "fastapi_utils",
     "greenlet",
     "kafka-python>=2.2.15",
     "numpy",
