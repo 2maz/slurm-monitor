@@ -42,9 +42,6 @@ from slurm_monitor.api.v2.response_models import (
     SampleProcessGpuAccResponse,
 )
 
-logger = logging.getLogger(__name__)
-
-
 from .db_tables import (
     Cluster,
     EpochFn,
@@ -65,6 +62,8 @@ from .db_tables import (
     TableBase,
     time_bucket
 )
+
+logger = logging.getLogger(__name__)
 
 # For performance reasons using half day as default history interval
 DEFAULT_HISTORY_INTERVAL_IN_S = 3600*12
@@ -341,7 +340,11 @@ class ClusterDB(Database):
             result = (await session.execute(query)).all()
             return [dict(x[0]) for x in result]
 
-    async def get_error_messages(self, cluster: str, node: str | None, time_in_s: int | None = None) -> dict[str, list[ErrorMessageResponse]]:
+    async def get_error_messages(self,
+            cluster: str,
+            node: str | None,
+            time_in_s: int | None = None
+    ) -> dict[str, list[ErrorMessageResponse]]:
         where = ErrorMessage.cluster == cluster
         if time_in_s:
             where &= (ErrorMessage.time <= fromtimestamp(time_in_s))
@@ -396,8 +399,14 @@ class ClusterDB(Database):
         if interval_in_s:
             where &= (SysinfoAttributes.time >= fromtimestamp(time_in_s - interval_in_s))
 
-        # SELECT node FROM (SELECT node, max(timestamp) as max, cards FROM node_config GROUP BY node, cards) WHERE cards != '{}';
-        subquery = select(SysinfoAttributes.node, SysinfoAttributes.cluster, func.max(SysinfoAttributes.time), SysinfoAttributes.cards).where(
+        # SELECT node FROM (SELECT node, max(timestamp) as max, cards
+        # FROM node_config GROUP BY node, cards) WHERE cards != '{}';
+        subquery = select(
+                        SysinfoAttributes.node,
+                        SysinfoAttributes.cluster,
+                        func.max(SysinfoAttributes.time),
+                        SysinfoAttributes.cards
+                    ).where(
                         where
                     ).group_by(
                         SysinfoAttributes.node,
@@ -583,7 +592,7 @@ class ClusterDB(Database):
         By default using a time window back half an hour back
 
         The decorator @ttl_cache_async helps to avoid unnecessary regeneration of the most recent data for the given
-        ttl period (90 seconds by default), so that subsequent calls within that timeframe 
+        ttl period (90 seconds by default), so that subsequent calls within that timeframe
         can use the cached result.
         """
         if time_in_s is None:
@@ -809,7 +818,8 @@ class ClusterDB(Database):
                 except Exception as e:
                     logger.warn(f"Internal error: Retrieving GPU info for {nodename} failed -- {e}")
 
-        logger.info(f"Collection (including get_sysinfo_gpu_card): computed in {(utcnow() - time_start).total_seconds()} s")
+        logger.info(f"Collection (including get_sysinfo_gpu_card): computed "
+            f"in {(utcnow() - time_start).total_seconds()} s")
         return nodeinfo
 
     async def get_nodes_states(self,
@@ -862,7 +872,7 @@ class ClusterDB(Database):
         Retrieve the GPUCard configuration at a given point in time
 
         The decorator @ttl_cache_async helps to avoid unnecessary regeneration of the most recent data for the given
-        ttl period (90 seconds by default), so that subsequent calls within that timeframe 
+        ttl period (90 seconds by default), so that subsequent calls within that timeframe
         can use the cached result.
         """
         nodelist = node
@@ -879,7 +889,7 @@ class ClusterDB(Database):
             # Configuration needs to be active before or at that timepoint gvein
             if not time_in_s:
                 time_in_s = utcnow().timestamp()
-        
+
             time = fromtimestamp(time_in_s)
 
             where = (SysinfoGpuCardConfig.cluster == cluster) & SysinfoGpuCardConfig.node.in_(nodelist)
@@ -1712,7 +1722,8 @@ class ClusterDB(Database):
             node_config = (await session.execute(query)).all()
             if node_config:
                 if len(node_config) > 1:
-                    logger.warning(f"node memory: memory for {node=} changed over time {node_config} - might lead to inconsistent reporting")
+                    logger.warning(f"node memory: memory for {node=} changed over time "
+                        f"{node_config} - might lead to inconsistent reporting")
 
                 memory, timestamp = node_config[0]
                 return memory, timestamp
@@ -1723,7 +1734,7 @@ class ClusterDB(Database):
 
 #### BEGIN JOBS #####################################################################
 
-    async def get_active_jobs(self, 
+    async def get_active_jobs(self,
                 cluster: str,
                 start_time_in_s: int,
                 end_time_in_s: int,
@@ -1738,7 +1749,7 @@ class ClusterDB(Database):
         where = (SampleProcess.cluster == cluster) & \
                 (SampleProcess.time >= fromtimestamp(start_time_in_s)) & \
                 (SampleProcess.time <= fromtimestamp(end_time_in_s))
-        
+
         if job_id is not None:
             where &= (SampleProcess.job == job_id)
 
@@ -1803,7 +1814,10 @@ class ClusterDB(Database):
         """
         Get the SLURM job status for a specific job in a cluster
         """
-        where = (SampleSlurmJob.cluster == cluster) & (SampleSlurmJob.job_id == job_id) & (SampleSlurmJob.job_step == '') # get the main job
+        where = (SampleSlurmJob.cluster == cluster) & \
+            (SampleSlurmJob.job_id == job_id) & \
+            (SampleSlurmJob.job_step == '') # get the main job
+
         if start_time_in_s:
             where &= (SampleSlurmJob.time >= fromtimestamp(start_time_in_s))
         if end_time_in_s:

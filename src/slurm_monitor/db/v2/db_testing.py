@@ -65,7 +65,8 @@ def start_timescaledb_container(
         else:
             raise RuntimeError(f"Could not file config file {path=}")
 
-    cmd = f"docker run -d --rm --name {container_name} {volumes} -p {port}:5432 -e POSTGRES_DB=test -e POSTGRES_PASSWORD={password} -e POSTGRES_USER={user} {image}"
+    cmd = f"docker run -d --rm --name {container_name} {volumes} " \
+        f"-p {port}:5432 -e POSTGRES_DB=test -e POSTGRES_PASSWORD={password} -e POSTGRES_USER={user} {image}"
     if start_postgres:
         cmd += f" {start_postgres}"
 

@@ -1,6 +1,5 @@
 import yaml
 import warnings
-from argparse import ArgumentParser
 from pathlib import Path
 
 import logging
@@ -75,14 +74,19 @@ class Specification:
                 if spec_object not in covered_spec:
                     covered_spec[spec_object] = { 'implemented': {}, 'required': set({})}
 
-            covered_spec[spec_object]['implemented'].update({ table_name: set([x.name for x in table.columns]) | set([x.name for x in external_columns]) })
+            covered_spec[spec_object]['implemented'].update({
+                table_name: set([x.name for x in table.columns]) | set([x.name for x in external_columns]) })
 
             covered_spec[spec_object]['required'] = fields_in_spec
 
         if show:
             warnings.warn(f"Extra tables: {ignored_tables} - table has no associated info in 'spec'")
 
-        ignored_spec = set([x for x in self._spec.keys() if 'meta' not in self._spec[x]['fields'] and 'attributes' not in self._spec[x]['fields'] and not x.endswith('Object')]) - set(covered_spec)
+        ignored_spec = set([x for x in self._spec.keys()
+                    if 'meta' not in self._spec[x]['fields']
+                    and 'attributes' not in self._spec[x]['fields']
+                    and not x.endswith('Object')
+                ]) - set(covered_spec)
 
         if show:
             print("Spec Implementation Status")
@@ -95,9 +99,11 @@ class Specification:
 
                 ljust_spec_object = str(spec_object).ljust(25)
                 if missing_columns:
-                    print(f"     {ljust_spec_object} INCOMPLETE - missing implementation of: {','.join(missing_columns)}")
+                    print(f"     {ljust_spec_object} "
+                        "INCOMPLETE - missing implementation of: {','.join(missing_columns)}")
                 else:
-                    print(f"     {ljust_spec_object} COMPLETE (implemented by {[x for x in fulfillment['implemented'].keys()]})")
+                    print(f"     {ljust_spec_object} "
+                        "COMPLETE (implemented by {[x for x in fulfillment['implemented'].keys()]})")
 
             warnings.warn(f"Potentially missing implementation: {ignored_spec} - specs have no associated tables")
 

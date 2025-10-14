@@ -63,17 +63,17 @@ class UserJobResults(Query):
             MAX(end_time - start_time) AS max_time,
             CAST(AVG(requested_cpus) AS INTEGER) as avg_cpus,
             CAST(AVG(CARDINALITY(nodes)) AS INTEGER) as avg_node_count
-        FROM (select 
-                job_id, 
-                LAST(user_name, time) as user_name, 
-                LAST(start_time,time) as start_time, 
-                LAST(end_time,time) as end_time, 
-                LAST(exit_code,time) as exit_code, 
-                LAST(job_state,time) as job_state, 
-                LAST(requested_cpus,time) as requested_cpus, 
-                LAST(nodes,time) as nodes from sample_slurm_job 
+        FROM (select
+                job_id,
+                LAST(user_name, time) as user_name,
+                LAST(start_time,time) as start_time,
+                LAST(end_time,time) as end_time,
+                LAST(exit_code,time) as exit_code,
+                LAST(job_state,time) as job_state,
+                LAST(requested_cpus,time) as requested_cpus,
+                LAST(nodes,time) as nodes from sample_slurm_job
                 WHERE
-                    job_state in ('COMPLETED','CANCELLED','FAILED', 'TIMEOUT') 
+                    job_state in ('COMPLETED','CANCELLED','FAILED', 'TIMEOUT')
                     AND user_name != ''
                     AND cluster = '{cluster}'
                 GROUP BY job_id
@@ -98,15 +98,15 @@ class UserSuccessJobResults(Query):
             MAX(end_time - start_time) AS max_time,
             CAST(AVG(requested_cpus) AS INTEGER) as avg_cpus,
             CAST(AVG(CARDINALITY(nodes)) AS INTEGER) as avg_node_count
-        FROM (select 
-                job_id, 
-                LAST(user_name, time) as user_name, 
-                LAST(start_time,time) as start_time, 
-                LAST(end_time,time) as end_time, 
-                LAST(exit_code,time) as exit_code, 
-                LAST(job_state,time) as job_state, 
-                LAST(requested_cpus,time) as requested_cpus, 
-                LAST(nodes,time) as nodes from sample_slurm_job 
+        FROM (select
+                job_id,
+                LAST(user_name, time) as user_name,
+                LAST(start_time,time) as start_time,
+                LAST(end_time,time) as end_time,
+                LAST(exit_code,time) as exit_code,
+                LAST(job_state,time) as job_state,
+                LAST(requested_cpus,time) as requested_cpus,
+                LAST(nodes,time) as nodes from sample_slurm_job
                 WHERE
                     job_state in ('COMPLETED')
                     AND user_name != ''
@@ -133,15 +133,15 @@ class UserFailedJobResults(Query):
             MAX(end_time - start_time) AS max_time,
             CAST(AVG(requested_cpus) AS INTEGER) as avg_cpus,
             CAST(AVG(CARDINALITY(nodes)) AS INTEGER) as avg_node_count
-        FROM (select 
-                job_id, 
-                LAST(user_name, time) as user_name, 
-                LAST(start_time,time) as start_time, 
-                LAST(end_time,time) as end_time, 
-                LAST(exit_code,time) as exit_code, 
-                LAST(job_state,time) as job_state, 
-                LAST(requested_cpus,time) as requested_cpus, 
-                LAST(nodes,time) as nodes from sample_slurm_job 
+        FROM (select
+                job_id,
+                LAST(user_name, time) as user_name,
+                LAST(start_time,time) as start_time,
+                LAST(end_time,time) as end_time,
+                LAST(exit_code,time) as exit_code,
+                LAST(job_state,time) as job_state,
+                LAST(requested_cpus,time) as requested_cpus,
+                LAST(nodes,time) as nodes from sample_slurm_job
                 WHERE
                     job_state in ('FAILED')
                     AND user_name != ''
@@ -172,15 +172,15 @@ class PopularPartitionsByNumberOfJobs(Query):
             MAX(end_time - start_time) AS max_time,
             CAST(AVG(requested_cpus) AS INTEGER) as avg_cpus,
             CAST(AVG(CARDINALITY(nodes)) AS INTEGER) as avg_node_count
-        FROM (select 
-                job_id, 
+        FROM (select
+                job_id,
                 LAST(partition, time) as partition,
-                LAST(user_name, time) as user_name, 
-                LAST(start_time,time) as start_time, 
-                LAST(end_time,time) as end_time, 
-                LAST(exit_code,time) as exit_code, 
-                LAST(job_state,time) as job_state, 
-                LAST(requested_cpus,time) as requested_cpus, 
+                LAST(user_name, time) as user_name,
+                LAST(start_time,time) as start_time,
+                LAST(end_time,time) as end_time,
+                LAST(exit_code,time) as exit_code,
+                LAST(job_state,time) as job_state,
+                LAST(requested_cpus,time) as requested_cpus,
                 LAST(nodes,time) as nodes from sample_slurm_job
                 WHERE
                     job_state in ('COMPLETED','CANCELLED','FAILED')

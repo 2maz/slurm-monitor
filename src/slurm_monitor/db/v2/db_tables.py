@@ -35,7 +35,7 @@ from sqlalchemy.dialects.postgresql import (
 
 from sqlalchemy.sql.functions import GenericFunction
 from sqlalchemy.ext.compiler import compiles
-import slurm_monitor.timescaledb as timescaledb
+import slurm_monitor.timescaledb as timescaledb # noqa
 
 __all__ = [ "timescaledb" ]
 
@@ -54,17 +54,17 @@ class EpochFn(GenericFunction):
 
 # For PostgreSQL, we will use the `EXTRACT(EPOCH FROM <datetime>)` syntax
 @compiles(EpochFn, 'postgresql')
-def compile_postgresql(expr, compiler, **kwargs):
+def compile_epoch_fn_postgresql(expr, compiler, **kwargs):
     return f"EXTRACT(EPOCH FROM {compiler.process(expr.clauses.clauses[0], **kwargs)})"
 
 # For TimeScaledb
 @compiles(EpochFn, 'timescaledb')
-def compile_timescaledb(expr, compiler, **kwargs):
+def compile_epoch_fn_timescaledb(expr, compiler, **kwargs):
     return f"EXTRACT(EPOCH FROM {compiler.process(expr.clauses.clauses[0], **kwargs)})"
 
 # For SQLite, we use `strftime('%s', datetime_column)` to get epoch
 @compiles(EpochFn, 'sqlite')
-def compile_sqlite(expr, compiler, **kwargs):
+def compile_epoch_fn_sqlite(expr, compiler, **kwargs):
     return f"strftime('%s', {compiler.process(expr.clauses.clauses[0], **kwargs)})"
 
 class time_bucket(GenericFunction):
@@ -73,7 +73,7 @@ class time_bucket(GenericFunction):
 
 # For TimeScaledb
 @compiles(time_bucket, 'timescaledb')
-def compile_timescaledb(expr, compiler, **kwargs):
+def compile_time_bucket_timescaledb(expr, compiler, **kwargs):
     time_window = expr.clauses.clauses[0].value
     time_column = f"{compiler.process(expr.clauses.clauses[1], **kwargs)}"
 
@@ -401,7 +401,7 @@ class SysinfoAttributes(TableBase):
     memory = Column(BigInteger, desc="primary memory", unit="kilobyte")
     topo_svg = Column(Text, default=None, nullable=True)
 
-    distances = Column(ARRAY(Integer))
+    distances = Column(ARRAY(Integer), nullable=True)
 
     cards = Column(ARRAY(UUID), desc="Array of gpu-card uuid", default=[])
 
@@ -662,7 +662,7 @@ class SampleProcess(TableBase):
     # virtual data+stack memory
     virtual_memory = Column(BigInteger, unit='kilobyte')
     # command (not the command line) - '_unknown_' for zombie processes
-    cmd = Column(Text, 
+    cmd = Column(Text,
             desc="""
             The command (not the command line), zombie processes get an extra annotation at the end, a la ps.
             """)

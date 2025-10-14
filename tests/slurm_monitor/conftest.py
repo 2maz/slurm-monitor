@@ -7,7 +7,7 @@ from pathlib import Path
 import sqlalchemy
 import time
 
-import slurm_monitor.timescaledb
+import slurm_monitor.timescaledb # noqa
 from slurm_monitor.utils import utcnow
 from slurm_monitor.devices.gpu import GPU
 from slurm_monitor.utils.command import Command

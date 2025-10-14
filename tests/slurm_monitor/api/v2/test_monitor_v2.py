@@ -49,5 +49,4 @@ async def test_metrics(client):
      v2_routes
     )
 async def test_ensure_response_from_all_endpoints(endpoint, client):
-    response = client.get(f"/api/v2{endpoint}")
-
+    client.get(f"/api/v2{endpoint}")

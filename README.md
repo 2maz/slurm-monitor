@@ -184,7 +184,7 @@ There is no complete one-to-one mapping from types to database schema, so that t
 
 ### DB Schema Definitions vs. Actual DB State
 
-When the database schema is updated, e.g., to align with the sonar spec, the actual state of the database might differ from the newly defind schema. 
+When the database schema is updated, e.g., to align with the sonar spec, the actual state of the database might differ from the newly defind schema.
 To identify required changes of the database use:
 
 ```

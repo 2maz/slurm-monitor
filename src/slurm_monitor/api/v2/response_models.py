@@ -32,7 +32,9 @@ class ClusterResponse(TimestampedModel):
     partitions: list[str] = Field(description="List of available partitions in this cluster")
     nodes: list[str] = Field(description="List of available nodes in this cluster")
 
-doc_sacct = "(see <a href='https://slurm.schedmd.com/sacct.html#SECTION_Job-Accounting-Fields'> SLURM Job Accounting</a>)"
+doc_sacct = "(see <a href='https://slurm.schedmd.com/sacct.html#SECTION_Job-Accounting-Fields'> " \
+    "SLURM Job Accounting</a>)"
+
 class SAcctResponse(BaseModel):
     f"""Slurm Job Accounting Response {doc_sacct}"""
 
@@ -68,7 +70,8 @@ class JobResponse(TimestampedModel):
         step name as a number may not be very helpful.
         """)
     job_name: str = Field(description='Name of the job')
-    job_state: str = Field(description="State of the job, e.g., PENDING, RUNNING, FAILED (see <a href='https://slurm.schedmd.com/job_state_codes.html#states'>SLURM Job States</a>)")
+    job_state: str = Field(description="State of the job, e.g., PENDING, RUNNING, FAILED"
+        "(see <a href='https://slurm.schedmd.com/job_state_codes.html#states'>SLURM Job States</a>)")
 
     array_job_id: int | None = Field(default=None, description="""
         The overarching ID of an array job, see discussion in the postamble.
@@ -87,18 +90,22 @@ class JobResponse(TimestampedModel):
         slurm: `JOB_INFO.array_task_id`.
         """)
 
-    het_job_id: int = Field(description="Id of the het(erogeneous) job (see <a href='https://slurm.schedmd.com/heterogeneous_jobs.html'>SLURM documentation</a>)")
-    het_job_offset: int = Field(description="Unique sequence number (starting with 0) the het(erogeneous) job component (see <a href='https://slurm.schedmd.com/heterogeneous_jobs.html'>SLURM documentation</a>)")
+    het_job_id: int = Field(description="Id of the het(erogeneous) job "
+        "(see <a href='https://slurm.schedmd.com/heterogeneous_jobs.html'>SLURM documentation</a>)")
+    het_job_offset: int = Field(description="Unique sequence number (starting with 0) the het(erogeneous) "
+            " job component (see <a href='https://slurm.schedmd.com/heterogeneous_jobs.html'>SLURM documentation</a>)")
 
     user_name: str = Field(description="Name of the user that started the job")
     account: str = Field(description="Name of the account")
 
     # Pending jobs might have no start time set
-    start_time: AwareDatetime | None = Field(default=None, description="Time at which the job started - only present if the job started")
+    start_time: AwareDatetime | None = Field(default=None, description="Time at which the job started "
+        "- only present if the job started")
     suspend_time: int = Field(description="Time the job was suspended in seconds")
     submit_time: AwareDatetime = Field(description="Time at which the job was submitted")
     time_limit: int = Field(description="Time limit for this job in seconds")
-    end_time: AwareDatetime | None = Field(default=None, description="Time at which the job ended - only present if the job ended")
+    end_time: AwareDatetime | None = Field(default=None, description="Time at which the job ended "
+        "- only present if the job ended")
     exit_code: int | None = Field(default=None, description="Exit code of the job - given it has finished")
 
     partition: str = Field(description="Name of the partition this job is associated with")
@@ -116,25 +123,34 @@ class JobResponse(TimestampedModel):
 
     # computed field: list of the actually used GPU uuids
     #    what can be oberved in the process data)
-    used_gpu_uuids: list[str] | None = Field(default=None, description="UUIDs of GPUs that are actually used with this job - this might be different to the number of reserved GPUs (this a field computed by slurm-monitor)")
+    used_gpu_uuids: list[str] | None = Field(default=None,
+            description="UUIDs of GPUs that are actually used with this job "
+            "- this might be different to the number of reserved GPUs "
+            "(this a field computed by slurm-monitor)")
 
-    sacct: SAcctResponse | None = Field(default=None, description="Slurm Accounting Response data (<a href='https://slurm.schedmd.com/sacct.html#SECTION_Job-Accounting-Fields'>Slurm documentation</a>)")
+    sacct: SAcctResponse | None = Field(default=None, description="Slurm Accounting Response data "
+        "(<a href='https://slurm.schedmd.com/sacct.html#SECTION_Job-Accounting-Fields'>Slurm documentation</a>)")
 
 
 class PartitionResponse(TimestampedModel):
     cluster: str = Field(description="Name of the cluster")
     name: str = Field(description="Name of the partition")
     nodes: list[str] = Field(description="Nodes associated with this partition")
-    nodes_compact: list[str] = Field(description="A compact representation of the list of nodes, e.g., n001,n002,n003 is n001-003")
+    nodes_compact: list[str] = Field(description="A compact representation of the list of nodes,"
+        "e.g., n001,n002,n003 is n001-003")
 
     # computed field: list of jobs that have status PENDING
-    jobs_pending: list[JobResponse] = Field(description="List of pending jobs in this partition (computed by slurm-monitor)")
+    jobs_pending: list[JobResponse] = Field(description=
+            "List of pending jobs in this partition (computed by slurm-monitor)")
     # computed field: list of jobs that have status RUNNING
-    jobs_running: list[JobResponse] = Field(description="List of running jobs in this partition (computed by slurm-monitor)")
+    jobs_running: list[JobResponse] = Field(description=
+            "List of running jobs in this partition (computed by slurm-monitor)")
     # computed field: the time of the longest job in PENDING
-    pending_max_submit_time: AwareDatetime = Field(description="Timestamp of the job being longest in PENDING state")
+    pending_max_submit_time: AwareDatetime = Field(description=
+            "Timestamp of the job being longest in PENDING state")
     # computed field: the time from submit to start for job in RUNNING
-    running_latest_wait_time: int = Field(description="Waiting time in seconds of the most recent started job in this partition")
+    running_latest_wait_time: int = Field(description=
+            "Waiting time in seconds of the most recent started job in this partition")
 
     # computed field: total number of cpus (sum of node cpus)
     total_cpus: int = Field(description="Total number of CPUs available in this partition")
@@ -157,7 +173,8 @@ class GPUCardResponse(TimestampedModel):
     uuid: str = Field(description="UUID as reported by card")
     manufacturer: str = Field(description="A manufacturer: 'NVIDIA', 'AMD', 'INTEL' (other TBD)")
     model: str = Field(description="card dependent, manufacturer's model string")
-    architecture: str = Field(description="card-dependent, manufacturer's arch string, for NVIDIA this is 'Turing', 'Volta', etc.")
+    architecture: str = Field(description=
+            "card-dependent, manufacturer's arch string, for NVIDIA this is 'Turing', 'Volta', etc.")
 
     cluster: str = Field(description="Name of the cluster that this GPU currently belongs to")
     node: str = Field(description="Name of the node that this GPU belongs to")
@@ -174,10 +191,13 @@ class GPUCardResponse(TimestampedModel):
     last_active: AwareDatetime | None = Field(description="Timezone Aware timestamp", default=None)
 
 class SampleGpuBaseResponse(TimestampedModel):
-    failing: int = Field(description="If not zero and error code indicating a card failure state. Code=1 is 'generic failure'. Other codes TBD")
-    fan: float = Field(description="Percent of primary fan's max speed, max exceed 100% on some cards in some cases")
+    failing: int = Field(description=
+            "If not zero and error code indicating a card failure state. Code=1 is 'generic failure'. Other codes TBD")
+    fan: float = Field(description=
+            "Percent of primary fan's max speed, max exceed 100% on some cards in some cases")
     compute_mode: str = Field(description="card-dependent, current compute mode if known")
-    performance_state: float = Field(description="Current performance level, card-specific >= 0, or unset for 'unknown'")
+    performance_state: float = Field(description=
+            "Current performance level, card-specific >= 0, or unset for 'unknown'")
     memory: float = Field(description="Memory use in KiB")
     memory_util: float = Field(description="Memory used in percentage")
     memory_clock: float = Field(description="Memory current clock")
@@ -237,11 +257,15 @@ class SampleProcessResponse(TimestampedModel):
     pid: int = Field(description="Process id of the sampled process - zero for rolled up samples")
     ppid: int = Field(description="Parent process id of the sampled process")
 
-    cpu_avg: float = Field(description=f"The running average CPU over the true lifetime of the process {doc_sample_process}")
-    cpu_util: float = Field(description=f"The current CPU utilization in percentage {doc_sample_process}")
-    cpu_time: float = Field(description=f"Cumulative CPU time in seconds of the full lifetime of the process {doc_sample_process}")
+    cpu_avg: float = Field(description=
+            f"The running average CPU over the true lifetime of the process {doc_sample_process}")
+    cpu_util: float = Field(description=
+            f"The current CPU utilization in percentage {doc_sample_process}")
+    cpu_time: float = Field(description=
+            f"Cumulative CPU time in seconds of the full lifetime of the process {doc_sample_process}")
 
-    num_threads: int = Field(description=f"Number of threads in the process minus 1 - (main thread is not counted) {doc_sample_process}")
+    num_threads: int = Field(description=
+            f"Number of threads in the process minus 1 - (main thread is not counted) {doc_sample_process}")
 
     rolled_up: int = Field(
         description=f"""The number of additional samples for processes that are "the same" that have been rolled into
@@ -351,10 +375,14 @@ class NodeSampleProcessGpuAccResponse(RootModel):
             raise ValueError(f"Response must be a dictionary: keys are nodenames - response was {type(values)}")
         for key, gpus in values.items():
             if not isinstance(gpus, dict):
-                raise ValueError(f"Nodes need to map to dict of gpu-uuid to timeseries data, but {key=} maps to {gpus=}")
+                raise ValueError(
+                        "Nodes need to map to dict of gpu-uuid "
+                        f"to timeseries data, but {key=} maps to {gpus=}")
             for gpu_uuid, gpu_data in gpus.items():
                 if not isinstance(gpu_data, SampleProcessGpuAccResponse):
-                    raise ValueError(f"GPU data should be SampleProcessGpuAccResponse, but {gpu_uuid=} maps to {gpu_data=}")
+                    raise ValueError(
+                            "GPU data should be SampleProcessGpuAccResponse,"
+                            f" but {gpu_uuid=} maps to {gpu_data=}")
         return values
 
 
@@ -364,7 +392,8 @@ class NodeSampleProcessAccResponse(RootModel):
     @model_validator(mode="before")
     def check_nested_structure(cls, values) -> dict[str, dict[str, SampleProcessGpuAccResponse]]:
         if not isinstance(values, dict):
-            raise ValueError(f"Response must be a dictionary: keys are nodenames - response was {type(values)}")
+            raise ValueError("Response must be a dictionary: keys are nodenames"
+                    f"- response was {type(values)}")
         return values
 
 ## DASHBOARD
@@ -442,18 +471,18 @@ class ErrorMessageResponse(BaseModel):
     time: str = Field(description="Time at which this error occurred")
 
 class QueriesResponse(BaseModel):
-    queries: list[str] = Field(description=f"List of available predefined queries")
+    queries: list[str] = Field(description="List of available predefined queries")
 
 class AllocTRES(BaseModel):
-    cpu: int = Field(description=f"The reserved cpu count", default=0)
-    memory: int = Field(description=f"The reserved memory", default=0)
-    gpu: int = Field(description=f"The reserved number of gpus", default=0)
-    node: int = Field(description=f"The involved number of nodes", default=0)
-    billing: int = Field(description=f"The actual billing count", default=0)
+    cpu: int = Field(description="The reserved cpu count", default=0)
+    memory: int = Field(description="The reserved memory", default=0)
+    gpu: int = Field(description="The reserved number of gpus", default=0)
+    node: int = Field(description="The involved number of nodes", default=0)
+    billing: int = Field(description="The actual billing count", default=0)
 
     def add(self, other: AllocTRES):
         """
-        Add the results of another AllocTRES 
+        Add the results of another AllocTRES
         """
         self.cpu += other.cpu
         self.memory += other.memory

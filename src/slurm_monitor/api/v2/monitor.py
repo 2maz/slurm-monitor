@@ -4,11 +4,12 @@ import datetime as dt
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response, FileResponse
 from fastapi_cache.decorator import cache
+from fastapi_cache import FastAPICache
 from logging import getLogger, Logger
 import pandas as pd
 from pathlib import Path
 
-from slurm_monitor.utils import utcnow, fromtimestamp
+from slurm_monitor.utils import utcnow
 from slurm_monitor.app_settings import AppSettings
 import slurm_monitor.db_operations as db_ops
 
@@ -165,8 +166,9 @@ async def nodes_sysinfo(cluster: str,
     """
     Get available information about nodes in a cluster
 
-    It will only contain information about reporting nodes - in some case a node might exist in a cluster, but
-    not system information has been received yet. To check - compare with the complete node list /cluster/{cluster}/nodes
+    It will only contain information about reporting nodes - in some case a
+    node might exist in a cluster, but not system information has been received
+    yet.  To check - compare with the complete node list /cluster/{cluster}/nodes
     """
 
     dbi = db_ops.get_database()
@@ -386,8 +388,10 @@ async def job_sample_process_gpu_timeseries(
         )
     return data
 
-#@api_router.get("/cluster/{cluster}/nodes/{nodename}/cpu/timeseries", response_model=dict[str, list[NodeJobSampleProcessTimeseriesResponse]])
-#@api_router.get("/cluster/{cluster}/nodes/cpu/timeseries", response_model=dict[str, list[NodeJobSampleProcessTimeseriesResponse]])
+#@api_router.get("/cluster/{cluster}/nodes/{nodename}/cpu/timeseries",
+#                response_model=dict[str, list[NodeJobSampleProcessTimeseriesResponse]])
+#@api_router.get("/cluster/{cluster}/nodes/cpu/timeseries",
+#                response_model=dict[str, list[NodeJobSampleProcessTimeseriesResponse]])
 #async def nodes_process_timeseries(
 #    cluster: str,
 #    nodename: str | None = None,
@@ -473,9 +477,12 @@ async def nodes_process_cpu_memory_timeseries(
         raise HTTPException(status_code=500,
                 detail=str(e))
 
-#@api_router.get("/cluster/{cluster}/nodes/{nodename}/process/cpu/timeseries", response_model=dict[str, CPUMemoryProcessTimeSeriesResponse])
-##@api_router.get("/cluster/{cluster}/nodes/process/cpu/timeseries", response_model=dict[str, CPUMemoryProcessTimeSeriesResponse])
-#@api_router.get("/cluster/{cluster}/nodes/{nodename}/jobs/{job_id}/process/cpu/timeseries", response_model=dict[str, CPUMemoryProcessTimeSeriesResponse])
+#@api_router.get("/cluster/{cluster}/nodes/{nodename}/process/cpu/timeseries",
+#                response_model=dict[str, CPUMemoryProcessTimeSeriesResponse])
+#@api_router.get("/cluster/{cluster}/nodes/process/cpu/timeseries",
+#                response_model=dict[str, CPUMemoryProcessTimeSeriesResponse])
+#@api_router.get("/cluster/{cluster}/nodes/{nodename}/jobs/{job_id}/process/cpu/timeseries",
+#                response_model=dict[str, CPUMemoryProcessTimeSeriesResponse])
 ##@api_router.get("/cluster/{cluster}/jobs/{job_id}/process/cpu/util")
 #async def nodes_process_cpu_util(
 #    cluster: str,
@@ -705,9 +712,9 @@ async def dashboard_job_query(
 
     # Acc
 
-    users = user.split(",")
-    hosts = host.split(",")
-    jobs = job_id.split(",")
+    user.split(",")
+    host.split(",")
+    job_id.split(",")
 
     #dbi = db_ops.get_database()
     #await jobs = dbi.query_jobs(

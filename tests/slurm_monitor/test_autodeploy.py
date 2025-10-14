@@ -34,7 +34,7 @@ def test_AutoDeployer(test_db, test_db_uri, number_of_nodes, monkeypatch):
 def test_AutoDeployerSonar(timescaledb, test_db_v2, db_config, monkeypatch):
     redeploy_nodes = []
     def mock_deploy(self, node):
-        redeploy_nodes.append(node) 
+        redeploy_nodes.append(node)
 
     # exclude drained nodes from redeployment
     async def mock_is_drained(self, node):

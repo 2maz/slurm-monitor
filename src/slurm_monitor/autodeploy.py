@@ -114,7 +114,9 @@ class AutoDeployer:
                 if self.cluster_name is None:
                     raise ValueError("Missing cluster_name")
 
-                last_probe_timestamp = loop.run_until_complete(self.dbi.get_last_probe_timestamp(cluster=self.cluster_name))
+                last_probe_timestamp = loop.run_until_complete(
+                        self.dbi.get_last_probe_timestamp(cluster=self.cluster_name)
+                )
                 logger.info(last_probe_timestamp)
 
             for node in sorted(last_probe_timestamp.keys()):
@@ -146,7 +148,7 @@ class AutoDeployer:
 
 class AutoDeployerSonar(AutoDeployer):
     async def is_drained(self, node: str) -> bool:
-        node_states = await dbi.get_nodes_states(
+        node_states = await self.dbi.get_nodes_states(
             cluster=self.cluster_name,
             nodelist=node,
         )

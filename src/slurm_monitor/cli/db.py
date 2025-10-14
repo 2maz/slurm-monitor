@@ -64,7 +64,6 @@ def apply_changes(db, schema, status):
     import sqlalchemy
 
     for table, columns in status.items():
-        prefix = "  "
         add_columns = []
 
         if table in schema:

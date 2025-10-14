@@ -105,7 +105,7 @@ class DBJsonImporter:
 
         errors = None
         if 'errors' in message:
-            errors = [ErroMessager(**x) for x in message['errors']]
+            errors = [ErrorMessage(**x) for x in message['errors']]
 
         return Message(meta=meta, data=data, errors=errors)
 
@@ -407,19 +407,21 @@ def main(*,
                     try:
                         if msg_handler:
                             topic = consumer_record.topic
-                            offset = consumer_record.offset
-                            key = consumer_record.key
 
                             msg = consumer_record.value.decode("UTF-8")
                             if verbose:
                                 print(msg)
-                            
+
                             if topic.endswith("sample"):
                                 msg_handler.insert(json.loads(msg), update=False)
                             else:
                                 msg_handler.insert(json.loads(msg), update=True)
 
-                            print(f"{dt.datetime.now(dt.timezone.utc)} messages consumed: {idx} since {start_time}\r", flush=True, end='')
+                            print(f"{dt.datetime.now(dt.timezone.utc)} messages consumed: "
+                                  f"{idx} since {start_time}\r",
+                                  flush=True,
+                                  end=''
+                            )
                         else:
                             print(msg.value.decode("UTF-8"))
 

@@ -48,7 +48,7 @@ class ListenParser(BaseParser):
             from slurm_monitor.db.v1.data_subscriber import main
             from slurm_monitor.db.v1.db import SlurmMonitorDB
 
-            database = ClusterDB(db_settings=app_settings.database)
+            database = SlurmMonitorDB(db_settings=app_settings.database)
 
             main(host=args.host,
                  port=args.port,

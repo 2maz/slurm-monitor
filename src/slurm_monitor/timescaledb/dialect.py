@@ -4,7 +4,7 @@ from sqlalchemy.dialects.postgresql.base import PGDDLCompiler
 from sqlalchemy.dialects.postgresql.psycopg2 import PGDialect_psycopg2
 
 try:
-    import alembic
+    import alembic # noqa
 except ImportError:
     pass
 else:

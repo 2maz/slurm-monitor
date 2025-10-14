@@ -43,17 +43,22 @@ async def lifespan(app: FastAPI):
     app_settings.db_schema_version = "v2"
 
     logger.info("Setting up prefetching ...")
-    task = asyncio.create_task(prefetch_data())
+    task = asyncio.create_task(prefetch_data(), name="prefetch_data")
 
     yield
 
+    task.cancel("Application is stopping")
+    try:
+        await task
+    except asyncio.CancelledError:
+        logger.info("Prefetching has been stopped")
     logger.info("Shutting down ...")
 
 tags_metadata = [
     {
         "name": "cluster",
         "description": "Operations that give a high-level **cluster**-specific result",
-        
+
     },
     {
         "name": "node",
@@ -62,12 +67,12 @@ tags_metadata = [
             "description": "test external",
             "url": "https://fastapi.tiangolo.com",
         },
-        
+
     },
     {
         "name": "job",
         "description": "Operations that give **job**-specific results",
-        
+
     },
 ]
 
@@ -118,12 +123,12 @@ def find_endpoint_by_name(name: str):
         raise KeyError(f"find_endpoint_by_name: could not find route {name}")
 
     return matching_routes[0].endpoint
-    
+
 
 
 @repeat_every(seconds=30, logger=logger)
 async def prefetch_data():
-    logger.info(f"Prefetch starting")
+    logger.info("Prefetch starting")
     cluster_endpoint = find_endpoint_by_name("cluster")
     clusters = await cluster_endpoint()
 
@@ -140,7 +145,7 @@ async def prefetch_data():
         await partitions_endpoint(cluster=cluster, time_in_s=time_in_s)
         await jobs_endpoint(cluster=cluster)
 
-    logger.info(f"Prefetching done")
+    logger.info("Prefetching done")
 
 
 # Serve API. We want the API to take full charge of its prefix, not involve the SPA mount

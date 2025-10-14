@@ -3,8 +3,7 @@ from argparse import ArgumentParser
 from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.db.v2.db_testing import (
     start_timescaledb_container,
-    create_test_db,
-    TestDBConfig
+    create_test_db
 )
 
 
