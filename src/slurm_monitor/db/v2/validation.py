@@ -1,5 +1,6 @@
 import yaml
 import warnings
+from sqlalchemy import MetaData
 from pathlib import Path
 
 import logging
@@ -12,6 +13,9 @@ class Specification:
     _spec: dict[str, any]
 
     def __init__(self, filename: str | Path = SONAR_DEFAULT_SPEC_FILENAME):
+        """
+        :param filename Path to the sonar specification (which is usually)
+        """
         if not Path(filename).exists():
             raise RuntimeError(f"Missing sonar specification: failed to load documentation from {filename}")
 
@@ -19,9 +23,19 @@ class Specification:
             self._spec = yaml.load(f, Loader=yaml.FullLoader)
 
     def __getitem__(self, item: str):
+        """
+        :param str item Name of the spec entry
+        """
         return self._spec[item]
 
-    def validate(self, tables, show: bool = False):
+    def validate(self, tables: MetaData, show: bool = False):
+        """
+        Compare intended schema for with the sonar specification
+
+        :param MetaData tables Database metadata describing table schemas
+        :param bool show If show is true, output warnings and implementation status
+                         on stdout
+        """
         ignored_tables = []
         covered_spec = {}
         for table_name, table in tables.items():
@@ -100,17 +114,21 @@ class Specification:
                 ljust_spec_object = str(spec_object).ljust(25)
                 if missing_columns:
                     print(f"     {ljust_spec_object} "
-                        "INCOMPLETE - missing implementation of: {','.join(missing_columns)}")
+                        f"INCOMPLETE - missing implementation of: {','.join(missing_columns)}")
                 else:
                     print(f"     {ljust_spec_object} "
-                        "COMPLETE (implemented by {[x for x in fulfillment['implemented'].keys()]})")
+                        f"COMPLETE (implemented by {[x for x in fulfillment['implemented'].keys()]})")
 
             warnings.warn(f"Potentially missing implementation: {ignored_spec} - specs have no associated tables")
 
         return { 'ignored_spec': ignored_spec, 'covered_spec': covered_spec }
 
 
-    def augment(self, tables):
+    def augment(self, tables: list[any]):
+        """
+        Augment existing table schema to ensure the 'doc' / comments
+        are in sync with the sonar specification
+        """
         spec_coverage = self.validate(tables)
         covered_spec = spec_coverage['covered_spec']
         for spec_object_name, fulfillment in covered_spec.items():
@@ -121,7 +139,7 @@ class Specification:
                         try:
                             spec_column = self._spec[spec_object_name]['fields'][column.name]
                             if 'doc' in spec_column:
-                                column.comment = spec_column['doc']
+                                column.comment = spec_column['doc'].strip()
                                 logger.debug(f"Found doc for {table}.{column.name}: {column.comment}")
                         except KeyError as e:
                             # The database schema can have more or deviating field, so generally ignore missing

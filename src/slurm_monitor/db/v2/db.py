@@ -2,7 +2,6 @@ import os
 from collections.abc import Awaitable
 import datetime as dt
 from pydantic import BaseModel
-import re
 from sqlalchemy.orm import sessionmaker
 from contextlib import contextmanager, asynccontextmanager
 import sqlalchemy
@@ -58,7 +57,6 @@ from .db_tables import (
     SysinfoAttributes,
     SysinfoGpuCard,
     SysinfoGpuCardConfig,
-    SysinfoSoftwareVersion,
     TableBase,
     time_bucket
 )
@@ -154,6 +152,11 @@ class Database:
         #graph.write_png('/tmp/dbschema.png') # write out the file
 
     def get_column_description(self, table, column) -> str | None:
+        """
+        Get a table's column description aka comment
+
+        :return Column description or None
+        """
         statement = f"""
             SELECT description FROM pg_catalog.pg_description
                 WHERE objsubid = (
@@ -302,7 +305,6 @@ class ClusterDB(Database):
     SysinfoAttributes = SysinfoAttributes
     SysinfoGpuCard = SysinfoGpuCard
     SysinfoGpuCardConfig = SysinfoGpuCardConfig
-    SysinfoSoftwareVersion = SysinfoSoftwareVersion
 
     ErrorMessage = ErrorMessage
 
@@ -505,9 +507,10 @@ class ClusterDB(Database):
                     elif start_time < latest_start_time:
                         latest_start_time = start_time
                         wait_time = (start_time - job['submit_time']).total_seconds()
-                    m = re.search(r"gpu=([0-9]+)", job['sacct']['AllocTRES'])
-                    if m:
-                        cards_reserved += int(m.groups(0)[0])
+
+                    tres = AllocTRES(**Slurm.parse_sacct_tres(job['sacct']['AllocTRES']))
+                    if job['job_step'] == '':
+                        cards_reserved += tres.gpu
 
                 partitions.append({
                     'cluster': x[0],
@@ -639,7 +642,7 @@ class ClusterDB(Database):
                 job_ids = [x[0] for x in (await session.execute(query)).all()]
 
 
-            # identify running jobs by obervable processes
+            # identify running jobs by observable processes
             # this is necessary to ensure we do not take into account 'zombies' that slurm keeps
             # reporting as jobs
             observable_jobs = [x[0] for x in (await self.get_active_jobs(cluster=cluster, node=node,
@@ -1980,13 +1983,21 @@ class ClusterDB(Database):
         if nodelist:
             where &= (SampleSlurmJob.nodes.overlap(nodelist))
 
+        # make sure we get process sample for jobs, otherwise they might
+        # be reported, but not running (a SLURM bug)
+        observable_jobs = [x[0] for x in (await self.get_active_jobs(cluster=cluster,
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s
+        ))]
+
         # identify the latest job sample
         subquery = select(
                 SampleSlurmJob.job_id,
                 SampleSlurmJob.job_step,
                 func.max(SampleSlurmJob.time).label("max_time")
             ).where(
-                where
+                where &
+                SampleSlurmJob.job_id.in_(observable_jobs)
             ).group_by(
                 SampleSlurmJob.job_id,
                 SampleSlurmJob.job_step

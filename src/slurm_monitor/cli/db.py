@@ -4,6 +4,10 @@ from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.app_settings import AppSettings
 import slurm_monitor.db_operations as db_ops
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 def get_db_status(db_uri):
     from sqlalchemy import inspect, create_engine
 
@@ -23,6 +27,7 @@ def get_db_schema(db):
         schema[table_name] = {x.name: x for x in table.columns}
     return schema
 
+
 def print_status(schema, status, diff: bool = False):
         if diff:
             print("Tables (Diff)")
@@ -33,6 +38,7 @@ def print_status(schema, status, diff: bool = False):
             prefix = "  "
             add_columns = []
             remove_columns = []
+            modify_columns = {}
 
             if table not in schema:
                 prefix = "!-"
@@ -41,7 +47,24 @@ def print_status(schema, status, diff: bool = False):
                 add_columns = columns_in_schema - set(columns.keys())
                 remove_columns = set(columns.keys()) - columns_in_schema
 
-            if diff and not (add_columns or remove_columns or table not in schema):
+                for column in columns_in_schema:
+                    if column in add_columns or column in remove_columns:
+                        continue
+
+                    for attribute in ['comment']:
+                        attribute_in_db = status[table][column][attribute]
+                        attribute_in_schema = getattr(schema[table][column], attribute)
+
+                        if attribute_in_db != attribute_in_schema:
+                            breakpoint()
+                            if column not in modify_columns:
+                                modify_columns[column] = [ attribute ]
+                            else:
+                                modify_columns[column].append(attribute)
+
+                            prefix = "!~"
+
+            if diff and not (add_columns or remove_columns or modify_columns or table not in schema):
                 continue
 
             print(f"{prefix}  {table}")
@@ -55,10 +78,17 @@ def print_status(schema, status, diff: bool = False):
                         continue
 
                 column = columns[column_name]
-                print(f"{c_prefix}      {column['name'].ljust(20)} {column['type']}")
+                if table in schema:
+                    comment = getattr(schema[table][column_name], 'comment')
+                else:
+                    comment = status[table][column_name]['comment']
+
+                if comment is not None:
+                    comment = comment.strip()
+                print(f"{c_prefix}      {column['name'].ljust(20)} {str(column['type']).ljust(20)} {comment}")
 
             for column_name in add_columns:
-                print(f"!+      {column_name.ljust(20)} {schema[table][column_name].type}")
+                print(f"!+      {column_name.ljust(20)} {str(schema[table][column_name].type).ljust(20)}")
 
 def apply_changes(db, schema, status):
     import sqlalchemy
@@ -73,7 +103,6 @@ def apply_changes(db, schema, status):
             continue
 
         for column_name in add_columns:
-
             column = schema[table][column_name]
             dialect_type = column.type.dialect_impl(db.engine.dialect).__visit_name__
             if dialect_type == "ARRAY":
@@ -88,14 +117,30 @@ def apply_changes(db, schema, status):
                     {typename} NULL DEFAULT NULL
             """
             alter_comment_stmt = f"""
-                    COMMENT ON COLUMN {table}.{column_name} IS '{comment}'
+                    COMMENT ON COLUMN {table}."{column_name}" IS '{comment}'
             """
-
             print(f"Adding column: {column_name.ljust(20)} {schema[table][column_name].type} with comment '{comment}'")
 
             with db.make_writeable_session() as session:
                 session.execute(sqlalchemy.text(alter_stmt))
                 session.execute(sqlalchemy.text(alter_comment_stmt))
+
+        for column in columns_in_schema:
+            if column in add_columns:
+                continue
+
+            # Ensure comments are update to date
+            for attribute in ['comment']:
+                attribute_in_db = status[table][column][attribute]
+                attribute_in_schema = getattr(schema[table][column], attribute)
+
+                if attribute_in_schema and attribute_in_db != attribute_in_schema:
+                    alter_attribute_stmt = f"""
+                            COMMENT ON COLUMN {table}."{column}" IS '{attribute_in_schema}'
+                    """
+                    logger.debug(alter_attribute_stmt)
+                    with db.make_writeable_session() as session:
+                        session.execute(sqlalchemy.text(alter_attribute_stmt))
 
 
 class DBParser(BaseParser):
@@ -151,7 +196,6 @@ class DBParser(BaseParser):
 
         app_settings.database.create_missing = args.apply_changes
         db = db_ops.get_database(app_settings)
-
 
         schema = get_db_schema(db)
         tables_in_schema = schema.keys()

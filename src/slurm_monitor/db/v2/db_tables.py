@@ -96,11 +96,11 @@ def Column(*args, **kwargs):
 
     comment = {}
     if "desc" in kwargs:
-        comment["desc"] = kwargs['desc']
+        comment["desc"] = kwargs['desc'].strip()
         del kwargs['desc']
 
     if "unit" in kwargs:
-        comment["unit"] = kwargs['unit']
+        comment["unit"] = kwargs['unit'].strip()
         del kwargs['unit']
 
     if comment:
@@ -400,6 +400,7 @@ class SysinfoAttributes(TableBase):
 
     memory = Column(BigInteger, desc="primary memory", unit="kilobyte")
     topo_svg = Column(Text, default=None, nullable=True)
+    topo_text = Column(Text, default=None, nullable=True)
 
     distances = Column(ARRAY(Integer), nullable=True)
 
@@ -433,9 +434,7 @@ class SysinfoSoftwareVersion(TableBase):
 
     __table_args__ = (
         ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
-        {
-            'info': { 'sonar_spec': 'SysinfoSoftwareVersion' }
-        }
+        {}
     )
 
 class SysinfoGpuCard(TableBase):
