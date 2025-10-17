@@ -1,5 +1,6 @@
 # from slurm_monitor.backend.worker import celery_app
 import asyncio
+import base64
 import datetime as dt
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response, FileResponse
@@ -203,8 +204,9 @@ async def nodes_nodename_topology(cluster: str, nodename: str):
     """
     dbi = db_ops.get_database()
     node_config = await dbi.get_nodes_sysinfo(cluster, nodename)
-    data = node_config[nodename].get('topo_svg', None)
-    if data:
+    encoded_data = node_config[nodename].get('topo_svg', None)
+    if encoded_data:
+        data = base64.b64decode(encoded_data).decode('utf-8')
         return Response(content=data, media_type="image/svg+xml")
     else:
         raise HTTPException(status_code=500,
@@ -811,7 +813,6 @@ async def queries(
                 status_code=404,
                 detail=f"Failed to execute query: '{query_name}' -- {e}"
         )
-
 
 @api_router.get("/benchmarks/{benchmark_name}")
 def benchmarks(benchmark_name: str = "lambdal"):
