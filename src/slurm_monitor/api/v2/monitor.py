@@ -815,14 +815,17 @@ async def queries(
                 detail=f"Failed to execute query: '{query_name}' -- {e}"
         )
 
-@api_router.get("/benchmarks/{benchmark_name}")
-def benchmarks(benchmark_name: str = "lambdal"):
+@api_router.get("/cluster/{cluster}/benchmarks/{benchmark_name}")
+def benchmarks(cluster: str, 
+        benchmark_name: str = "lambdal"):
     app_settings = AppSettings.initialize()
     if app_settings.data_dir is None:
+        logger.warning(f"No data directory set. Please set SLURM_MONITOR_DATA_DIR")
         return {}
 
-    path = Path(app_settings.data_dir) / f"{benchmark_name}-benchmark-results.csv"
+    path = Path(app_settings.data_dir) / cluster / f"{benchmark_name}-benchmark-results.csv"
     if not path.exists():
+        logger.warning(f"{cluster=}: could not find benchmarking results: {path=}")
         return {}
 
     df = pd.read_csv(str(path))
