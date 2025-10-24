@@ -160,7 +160,7 @@ def test_comments_from_spec(spec_table, db_schema_table, column, test_db_v2, db_
     spec = Specification()
 
     in_db_description = test_db_v2.get_column_description(db_schema_table, column)
-    spec_doc = spec[spec_table]['fields'][column]['doc']
+    spec_doc = spec[spec_table]['fields'][column]['doc'].strip()
 
     assert spec_doc == in_db_description
 
