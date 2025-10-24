@@ -683,7 +683,7 @@ class ClusterDB(Database):
             ) -> list[SysinfoAttributes]:
         """
         Retrieve the node configuration that is active at the given point in time
-        if not time is given, the current time (as of 'now') is used
+        if no time is given, the current time (as of 'now') is used
         """
         nodelist = nodes
         if nodes is None:
@@ -782,7 +782,9 @@ class ClusterDB(Database):
                 cluster=cluster,
                 nodes=nodelist,
                 time_in_s=time_in_s,
-                interval_in_s=interval_in_s
+                # ensure that sysinfo contains information about nodes, that 
+                # have been seen at least once in the past 14 days
+                interval_in_s=3600*24*14
         )
 
         nodes = [x.node for x in node_configs]
@@ -961,17 +963,26 @@ class ClusterDB(Database):
         return []
 
 
-    async def get_last_probe_timestamp(self, cluster: str) -> Awaitable[dict[str, dt.datetime | None]]:
+    async def get_last_probe_timestamp(self,
+            cluster: str,
+            time_in_s: int | None = None,
+            interval_in_s: int | None = DEFAULT_HISTORY_INTERVAL_IN_S
+            ) -> Awaitable[dict[str, dt.datetime | None]]:
         """
         Get the timestamp of the lastest sample for all nodes in this cluster
         """
-        nodes = await self.get_nodes(cluster=cluster)
+        if not time_in_s:
+            time_in_s = utcnow().timestamp()
+
+        nodes = await self.get_nodes(cluster=cluster,
+                time_in_s=time_in_s)
 
         query = select(
                      SampleProcess.node,
                      func.max(SampleProcess.time).label('max_time')
                    ).where(
-                     SampleProcess.cluster == cluster
+                     (SampleProcess.cluster == cluster) &
+                     (SampleProcess.time >= fromtimestamp(time_in_s - interval_in_s))
                    ).group_by(
                      SampleProcess.node
                    )
@@ -979,14 +990,12 @@ class ClusterDB(Database):
         async with self.make_async_session() as session:
             timestamps = (await session.execute(query)).all()
             if timestamps:
-                # result:
-                #   list of tuple - (node, max_timestamp)
-                #   merge into a single dictionary
                 timestamps = {x[0]: x[1] for x in timestamps}
 
                 unseen = set(nodes) - set(timestamps.keys())
                 for n in unseen:
                     timestamps[n] = None
+                logger.info(f"last timestamps: {timestamps}")
                 return timestamps
 
         return {}

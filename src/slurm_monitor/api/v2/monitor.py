@@ -217,7 +217,8 @@ async def nodes_nodename_topology(cluster: str, nodename: str):
         summary="Get the timestamp of the last message received for each node in the given cluster",
         tags=["cluster"],
         response_model=dict[str, dt.datetime | None])
-async def nodes_last_probe_timestamp(cluster: str):
+async def nodes_last_probe_timestamp(cluster: str, 
+        time_in_s: int = None):
     """
     Retrieve the last known timestamps of records added for nodes in the cluster
 
@@ -225,7 +226,7 @@ async def nodes_last_probe_timestamp(cluster: str):
     In this case the node has probably no probe, i.e. sonar daemon running.
     """
     dbi = db_ops.get_database()
-    return await dbi.get_last_probe_timestamp(cluster=cluster)
+    return await dbi.get_last_probe_timestamp(cluster=cluster, time_in_s=time_in_s)
 
 
 @api_router.get("/cluster/{cluster}/nodes/{nodename}/process/gpu/util",
