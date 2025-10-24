@@ -150,7 +150,7 @@ async def prefetch_data():
 
     # Run the garbage collection explicitly to avoid
     # early memory exhaustion
-    logger.degug("Running gc")
+    logger.debug("Running gc")
     gc.collect()
     logger.debug(f"Done running gc, post stats: {gc.get_stats()}")
 
