@@ -20,7 +20,9 @@ class ListenParser(BaseParser):
                 nargs="+",
                 type=str,
                 default=None,
-                help="Topic name(s) - if given, cluster-name has no relevance"
+                help="Topic name(s) - if given, cluster-name has no relevance " \
+                        "can be used with lower and upper offset bounds <topic-name>:<lb-offset-<ub-offset>" \
+                        " after reached the upper bound, processing will be stopped for the topic"
         )
 
         parser.add_argument("--verbose",
@@ -64,7 +66,7 @@ class ListenParser(BaseParser):
             main(host=args.host,
                 port=args.port,
                 database=database,
-                topic=args.topic,
+                topics=args.topic,
                 cluster_name=args.cluster_name,
                 verbose=args.verbose,
             )

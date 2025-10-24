@@ -83,7 +83,6 @@ def expand_node_names(names: str) -> list[str]:
 
 
 class DBJsonImporter:
-
     db: ClusterDB
     def __init__(self, db: ClusterDB):
         self.db = db
@@ -111,19 +110,27 @@ class DBJsonImporter:
 
     @classmethod
     def parse(cls, message: dict[str, any]):
+        """
+        Parse a message a trigger parsing according to the respective message type
+
+        Will call DBJsonImporter.parse_<msgtype> function to handle a message.
+        """
         msg = DBJsonImporter.to_message(message)
 
         msg_type = "errors"
         if msg.errors is None:
             msg_type = msg.data.type
         if not hasattr(cls, f"parse_{msg_type}"):
-            raise NotImplementedError(f"No parser for message type: {msg_type} implemented")
+            raise NotImplementedError(f"DBJsonImporter.parse: no parser for message type: {msg_type} implemented")
         parser_fn = getattr(cls, f"parse_{msg_type}")
         return parser_fn(msg)
 
 
     @classmethod
     def parse_sysinfo(cls, msg: Message) -> list[TableBase | list[TableBase]]:
+        """
+        Parse messages of type 'sysinfo'
+        """
         attributes = msg.data.attributes
         cluster = attributes.get('cluster', '')
         node = attributes['node']
@@ -187,6 +194,9 @@ class DBJsonImporter:
 
     @classmethod
     def parse_sample(cls, msg: Message) -> list[TableBase | list[TableBase]]:
+        """
+        Parse messages of type 'sample'
+        """
         attributes = msg.data.attributes
         time = dt.datetime.fromisoformat(attributes["time"])
         del attributes['time']
@@ -263,6 +273,9 @@ class DBJsonImporter:
 
     @classmethod
     def parse_cluster(cls, msg: Message) -> list[TableBase | list[TableBase]]:
+        """
+        Parse messages of type 'cluster'
+        """
         attributes = msg.data.attributes
         cluster_id = attributes.get('cluster', '')
         slurm = attributes['slurm']
@@ -313,6 +326,9 @@ class DBJsonImporter:
 
     @classmethod
     def parse_job(cls, msg: Message) -> list[TableBase | list[TableBase]]:
+        """
+        Parse messages of type 'job'
+        """
         attributes = msg.data.attributes
         cluster = attributes.get('cluster', '')
         slurm_jobs = attributes['slurm_jobs']
@@ -351,6 +367,9 @@ class DBJsonImporter:
 
     @classmethod
     def parse_errors(cls, msg: Message) -> list[TableBase | list[TableBase]]:
+        """
+        Parse messages of type 'errors'
+        """
         error_messages = []
         for error in msg.errors:
             error_messages.append(ErrorMessage(**error))
@@ -371,11 +390,20 @@ class DBJsonImporter:
 def main(*,
         host: str, port: int,
         cluster_name: str,
-        topic: list[str] | None,
+        topics: str | list[str] | None,
         database: ClusterDB | None = None,
         retry_timeout_in_s: int = 5,
         verbose: bool = False,
         ):
+    """
+    Set up a kafka consumer that subscribes to a list of topics
+
+    Note that a topic can be defined with a lower bound and and upper bound offset, e.g., as "<topic_name>:<lb-offset>-<ub-offset>.
+    When an offset is define, the consumption of messages will stop as soon for that given topic.
+    """
+
+    if type(topics) == str:
+        topics = [topics]
 
     msg_handler = None
     if database:
@@ -383,30 +411,64 @@ def main(*,
     else:
         print("No database specified. Will only run in plain listen mode")
 
-    if topic:
-        topics = topic.split(",")
-    else:
+    topic_lb = {}
+    topic_ub = {}
+    if not topics:
         topics = [f"{cluster_name}.{x}" for x in ['cluster', 'job', 'sample', 'sysinfo']]
+    else:
+        processed_topics = []
+        for t in topics:
+            m = re.match(r"^([^-:]+)(:[0-9]+)?(-[0-9]+)?",t)
+            if m:
+                topic = m.groups()[0]
+                processed_topics.append(topic)
+                for g in m.groups()[1:]:
+                    if not g:
+                        continue
+
+                    if g.startswith(":"):
+                        topic_lb[topic] = int(g[1:])
+                    elif g.startswith("-"):
+                        topic_ub[topic] = int(g[1:])
+        topics = processed_topics
 
     while True:
         try:
             # https://kafka-python.readthedocs.io/en/master/apidoc/KafkaConsumer.html
             logger.info(f"Subscribing to topics: {topics}")
-            consumer = KafkaConsumer(
-                        *topics,
-                        bootstrap_servers=f"{host}:{port}",
-                        max_poll_records=1000,
-                        fetch_max_bytes=200*1024**2,
-                        max_partition_fetch_bytes=200*1024**2,
-                        )
-            start_time = dt.datetime.now(dt.timezone.utc)
+            if not topic_lb:
+                consumer = KafkaConsumer(
+                            *topics,
+                            bootstrap_servers=f"{host}:{port}",
+                            max_poll_records=1000,
+                            fetch_max_bytes=200*1024**2,
+                            max_partition_fetch_bytes=200*1024**2,
+                            )
+            else:
+                consumer = KafkaConsumer(
+                            bootstrap_servers=f"{host}:{port}",
+                            max_poll_records=1000,
+                            fetch_max_bytes=200*1024**2,
+                            max_partition_fetch_bytes=200*1024**2,
+                            )
 
-            while True:
+            start_time = dt.datetime.now(dt.timezone.utc)
+            for topic, lb in topic_lb.items():
+                consumer.assign([TopicPartition(topic, 0)])
+                consumer.seek(TopicPartition(topic, 0), lb)
+
+            while topics:
                 interval_start_time = dt.datetime.now(dt.timezone.utc)
                 for idx, consumer_record in enumerate(consumer, 1):
                     try:
                         if msg_handler:
                             topic = consumer_record.topic
+                            if topic in topics and topic in topic_ub:
+                                ub = topic_ub[topic]
+                                if consumer_record.offset >= ub:
+                                    print(f"Partition: {topic.ljust(25)} -- upper bound reached: {ub}, pausing: {topic}")
+                                    consumer.pause([TopicPartition(topic, 0)])
+                                    topics.remove(topic)
 
                             msg = consumer_record.value.decode("UTF-8")
                             if verbose:
@@ -436,15 +498,13 @@ def main(*,
                             for topic in topics:
                                 tp = TopicPartition(topic, 0)
                                 current_pos = consumer.position(tp)
+
                                 highwater = consumer.highwater(tp)
                                 print(f"Partition: {topic.ljust(25)} -- {current_pos} / {highwater}")
 
                     except Exception as e:
                         tb.print_tb(e.__traceback__)
                         logger.warning(f"Message processing failed: {e}")
-
-
-
         except TimeoutError:
             raise
         except Exception as e:
