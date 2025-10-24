@@ -15,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
 import traceback
 import asyncio
+import gc
 
 
 from slurm_monitor.app_settings import AppSettings
@@ -147,6 +148,11 @@ async def prefetch_data():
 
     logger.info("Prefetching done")
 
+    # Run the garbage collection explicitly to avoid
+    # early memory exhaustion
+    logger.degug("Running gc")
+    gc.collect()
+    logger.debug(f"Done running gc, post stats: {gc.get_stats()}")
 
 # Serve API. We want the API to take full charge of its prefix, not involve the SPA mount
 # at all, hence we use a submount rather than subrouter.
