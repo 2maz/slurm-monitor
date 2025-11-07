@@ -1,31 +1,16 @@
-import os
 from collections.abc import Awaitable
 import datetime as dt
-from pydantic import BaseModel
-from sqlalchemy.orm import sessionmaker
-from contextlib import contextmanager, asynccontextmanager
 import sqlalchemy
-from sqlalchemy.engine.url import URL, make_url
 from sqlalchemy import (
         distinct,
         Integer,
-        MetaData,
-        create_engine,
-        event,
         func,
         select,
-        text,
-)
-from sqlalchemy.ext.asyncio import (
-        AsyncSession,
-        async_sessionmaker,
-        create_async_engine,
 )
 import time
 from tqdm import tqdm
 import logging
 
-from slurm_monitor.db.v2.validation import Specification
 from slurm_monitor.utils import utcnow, fromtimestamp
 from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.utils.cache import ttl_cache_async
@@ -37,6 +22,7 @@ from slurm_monitor.api.v2.response_models import (
     ErrorMessageResponse,
     GpusProcessTimeSeriesResponse,
     JobNodeSampleProcessGpuTimeseriesResponse,
+    JobReport,
     JobResponse,
     JobSpecificTimeseriesResponse,
     SampleGpuBaseResponse,
@@ -47,9 +33,7 @@ from slurm_monitor.api.v2.response_models import (
 
 from slurm_monitor.db.v2.db_base import (
     Database,
-    DatabaseSettings,
     DEFAULT_HISTORY_INTERVAL_IN_S,
-    INTERVAL_1WEEK,
     INTERVAL_2WEEKS,
 )
 
@@ -69,7 +53,6 @@ from .db_tables import (
     SysinfoAttributes,
     SysinfoGpuCard,
     SysinfoGpuCardConfig,
-    TableBase,
     time_bucket
 )
 
@@ -380,7 +363,7 @@ class ClusterDB(Database):
         """
         Get the list of partitions per node
         """
-        if type(nodes) == str:
+        if type(nodes) is str:
             nodes = [nodes]
 
         if not time_in_s:
@@ -469,7 +452,7 @@ class ClusterDB(Database):
 
         if not nodes:
             nodes = await self.get_nodes(cluster=cluster, time_in_s=time_in_s)
-        elif type(nodes) == str:
+        elif type(nodes) is str:
             nodes = [nodes]
 
         where_timeframe = (SampleSlurmJob.time <= fromtimestamp(time_in_s)) \
@@ -555,7 +538,7 @@ class ClusterDB(Database):
         nodelist = nodes
         if nodes is None:
             nodelist = await self.get_nodes(cluster=cluster)
-        elif type(nodes) == str:
+        elif type(nodes) is str:
             nodelist = [nodes]
 
         try:
@@ -649,7 +632,7 @@ class ClusterDB(Database):
                 cluster=cluster,
                 nodes=nodelist,
                 time_in_s=time_in_s,
-                # ensure that sysinfo contains information about nodes, that 
+                # ensure that sysinfo contains information about nodes, that
                 # have been seen at least once in the past 14 days
                 interval_in_s=3600*24*14
         )
@@ -701,7 +684,7 @@ class ClusterDB(Database):
 
         where = (NodeState.cluster == cluster)
         if nodelist:
-            if type(nodelist) == str:
+            if type(nodelist) is str:
                 nodelist = [nodelist]
 
             where &= NodeState.node.in_(nodelist)
@@ -754,7 +737,7 @@ class ClusterDB(Database):
                     time_in_s=time_in_s,
                     interval_in_s=interval_in_s
             )
-        elif type(node) == str:
+        elif type(node) is str:
             nodelist = [node]
 
         try:
@@ -1942,4 +1925,75 @@ class ClusterDB(Database):
                 samples.append(new_sample)
 
             return samples
+
+    async def get_job_report(
+        self,
+        cluster: str,
+        job_id: int,
+        time_in_s: int | None = None,
+        interval_in_s: int = INTERVAL_2WEEKS
+    ) -> Awaitable[dict[str, dict[str, float]]]:
+        if time_in_s is None:
+            time_in_s = utcnow().timestamp()
+
+        job = await self.get_job(cluster=cluster,
+                job_id=job_id,
+                epoch=0,
+                start_time_in_s=time_in_s-interval_in_s,
+                end_time_in_s=time_in_s,
+                states=["RUNNING", "COMPLETED"]
+        )
+
+        #job_query = select(
+        #    SampleSlurmJob
+        #).where(
+        #    (SampleSlurmJob.cluster == cluster),
+        #    (SampleSlurmJob.job_id == job),
+        #    (SampleSlurmJob.time >= fromtimestamp(time_in_s - interval_in_s)),
+        #    (SampleSlurmJob.job_state.in_(["RUNNING", "COMPLETED"]))
+        #).order_by(
+        #    SampleSlurmJob.time.desc()
+        #).limit(1)
+
+        report = JobReport()
+        async with self.make_async_session() as session:
+            attributes = ["resident_memory", "virtual_memory", "cpu_util", "num_threads",
+                    "cpu_avg", "cpu_util", "data_read", "data_written", "data_cancelled"]
+
+            select_args = []
+            for attr in attributes:
+                field = getattr(SampleProcess, attr)
+                select_args.append(func.avg(field))
+                select_args.append(func.stddev(field))
+
+            job_process_query = select(
+                *select_args
+            ).where(
+                (SampleProcess.cluster == cluster),
+                (SampleProcess.job == job.job_id),
+                (SampleProcess.time >= job.start_time),
+                #(SampleProcess.time <= job.end_time)
+            )
+
+            job_process = (await session.execute(job_process_query)).all()
+            if job_process:
+                data = job_process[0]
+
+                idx = 0
+                for attribute in attributes:
+                    setattr(report, attribute, { 'mean': data[idx], 'stddev': data[idx+1] })
+                    idx += 2
+
+                report.requested_cpus = job.requested_cpus
+                report.requested_memory_per_node = job.requested_memory_per_node
+                if job.sacct:
+                    report.requested_cpus = job.sacct.AllocTRES.cpu
+                    report.requested_gpus = job.sacct.AllocTRES.gpu
+
+                report.nodes = job.nodes
+                report.used_gpu_uuids = job.used_gpu_uuids
+
+            report.generate()
+
+        return report
 #### END JOBS #####################################################################

@@ -217,7 +217,7 @@ async def nodes_nodename_topology(cluster: str, nodename: str):
         summary="Get the timestamp of the last message received for each node in the given cluster",
         tags=["cluster"],
         response_model=dict[str, dt.datetime | None])
-async def nodes_last_probe_timestamp(cluster: str, 
+async def nodes_last_probe_timestamp(cluster: str,
         time_in_s: int = None):
     """
     Retrieve the last known timestamps of records added for nodes in the cluster
@@ -653,6 +653,23 @@ async def job_status(
                 states=job_states
     )
 
+@api_router.get("/cluster/{cluster}/jobs/{job_id}/report",
+        summary="Get a report on stats for the current job",
+        tags=["job"],
+        response_model=JobResponse
+)
+async def job_report(
+    cluster: str,
+    job_id: int,
+    time_in_s: float | None = None
+    ):
+    dbi = db_ops.get_database()
+    return await dbi.get_job_report(
+            cluster=cluster,
+            job=job_id,
+            time_in_s=time_in_s
+    )
+
 @api_router.get("/cluster/{cluster}/jobs/query",
         summary="Provides a generic job query interface",
         tags=["cluster"],
@@ -816,11 +833,11 @@ async def queries(
         )
 
 @api_router.get("/cluster/{cluster}/benchmarks/{benchmark_name}")
-def benchmarks(cluster: str, 
+def benchmarks(cluster: str,
         benchmark_name: str = "lambdal"):
     app_settings = AppSettings.initialize()
     if app_settings.data_dir is None:
-        logger.warning(f"No data directory set. Please set SLURM_MONITOR_DATA_DIR")
+        logger.warning("No data directory set. Please set SLURM_MONITOR_DATA_DIR")
         return {}
 
     path = Path(app_settings.data_dir) / cluster / f"{benchmark_name}-benchmark-results.csv"

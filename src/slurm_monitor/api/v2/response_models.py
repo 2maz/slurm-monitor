@@ -494,3 +494,53 @@ class AllocTRES(BaseModel):
         self.gpu += other.gpu
         self.node += other.node
         self.billing += other.billing
+
+class JobReport(BaseModel):
+    cpu_avg: dict[str, float] = Field(description="The mean + stddev for cpu_avg", default={})
+    cpu_util: dict[str, float] = Field(description="The mean + stddev for cpu_util", default={})
+
+    resident_memory: dict[str, float] = Field(description="The mean + stddev for resident_memory in KiB", default={})
+    virtual_memory: dict[str, float] = Field(description="The mean + stddev for virtual_memory in KiB", default={})
+
+    num_threads: dict[str, float] = Field(description="The mean + stddev for number of threads", default={})
+
+    data_read: dict[str, float] = Field(description="The mean + stddev", default={})
+    data_written: dict[str, float] = Field(description="The mean + stddev", default={})
+    data_cancelled: dict[str, float] = Field(description="The mean + stddev", default={})
+
+    requested_cpus: int = Field(description="Requested cpus", default=0)
+    requested_memory_per_node: int = Field(description="Requested memory per node in KiB", default=0)
+    requested_gpus: int = Field(description="Requested gpus", default=0)
+
+    used_gpu_uuids: list[str] = Field(description="List of used gpus (by uuid)", default=[])
+    nodes: list[str] = Field(description="List of used nodes", default=[])
+
+    warnings: list[str] = Field(description="List of warnings", default=[])
+
+
+    def get_max(self, field):
+        mean = 0
+        stddev = 0
+        data = getattr(self, field)
+        if 'mean' in data:
+            mean = data['mean']
+        if 'stddev' in data:
+            stddev = data['stddev']
+
+        return mean + stddev
+
+    def generate(self):
+        warnings = []
+        cpu_max = self.get_max("cpu_util") / 100
+        if self.requested_cpus < cpu_max:
+            warnings.append(f"CPU threshold exceeded: requested cpus: {self.requested_cpus}, but actual max encountered: {cpu_max:.2f} cpus")
+
+        if self.requested_gpus < len(self.used_gpu_uuids):
+            warnings.append(f"GPU threshold exceeded: requested gpus: {self.requested_gpus}, but actual  usage of: {len(self.used_gpu_uuids)} gpus (uuids: {self.used_gpu_uuids})")
+
+        memory_max = self.get_max("virtual_memory")
+        requested_memory = self.requested_memory_per_node*len(self.nodes)
+        if  requested_memory < memory_max:
+            warnings.append(f"Memory threshold exceeded: requested memory (total): {requested_memory:.2f} KiB, but actual usage of: {memory_max:.2f} KiB")
+
+        self.warnings = warnings
