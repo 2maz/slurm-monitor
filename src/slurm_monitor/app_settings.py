@@ -33,6 +33,6 @@ class AppSettings(BaseSettings):
     @classmethod
     def initialize(cls) -> AppSettings:
         cls._instance = AppSettings()
-        if cls._instance.data_dir: 
+        if cls._instance.data_dir:
             cls._instance.data_dir = str(Path(cls._instance.data_dir).resolve())
         return cls._instance

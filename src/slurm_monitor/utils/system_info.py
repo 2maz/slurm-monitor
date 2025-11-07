@@ -86,7 +86,7 @@ class SystemInfo:
         mlflow.log_param("SYSTEM_INFO__ARGV", sys.argv)
         mlflow.log_param("SYSTEM_INFO__CWD", os.getcwd())
 
-        if args and type(args) == argparse.Namespace:
+        if args and type(args) is argparse.Namespace:
             arguments = {f"ARG__{x}": getattr(args, x) for x in args.__dict__}
             mlflow.log_params(arguments)
 

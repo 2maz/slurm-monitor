@@ -12,14 +12,14 @@ def hashkey_generator(*args, **kwargs):
     # Make the result instance independant
     # so ignore (self) in the hashing
     for x in args[1:]:
-        if type(x) == list or type(x) == set:
+        if type(x) is list or type(x) is set:
             updated_args.append(hash(tuple(sorted(x))))
         else:
             updated_args.append(x)
 
     updated_kwargs = {}
     for k,v in kwargs.items():
-        if type(v) == list or type(v) == set:
+        if type(v) is list or type(v) is set:
             updated_kwargs[k] = hash(tuple(sorted(v)))
         else:
             updated_kwargs[k] = v
