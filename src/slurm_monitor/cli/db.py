@@ -1,10 +1,10 @@
 from argparse import ArgumentParser
+import logging
+import re
 
 from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.app_settings import AppSettings
 import slurm_monitor.db_operations as db_ops
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,6 @@ def print_status(schema, status, diff: bool = False):
                         attribute_in_schema = getattr(schema[table][column], attribute)
 
                         if attribute_in_db != attribute_in_schema:
-                            breakpoint()
                             if column not in modify_columns:
                                 modify_columns[column] = [ attribute ]
                             else:
@@ -78,6 +77,7 @@ def print_status(schema, status, diff: bool = False):
                         continue
 
                 column = columns[column_name]
+
                 if table in schema:
                     comment = getattr(schema[table][column_name], 'comment')
                 else:
@@ -88,11 +88,13 @@ def print_status(schema, status, diff: bool = False):
                 print(f"{c_prefix}      {column['name'].ljust(20)} {str(column['type']).ljust(20)} {comment}")
 
             for column_name in add_columns:
-                print(f"!+      {column_name.ljust(20)} {str(schema[table][column_name].type).ljust(20)}")
+                schema_column = schema[table][column_name]
+                print(f"!+      {column_name.ljust(20)} {str(schema_column.type).ljust(20)} {schema_column.comment}")
 
 def apply_changes(db, schema, status):
     import sqlalchemy
 
+    added_columns = []
     for table, columns in status.items():
         add_columns = []
 
@@ -104,14 +106,21 @@ def apply_changes(db, schema, status):
 
         for column_name in add_columns:
             column = schema[table][column_name]
+
             dialect_type = column.type.dialect_impl(db.engine.dialect).__visit_name__
             if dialect_type == "ARRAY":
                 item_type = column.type.item_type.dialect_impl(db.engine.dialect).__visit_name__
                 typename = f"{item_type}[]"
+            elif dialect_type == "string":
+                typename = str(column.type)
             else:
                 typename = dialect_type
 
+            # escape quotes (ensure only single quote is used)
             comment = column.comment.strip()
+            comment = re.sub("'{2,}","'", comment)
+            comment = re.sub("'","''", comment)
+
             alter_stmt = f"""
                     ALTER TABLE {table} ADD COLUMN {column_name}
                     {typename} NULL DEFAULT NULL
@@ -125,6 +134,8 @@ def apply_changes(db, schema, status):
                 session.execute(sqlalchemy.text(alter_stmt))
                 session.execute(sqlalchemy.text(alter_comment_stmt))
 
+            added_columns.append(f"{table}.{column_name}")
+
         for column in columns_in_schema:
             if column in add_columns:
                 continue
@@ -135,12 +146,17 @@ def apply_changes(db, schema, status):
                 attribute_in_schema = getattr(schema[table][column], attribute)
 
                 if attribute_in_schema and attribute_in_db != attribute_in_schema:
+                    attribute_in_schema = re.sub("'{2,}","'", attribute_in_schema)
+                    attribute_in_schema = re.sub("'","''", attribute_in_schema)
+
                     alter_attribute_stmt = f"""
                             COMMENT ON COLUMN {table}."{column}" IS '{attribute_in_schema}'
                     """
                     logger.debug(alter_attribute_stmt)
                     with db.make_writeable_session() as session:
                         session.execute(sqlalchemy.text(alter_attribute_stmt))
+
+        return added_columns
 
 
 class DBParser(BaseParser):

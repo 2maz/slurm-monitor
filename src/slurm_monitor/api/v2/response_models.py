@@ -115,11 +115,16 @@ class JobResponse(TimestampedModel):
     priority: int
     distribution: str
 
-    gres_detail: list[str] | None = Field(default=None, description="List of general resources details")
+    gres_detail: list[str] | None = Field(default=None, description="DEPRECATED: List of general resources details - use requested_resources and allocated_resources")
+    requested_resources: str | None = Field(default=None, description="List of general resources requested")
+    allocated_resources: str | None = Field(default=None, description="List of general resources allocated")
+
+
     requested_cpus: int = Field(description="Number of requested CPUs")
-    requested_memory_per_node: int = Field(description="Requested memory in bytes per node")
+    requested_memory_per_node: int = Field(description="Requested memory in kilobytes per node")
     requested_node_count: int = Field(description="Requested number of nodes")
-    minimum_cpus_per_node: int = Field(description="Minimum required CPUs per node")
+
+    minimum_cpus_per_node: int | None = Field(default=None, description="DEPRECATED: Minimum required CPUs per node, use requested_cpus")
 
     # computed field: list of the actually used GPU uuids
     #    what can be oberved in the process data)
