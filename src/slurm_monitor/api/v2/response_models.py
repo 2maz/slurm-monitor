@@ -519,21 +519,29 @@ class JobReport(BaseModel):
 
 
     def get_max(self, field):
-        mean = 0
-        stddev = 0
+        data = getattr(self, field)
+        if 'max' in data:
+            return data['max']
+
+        raise ValueError(f"Missing max value for '{field}'")
+
+    def get_mean(self, field):
         data = getattr(self, field)
         if 'mean' in data:
-            mean = data['mean']
-        if 'stddev' in data:
-            stddev = data['stddev']
+            return data['mean']
 
-        return mean + stddev
+        raise ValueError(f"Missing mean value for '{field}'")
 
     def generate(self):
         warnings = []
-        cpu_max = self.get_max("cpu_util") / 100
-        if self.requested_cpus < cpu_max:
+        cpu_max = self.get_max("cpu_util")/100
+        cpu_mean = self.get_mean("cpu_util")/100
+
+        if cpu_max > self.requested_cpus*1.2:
             warnings.append(f"CPU threshold exceeded: requested cpus: {self.requested_cpus}, but actual max encountered: {cpu_max:.2f} cpus")
+
+        if self.requested_cpus > cpu_mean*1.5:
+            warnings.append(f"CPU allocation excessive: requested cpus: {self.requested_cpus}, but actual avg use encountered: {cpu_mean:.2f} cpus")
 
         if self.requested_gpus < len(self.used_gpu_uuids):
             warnings.append(f"GPU threshold exceeded: requested gpus: {self.requested_gpus}, but actual  usage of: {len(self.used_gpu_uuids)} gpus (uuids: {self.used_gpu_uuids})")

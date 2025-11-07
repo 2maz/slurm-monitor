@@ -17,6 +17,7 @@ from slurm_monitor.utils.cache import ttl_cache_async
 from slurm_monitor.db.v2.queries import (
         PartitionsQuery
 )
+
 from slurm_monitor.api.v2.response_models import (
     AllocTRES,
     ErrorMessageResponse,
@@ -37,6 +38,7 @@ from slurm_monitor.db.v2.db_base import (
     INTERVAL_2WEEKS,
 )
 
+from .db_base import DatabaseSettings # noqa
 from .db_tables import (
     Cluster,
     EpochFn,
@@ -404,7 +406,7 @@ class ClusterDB(Database):
         )
         start = time.time()
         result = await query.execute_async()
-        print(f"new ELAPSED: {time.time() - start}")
+        logger.debug(f"get_partitions_base: query executed in {time.time() - start} s")
         return result.to_dict(orient="records")
 
         #where = Partition.cluster == cluster
@@ -1957,32 +1959,49 @@ class ClusterDB(Database):
 
         report = JobReport()
         async with self.make_async_session() as session:
-            attributes = ["resident_memory", "virtual_memory", "cpu_util", "num_threads",
-                    "cpu_avg", "cpu_util", "data_read", "data_written", "data_cancelled"]
+            attributes = ["resident_memory", "virtual_memory", 
+                          "cpu_util", 
+                          "num_threads",
+                          "data_read", "data_written", "data_cancelled"]
 
             select_args = []
             for attr in attributes:
                 field = getattr(SampleProcess, attr)
-                select_args.append(func.avg(field))
-                select_args.append(func.stddev(field))
+                select_args.append(func.sum(field).label(f"sum_{attr}"))
+
+            subquery = select(
+                    *select_args
+                ).where(
+                    (SampleProcess.cluster == cluster),
+                    (SampleProcess.job == job.job_id),
+                    (SampleProcess.time >= job.start_time),
+                ).group_by(
+                    SampleProcess.time
+                ).subquery()
+
+            select_args = []
+            for attr in attributes:
+                field = getattr(SampleProcess, attr)
+                select_args.append(func.max(getattr(subquery.c, f"sum_{attr}")).label(f"max_{attr}"))
+                select_args.append(func.min(getattr(subquery.c, f"sum_{attr}")).label(f"min_{attr}"))
+                select_args.append(func.avg(getattr(subquery.c, f"sum_{attr}")).label(f"avg_{attr}"))
+                select_args.append(func.stddev(getattr(subquery.c, f"sum_{attr}")).label(f"stddev_{attr}"))
 
             job_process_query = select(
                 *select_args
-            ).where(
-                (SampleProcess.cluster == cluster),
-                (SampleProcess.job == job.job_id),
-                (SampleProcess.time >= job.start_time),
-                #(SampleProcess.time <= job.end_time)
+            ).select_from(
+                subquery
             )
 
             job_process = (await session.execute(job_process_query)).all()
+
             if job_process:
                 data = job_process[0]
 
                 idx = 0
                 for attribute in attributes:
-                    setattr(report, attribute, { 'mean': data[idx], 'stddev': data[idx+1] })
-                    idx += 2
+                    setattr(report, attribute, { 'max': data[idx], 'min': data[idx+1], 'mean': data[idx+2], 'stddev': data[idx+3] })
+                    idx += 4
 
                 report.requested_cpus = job.requested_cpus
                 report.requested_memory_per_node = job.requested_memory_per_node

@@ -20,6 +20,7 @@ from .response_models import (
     JobResponse,
     PartitionResponse,
     JobsResponse,
+    JobReport,
     SampleProcessAccResponse,
     NodeStateResponse,
     NodeInfoResponse,
@@ -656,7 +657,7 @@ async def job_status(
 @api_router.get("/cluster/{cluster}/jobs/{job_id}/report",
         summary="Get a report on stats for the current job",
         tags=["job"],
-        response_model=JobResponse
+        response_model=JobReport
 )
 async def job_report(
     cluster: str,
@@ -666,7 +667,7 @@ async def job_report(
     dbi = db_ops.get_database()
     return await dbi.get_job_report(
             cluster=cluster,
-            job=job_id,
+            job_id=job_id,
             time_in_s=time_in_s
     )
 
