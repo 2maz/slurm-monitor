@@ -142,8 +142,11 @@ async def prefetch_data():
     time_in_s = utcnow().timestamp()
     for cluster_data in clusters:
         cluster = cluster_data['cluster']
-        await nodes_sysinfo_endpoint(cluster=cluster, time_in_s=time_in_s)
-        await partitions_endpoint(cluster=cluster, time_in_s=time_in_s)
+
+        # DO NOT use a dynamic argument such as time_in_s, since that will
+        # prevent the caching to work
+        await nodes_sysinfo_endpoint(cluster=cluster, time_in_s=None)
+        await partitions_endpoint(cluster=cluster, time_in_s=None)
         await jobs_endpoint(cluster=cluster)
 
     logger.info("Prefetching done")

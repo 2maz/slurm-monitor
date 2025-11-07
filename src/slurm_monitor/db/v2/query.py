@@ -1,5 +1,5 @@
 from __future__ import annotations
-from slurm_monitor.db.v2.db import ClusterDB
+from slurm_monitor.db.v2.db_base import Database
 from typing import ClassVar, Awaitable
 import pandas as pd
 
@@ -10,10 +10,10 @@ from sqlalchemy import (
 class Query:
     statement: str = None
 
-    _db: ClusterDB
+    _db: Database
     _parameters: dict[str, str]
 
-    def __init__(self, db: ClusterDB, parameters: dict[str, str] = {}):
+    def __init__(self, db: Database, parameters: dict[str, str] = {}):
         self._db = db
         self._parameters = parameters
 
@@ -35,6 +35,16 @@ class Query:
         return await self._execute_async(text(self.statement), {})
 
 
+    def ensure_parameter(self, name):
+        """
+        Check if a parameter exist in the list of given parameters
+        """
+        if name  not in self._parameters:
+            raise ValueError(f"Missing '{param}' as parameter in query")
+
+        return self._parameters[name]
+
+
 class UserJobResults(Query):
     """
     Generate a query to output:
@@ -44,10 +54,7 @@ class UserJobResults(Query):
     """
     @property
     def statement(self):
-        if 'cluster'  not in self._parameters:
-            raise ValueError("Missing 'cluster' parameter in query")
-
-        cluster = self._parameters['cluster']
+        cluster = self.ensure_parameter('cluster')
 
         return f"""
         SELECT row_number() OVER(ORDER BY  user_name) as anon_user,
@@ -159,10 +166,8 @@ class PopularPartitionsByNumberOfJobs(Query):
     """
     @property
     def statement(self):
-        if 'cluster' not in self._parameters:
-            raise ValueError("Missing parameter 'cluster'")
+        cluster = self.ensure_parameter('cluster')
 
-        cluster = self._parameters['cluster']
         return f"""
         SELECT partition,
             COUNT(distinct user_name) as user_count,
@@ -195,7 +200,7 @@ class PopularPartitionsByNumberOfJobs(Query):
 
 
 class QueryMaker:
-    db: ClusterDB
+    db: Database
 
     _queries: ClassVar[dict[str, Query]] = {
             "user-job-results": UserJobResults,
@@ -204,7 +209,7 @@ class QueryMaker:
             "popular-partitions-by-number-of-jobs": PopularPartitionsByNumberOfJobs,
     }
 
-    def __init__(self, db: ClusterDB):
+    def __init__(self, db: Database):
         self.db = db
 
     def create(self, name: str, parameters: dict[str, any] = {}) -> Query:

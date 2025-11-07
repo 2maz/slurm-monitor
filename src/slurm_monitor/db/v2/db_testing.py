@@ -257,7 +257,8 @@ def create_test_db(
                                 requested_cpus = 10,
                                 requested_memory_per_node = 10*1024**2,
                                 requested_node_count=1,
-                                minimum_cpus_per_node=0,
+                                requested_resources="cpu=1,gres/gpu=1,mem=0,node=1",
+                                allocated_resources="cpu=1,gres/gpu=1,mem=0,node=1",
                                 time=sample_time
                             )
                     )

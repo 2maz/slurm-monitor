@@ -899,11 +899,19 @@ class SampleSlurmJob(TableBase):
     priority = Column(Xint)
     distribution = Column(String)
 
-    gres_detail = Column(ARRAY(String), nullable=True)
+    # deprecated: substituted by requested_resources and allocated_resources
+    gres_detail = Column(ARRAY(String), nullable=True, desc="Deprecated: use requested_resource and allocated_resources")
+
+    # GRES extraction
+    requested_resources = Column(String, nullable=True)
+    allocated_resources = Column(String, nullable=True)
+
     requested_cpus = Column(Integer)
     requested_memory_per_node = Column(Integer)
     requested_node_count = Column(Integer)
-    minimum_cpus_per_node = Column(Integer)
+
+    # deprecated: use requested_cpu
+    minimum_cpus_per_node = Column(Integer, desc="Deprecated: use requested_cpus", nullable=True)
 
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
@@ -917,7 +925,6 @@ class SampleSlurmJob(TableBase):
             'requested_cpus',
             'requested_memory_per_node',
             'requested_node_count',
-            'minimum_cpus_per_node',
             'suspend_time',
             'exit_code',
         ),

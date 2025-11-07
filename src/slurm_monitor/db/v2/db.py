@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import (
         async_sessionmaker,
         create_async_engine,
 )
+import time
 from tqdm import tqdm
 import logging
 
@@ -28,6 +29,9 @@ from slurm_monitor.db.v2.validation import Specification
 from slurm_monitor.utils import utcnow, fromtimestamp
 from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.utils.cache import ttl_cache_async
+from slurm_monitor.db.v2.queries import (
+        PartitionsQuery
+)
 from slurm_monitor.api.v2.response_models import (
     AllocTRES,
     ErrorMessageResponse,
@@ -39,6 +43,14 @@ from slurm_monitor.api.v2.response_models import (
     SampleGpuTimeseriesResponse,
     SampleProcessAccResponse,
     SampleProcessGpuAccResponse,
+)
+
+from slurm_monitor.db.v2.db_base import (
+    Database,
+    DatabaseSettings,
+    DEFAULT_HISTORY_INTERVAL_IN_S,
+    INTERVAL_1WEEK,
+    INTERVAL_2WEEKS,
 )
 
 from .db_tables import (
@@ -62,230 +74,6 @@ from .db_tables import (
 )
 
 logger = logging.getLogger(__name__)
-
-# For performance reasons using half day as default history interval
-DEFAULT_HISTORY_INTERVAL_IN_S = 3600*12
-
-def create_url(url_str: str, username: str | None, password: str | None) -> URL:
-    url = make_url(url_str)
-
-    if url.get_dialect().name != "sqlite":
-        assert url.username or username
-        assert url.password or password
-
-        url = url.set(
-            username=url.username or username, password=url.password or password
-        )
-    return url
-
-
-class DatabaseSettings(BaseModel):
-    user: str | None = None
-    password: str | None = None
-    uri: str = f"sqlite:///{os.environ['HOME']}/.slurm-monitor/slurm-monitor-db.sqlite"
-
-    create_missing: bool = True
-
-def _listify(obj_or_list):
-    return obj_or_list if isinstance(obj_or_list, (tuple, list)) else [obj_or_list]
-
-class Database:
-    def __init__(self, db_settings: DatabaseSettings):
-        db_url = self.db_url = create_url(
-            db_settings.uri, db_settings.user, db_settings.password
-        )
-
-        spec = Specification()
-        spec.augment(TableBase.metadata.tables)
-
-        engine_kwargs = {}
-        self.engine = create_engine(db_url, **engine_kwargs)
-        logger.info(
-            f"Database with dialect: '{db_url.get_dialect().name}' detected - uri: {db_settings.uri}."
-        )
-
-        if db_url.get_dialect().name == "timescaledb":
-            @event.listens_for(self.engine.pool, "connect")
-            def _set_sqlite_params(dbapi_connection, *args):
-                cursor = dbapi_connection.cursor()
-                cursor.execute("CREATE EXTENSION IF NOT EXISTS hstore;")
-                cursor.close()
-
-        self.session_factory = sessionmaker(self.engine, expire_on_commit=False)
-
-
-        self._metadata = MetaData()
-        self._metadata.tables = {}
-        self._metadata.bind = self.engine
-
-        for attr in dir(type(self)):
-            v = getattr(self, attr)
-            if isinstance(v, type) and issubclass(v, TableBase):
-                self._metadata.tables[v.__tablename__] = TableBase.metadata.tables[
-                    v.__tablename__
-                ]
-
-        if db_settings.create_missing:
-            self._metadata.create_all(self.engine)
-
-        async_db_url = db_url
-        if db_settings.uri.startswith("timescaledb://"):
-            async_db_url = create_url(
-                    db_settings.uri.replace("timescaledb:","timescaledb+asyncpg:"),
-                    db_settings.user,
-                    db_settings.password
-            )
-
-        self.async_engine = create_async_engine(async_db_url, pool_size=10, **engine_kwargs)
-        self.async_session_factory = async_sessionmaker(self.async_engine, expire_on_commit=False)
-
-        #from sqlalchemy_schemadisplay import create_schema_graph
-        ## create the pydot graph object by autoloading all tables via a bound metadata object
-        #graph = create_schema_graph(
-        #   engine=self.engine,
-        #   metadata=self._metadata,
-        #   show_datatypes=True, # The image would get nasty big if we'd show the datatypes
-        #   show_indexes=False, # ditto for indexes
-        #   rankdir='LR', # From left to right (instead of top to bottom)
-        #   concentrate=True # Don't try to join the relation lines together
-        #)
-        #graph.write_png('/tmp/dbschema.png') # write out the file
-
-    def get_column_description(self, table, column) -> str | None:
-        """
-        Get a table's column description aka comment
-
-        :return Column description or None
-        """
-        statement = f"""
-            SELECT description FROM pg_catalog.pg_description
-                WHERE objsubid = (
-                    SELECT ordinal_position FROM information_schema.columns
-                        WHERE table_name='{table}' AND column_name='{column}'
-                    )
-                    and objoid = (
-                        SELECT oid FROM pg_class WHERE relname='{table}' and relnamespace =
-                            (
-                                SELECT oid FROM pg_catalog.pg_namespace
-                                    WHERE nspname = 'public'
-                            )
-                    );
-        """
-        with self.make_session() as session:
-            result = session.execute(text(statement))
-            description = result.fetchall()
-            if description:
-                return description[0][0]
-            return None
-
-
-    def insert(self, db_obj):
-        with self.make_writeable_session() as session:
-            session.add_all(_listify(db_obj))
-
-    def insert_or_update(self, db_obj):
-        with self.make_writeable_session() as session:
-            for obj in _listify(db_obj):
-                session.merge(obj)
-
-    @contextmanager
-    def make_session(self):
-        session = self.session_factory()
-        try:
-            yield session
-            if session.deleted or session.dirty or session.new:
-                raise RuntimeError(
-                    "Found potentially modified state in a non-writable session"
-                )
-        except:
-            session.rollback()
-            raise
-        finally:
-            session.close()
-
-    @contextmanager
-    def make_writeable_session(self):
-        session = self.session_factory()
-        try:
-            yield session
-            session.commit()
-        except:
-            session.rollback()
-            raise
-        finally:
-            session.close()
-
-    @asynccontextmanager
-    async def make_async_session(self) -> AsyncSession:
-        session = self.async_session_factory()
-        try:
-            yield session
-            if session.deleted or session.dirty or session.new:
-                raise Exception(
-                    "Found potentially modified state in a non-writable session"
-                )
-        except:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
-
-    @asynccontextmanager
-    async def make_writeable_async_session(self) -> AsyncSession:
-        session = self.async_session_factory()
-        try:
-            yield session
-            await session.commit()
-        except:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
-
-    async def _fetch_async(self, db_cls,
-            where=None,
-            limit: int | None = None,
-            order_by=None,
-            _reduce=None, _unpack=True):
-        query = select(*_listify(db_cls))
-        if where is not None:
-            query = query.where(where)
-        if limit is not None:
-            query = query.limit(limit)
-        if order_by is not None:
-            query = query.order_by(order_by)
-
-        async with self.make_async_session() as session:
-            query_results = await session.execute(query)
-
-            result = [x for x in query_results.all()] if _reduce is None else _reduce(query_results)
-            if _unpack and not isinstance(db_cls, (tuple, list)):
-                result = [r[0] for r in result]
-
-            return result
-
-    async def fetch_all_async(self, db_cls, where=None, **kwargs):
-        return await self._fetch_async(db_cls, where=where, **kwargs)
-
-    async def fetch_first_async(self, db_cls, where=None, order_by=None):
-        query = select(*_listify(db_cls))
-        if where is not None:
-            query = query.where(where)
-        if order_by is not None:
-            query = query.order_by(order_by)
-
-        query = query.limit(1)
-
-        async with self.make_async_session() as session:
-            results = [x[0] for x in await session.execute(query)]
-            if results:
-                return results[0]
-            else:
-                raise RuntimeError("No entries. Could not pick first")
-
-    async def fetch_latest_async(self, db_cls, where=None):
-       return await self.fetch_first_async(db_cls=db_cls, where=where, order_by=db_cls.time.desc())
-
 
 class ClusterDB(Database):
     Cluster = Cluster
@@ -369,18 +157,67 @@ class ClusterDB(Database):
                 results[x.node] = value
             return results
 
-    async def get_nodes(self, cluster: str, time_in_s: int | None = None) -> list[str]:
-        where = Cluster.cluster == cluster
-        if time_in_s:
-            where &= (Cluster.time <= fromtimestamp(time_in_s))
+    async def get_monitored_nodes(self, cluster: str,
+            time_in_s: int | None = None,
+            interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S
+            ) -> list[str]:
+        if not time_in_s:
+            time_in_s = utcnow().timestamp()
 
-        query = select(Cluster.nodes).where(where)
+        query_sysinfo_attributes = select(
+                        SysinfoAttributes.node,
+                        func.max(SysinfoAttributes.time)
+                    ).where(
+                        (SysinfoAttributes.cluster == cluster),
+                        (SysinfoAttributes.time <= fromtimestamp(time_in_s)),
+                        (SysinfoAttributes.time >= fromtimestamp(time_in_s - interval_in_s))
+                    ).group_by(
+                        SysinfoAttributes.node
+                    ).order_by(None)
 
         async with self.make_async_session() as session:
-            nodes = (await session.execute(query)).all()
-            if nodes:
-                return nodes[0][0]
-            return nodes
+            sysinfo_nodes = (await session.execute(query_sysinfo_attributes)).all()
+            if not sysinfo_nodes:
+                return []
+
+            return [x[0] for x in sysinfo_nodes]
+
+    async def get_nodes(self, cluster: str,
+            time_in_s: int | None = None,
+            interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S
+            ) -> list[str]:
+        if not time_in_s:
+            time_in_s = utcnow().timestamp()
+
+        query_cluster = select(
+                    Cluster.nodes,
+                    func.max(Cluster.time)
+                ).where(
+                    (Cluster.cluster == cluster),
+                    (Cluster.time <= fromtimestamp(time_in_s)),
+                    (Cluster.time >= fromtimestamp(time_in_s - interval_in_s))
+                ).group_by(
+                    Cluster.nodes
+                ).order_by(None)
+
+        sysinfo_nodes = await self.get_monitored_nodes(cluster=cluster,
+                time_in_s=time_in_s, interval_in_s=interval_in_s)
+
+        async with self.make_async_session() as session:
+            cluster_nodes = (await session.execute(query_cluster)).all()
+            if not cluster_nodes:
+                return []
+
+            cluster_nodes = cluster_nodes[0][0]
+
+            if not sysinfo_nodes:
+                raise RuntimeError("ClusterDB.get_nodes: cluster has nodes: {cluster_nodes}, but "
+                    " none has a running probe")
+
+            unmonitored_nodes = set(cluster_nodes).difference(sysinfo_nodes)
+            logger.warning(f"ClusterDB.get_nodes: there are nodes not monitored: {unmonitored_nodes}")
+            return sysinfo_nodes
+
 
     async def get_gpu_nodes(self,
                 cluster: str,
@@ -508,9 +345,12 @@ class ClusterDB(Database):
                         latest_start_time = start_time
                         wait_time = (start_time - job['submit_time']).total_seconds()
 
-                    tres = AllocTRES(**Slurm.parse_sacct_tres(job['sacct']['AllocTRES']))
-                    if job['job_step'] == '':
-                        cards_reserved += tres.gpu
+                    if 'sacct' in job:
+                        tres = AllocTRES(**Slurm.parse_sacct_tres(job['sacct']['AllocTRES']))
+                        if job['job_step'] == '':
+                            cards_reserved += tres.gpu
+                    else:
+                        logger.warning(f"ClusterDB.get_partitions: job: {job['job_id']} has no 'sacct' information")
 
                 partitions.append({
                     'cluster': x[0],
@@ -540,47 +380,72 @@ class ClusterDB(Database):
         """
         Get the list of partitions per node
         """
-        if not nodes:
-            nodes = await self.get_nodes(cluster=cluster, time_in_s=time_in_s)
-        elif type(nodes) == str:
+        if type(nodes) == str:
             nodes = [nodes]
 
         if not time_in_s:
             time_in_s = utcnow().timestamp()
 
-        where = Partition.cluster == cluster
-        where &= (Partition.time <= fromtimestamp(time_in_s))
 
-        if interval_in_s:
-            where &= (Partition.time >= fromtimestamp(time_in_s - interval_in_s))
-
-        subquery = select(
-                        func.max(Partition.time).label('max_time')
-                    ).where(
-                        where
-                    ).subquery()
-
-        query = select(
-                    Partition.partition,
-                    Partition.nodes,
-                ).select_from(
-                    subquery
-                ).where(
-                    (Partition.time == subquery.c.max_time) &
-                    where
-                )
+        partitions = await self.get_partitions_base(cluster=cluster,
+                    time_in_s=time_in_s,
+                    interval_in_s=interval_in_s)
 
         nodes_partitions = {}
-        async with self.make_async_session() as session:
-            for partition in (await session.execute(query)).all():
-                for n in partition[1]:
-                    if n not in nodes:
-                        continue
+        for p in partitions:
+            for node in p['nodes']:
+                if nodes and node not in nodes:
+                    continue
 
-                    value = nodes_partitions.get(n, [])
-                    nodes_partitions[n] = value + [partition[0]]
-
+                if node not in nodes_partitions:
+                    nodes_partitions[node] = [p['partition']]
+                else:
+                    nodes_partitions[node].append(p['partition'])
         return nodes_partitions
+
+
+    async def get_partitions_base(self,
+            cluster: str,
+            time_in_s: int | None = None,
+            interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S
+            ) -> dict[str, list[str]]:
+
+        if time_in_s is None:
+            time_in_s = utcnow().timestamp()
+
+        query = PartitionsQuery(self, parameters = {
+                'cluster': cluster,
+                'time_in_s': time_in_s,
+                'interval_in_s': interval_in_s
+            }
+        )
+        start = time.time()
+        result = await query.execute_async()
+        print(f"new ELAPSED: {time.time() - start}")
+        return result.to_dict(orient="records")
+
+        #where = Partition.cluster == cluster
+        #where &= (Partition.time <= fromtimestamp(time_in_s))
+
+        #if interval_in_s:
+        #    where &= (Partition.time >= fromtimestamp(time_in_s - interval_in_s))
+
+        #subquery = select(
+        #              func.max(Partition.time).label('max_time')
+        #            ).where(
+        #                where
+        #            ).subquery()
+
+        #query =  select(
+        #            Partition
+        #         ).join(
+        #            subquery,
+        #            (Partition.time == subquery.c.max_time)
+        #         ).order_by(None)
+
+        #async with self.make_async_session() as session:
+        #    result = (await session.execute(query)).all()
+        #    return [dict(x[0]) for x in result]
 
     @ttl_cache_async(ttl=90, maxsize=1024)
     async def get_nodes_resource_allocations(self,
@@ -588,7 +453,7 @@ class ClusterDB(Database):
             nodes: list[str] | str | None = None,
             time_in_s: int | None = None,
             interval_in_s: int | None = 30*60,
-            ) -> dict[str, AllocTRES]:
+            ) -> tuple[dict[str, AllocTRES], dt.datetime]:
         """
         Get the nodes resource allocation
 
@@ -665,15 +530,17 @@ class ClusterDB(Database):
                     )
 
             node_allocations[node] = AllocTRES()
+            latest_timestamp = None
             async with self.make_async_session() as session:
                 results = (await session.execute(query_tres_alloc)).all()
                 for traceable_resource_allocation in results:
+                    if latest_timestamp is None or latest_timestamp < traceable_resource_allocation[2]:
+                        latest_timestamp = traceable_resource_allocation[2]
+
                     tres = AllocTRES(**Slurm.parse_sacct_tres(traceable_resource_allocation[1]))
                     node_allocations[node].add(tres)
 
-            logger.debug(f"{node=} {node_allocations[node]}")
-
-        return node_allocations
+        return node_allocations, latest_timestamp
 
     async def get_nodes_sysinfo_attributes(self,
             cluster: str,
@@ -794,7 +661,7 @@ class ClusterDB(Database):
                 interval_in_s=interval_in_s
         )
 
-        nodes_resource_allocation = await self.get_nodes_resource_allocations(cluster=cluster,
+        nodes_resource_allocation, latest_update = await self.get_nodes_resource_allocations(cluster=cluster,
                 nodes=nodes,
                 time_in_s=time_in_s,
                 interval_in_s=interval_in_s
@@ -995,7 +862,7 @@ class ClusterDB(Database):
                 unseen = set(nodes) - set(timestamps.keys())
                 for n in unseen:
                     timestamps[n] = None
-                logger.info(f"last timestamps: {timestamps}")
+
                 return timestamps
 
         return {}
@@ -1312,7 +1179,8 @@ class ClusterDB(Database):
             node_config = node_config[0]
             cards = node_config.cards
         else:
-            raise RuntimeError(f"Failed to retrieve node config for {cluster=} {node=}")
+            logger.warning(f"ClusterDB.get_node_sample_process_gpu_util: Failed to retrieve node config for {cluster=} {node=}")
+            return {}
 
         return await self.get_sample_process_gpu_util(uuids=cards,
                 reference_time_in_s=reference_time_in_s,
@@ -1655,7 +1523,14 @@ class ClusterDB(Database):
             Get CPU and memory sampling aggregated - per default for all jobs, or per job id
             """
 
-            memory, timestamp = await self.get_node_memory(cluster=cluster, node=node, time_in_s=end_time_in_s)
+            try:
+                memory, timestamp = await self.get_node_memory(cluster=cluster, node=node, time_in_s=end_time_in_s)
+            except RuntimeError as e:
+                # If node is not receiving memory monitoring data, we expect not to see any other
+                # data
+                logger.warning(f"ClusterDB.get_node_sample_process_timeseries: {e}")
+                return []
+
             where = (SampleProcess.cluster == cluster) & (SampleProcess.node == node)
             if job_id:
                 where &= (SampleProcess.job == job_id) & (SampleProcess.epoch == epoch)
@@ -1716,7 +1591,8 @@ class ClusterDB(Database):
             self,
             cluster: str,
             node: str,
-            time_in_s: int
+            time_in_s: int,
+            interval_in_s: int | None = DEFAULT_HISTORY_INTERVAL_IN_S,
         ):
 
         query = select(
@@ -1725,7 +1601,8 @@ class ClusterDB(Database):
                ).where(
                     (SysinfoAttributes.cluster == cluster),
                     (SysinfoAttributes.node == node),
-                    (SysinfoAttributes.time <= fromtimestamp(time_in_s))
+                    (SysinfoAttributes.time <= fromtimestamp(time_in_s)),
+                    (SysinfoAttributes.time >= fromtimestamp(time_in_s - interval_in_s))
                ).group_by(
                    SysinfoAttributes.memory,
                ).order_by(None)
@@ -1739,6 +1616,7 @@ class ClusterDB(Database):
 
                 memory, timestamp = node_config[0]
                 return memory, timestamp
+
         raise RuntimeError(f"node memory: missing node config for {node=}")
 
 ##### END SAMPLE PROCESS (CPU) ######################################################
