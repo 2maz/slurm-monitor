@@ -20,6 +20,7 @@ class AppSettings(BaseSettings):
     data_dir: str | None = Field(default=None)
 
     db_schema_version: str | None = Field(default=None)
+    oauth_required: bool = Field(default=False)
 
     @classmethod
     def get_instance(cls) -> AppSettings:
