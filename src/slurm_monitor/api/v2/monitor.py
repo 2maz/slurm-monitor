@@ -2,13 +2,15 @@
 import asyncio
 import base64
 import datetime as dt
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import Response, FileResponse
 from fastapi_cache.decorator import cache
 from fastapi_cache import FastAPICache
 from logging import getLogger, Logger
 import pandas as pd
 from pathlib import Path
+import functools
 
 from slurm_monitor.utils import utcnow
 from slurm_monitor.app_settings import AppSettings
@@ -40,6 +42,14 @@ logger: Logger = getLogger(__name__)
 api_router = APIRouter(
 #    prefix="",
     tags=["v2"]
+)
+
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="token",
+    scopes={
+        "user.read": "Read information about the current user.",
+        "jobs.all": "Read all items."
+    }
 )
 
 def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None, resolution_in_s: int | None):
@@ -75,6 +85,27 @@ def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None
 
     return start_time_in_s, end_time_in_s, resolution_in_s
 
+
+async def get_current_user(request: Request):
+    oauth2: str = Depends(oauth2_scheme)
+    token = await oauth2.dependency(request)
+
+    logger.info(f"Retrieved token: {token}")
+
+    return {"token": token }
+
+def login_required(required_roles: list[str] = []):
+    def decorator(func):
+        @functools.wraps(func)
+        async def check_credentials(request: Request, *args, **kwargs):
+            app_settings = AppSettings.get_instance()
+            if app_settings.oauth_required:
+                current_user = await get_current_user(request)
+
+            return await func(request, *args, **kwargs)
+        return check_credentials
+    return decorator
+
 @api_router.get("/clear_cache")
 async def clear_cache():
     await FastAPICache.clear()
@@ -86,11 +117,13 @@ async def clear_cache():
         tags=["cluster"],
         response_model=list[ClusterResponse]
 )
+@login_required()
 @cache(expire=3600)
-async def cluster(time_in_s: int | None = None):
+async def cluster(request: Request, time_in_s: int | None = None):
     """
     Get the list of clusters (available at a particular point in time)
     """
+
     dbi = db_ops.get_database()
     return await dbi.get_clusters(time_in_s=time_in_s)
 
