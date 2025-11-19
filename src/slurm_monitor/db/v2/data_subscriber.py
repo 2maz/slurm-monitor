@@ -497,6 +497,13 @@ def main(*,
 
             while topics:
                 interval_start_time = dt.datetime.now(dt.timezone.utc)
+
+                consumer._fetch_all_topic_metadata()
+                if not consumer.assignment():
+                    # Wait for partitions to become available
+                    time.sleep(5)
+                    continue
+
                 for idx, consumer_record in enumerate(consumer, 1):
                     try:
                         if msg_handler:
