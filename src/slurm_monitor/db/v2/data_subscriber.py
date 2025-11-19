@@ -503,12 +503,11 @@ def main(*,
                                 print(f"{node_num:03} {node.ljust(20)} {last_msg_per_node[node]}")
 
                             print(json.dumps(consumer.metrics(), indent=4))
-                            for topic in topics:
-                                tp = TopicPartition(topic, 0)
+                            consumer._fetch_all_topic_metadata()
+                            for tp in consumer.assignment():
                                 current_pos = consumer.position(tp)
-
                                 highwater = consumer.highwater(tp)
-                                print(f"Partition: {topic.ljust(25)} -- {current_pos} / {highwater}")
+                                print(f"Partition: {tp.topic.ljust(25)} -- {current_pos} / {highwater}")
 
                     except Exception as e:
                         tb.print_tb(e.__traceback__)
