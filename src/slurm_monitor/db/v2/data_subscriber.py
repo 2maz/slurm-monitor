@@ -164,13 +164,13 @@ class DBJsonImporter:
                     logger.debug(f"SysInfo: skipping sample from {cluster=} {node=} due to missing 'uuid' {card=}")
                     continue
 
-                gpu_cards.append(SysinfoGpuCard(
+                gpu_cards.append(SysinfoGpuCard.create(
                         uuid=gpu_uuid,
                         **data,
                     )
                 )
 
-                gpu_card_configs.append(SysinfoGpuCardConfig(
+                gpu_card_configs.append(SysinfoGpuCardConfig.create(
                         cluster=cluster,
                         node=node,
                         time=time,
@@ -182,13 +182,13 @@ class DBJsonImporter:
             gpu_info.append(gpu_cards)
             gpu_info.append(gpu_card_configs)
 
-        node = Node(
+        node = Node.create(
                 cluster=attributes.get('cluster', ''),
                 node=attributes['node'],
                 architecture=attributes['architecture']
         )
 
-        sysinfo = SysinfoAttributes(
+        sysinfo = SysinfoAttributes.create(
                     time=time,
                     cards=gpu_uuids,
                     **attributes
@@ -221,14 +221,14 @@ class DBJsonImporter:
                     logger.debug(f"Sample: skipping sample due to missing 'uuid' {gpu=}")
                     continue
 
-                gpu_status = SampleGpu(
+                gpu_status = SampleGpu.create(
                         **gpu,
                         time=time
                 )
                 gpu_samples.append(gpu_status)
 
         # consume remaining items from SampleSystem
-        sample_system = SampleSystem(
+        sample_system = SampleSystem.create(
                 cluster=cluster,
                 node=node,
                 **system,
@@ -250,7 +250,7 @@ class DBJsonImporter:
                 if "gpus" in process:
                     for gpu_data in process['gpus']:
                         gpu_card_process_stati.append(
-                            SampleProcessGpu(
+                            SampleProcessGpu.create(
                                 cluster=cluster,
                                 node=node,
                                 pid=pid,
@@ -263,7 +263,7 @@ class DBJsonImporter:
                         )
                     del process["gpus"]
 
-                process_stati.append( SampleProcess(
+                process_stati.append( SampleProcess.create(
                    cluster=cluster,
                    node=node,
                    job=job_id,
@@ -296,7 +296,7 @@ class DBJsonImporter:
 
             states = n['states']
             for n in node_names:
-                nodes_states.append(NodeState(
+                nodes_states.append(NodeState.create(
                         cluster=cluster_id,
                         node=n,
                         states=states,
@@ -307,7 +307,7 @@ class DBJsonImporter:
         partitions = []
         for p in attributes['partitions']:
             node_names = expand_node_names(p["nodes"])
-            partitions.append(Partition(
+            partitions.append(Partition.create(
                     cluster=cluster_id,
                     partition=p["name"],
                     nodes=node_names,
@@ -316,7 +316,7 @@ class DBJsonImporter:
                 )
             )
 
-        cluster = Cluster(
+        cluster = Cluster.create(
             cluster=cluster_id,
             slurm=slurm,
             partitions=[x.partition for x in partitions],
@@ -324,7 +324,7 @@ class DBJsonImporter:
             time=time
         )
 
-        cluster_nodes = [Node(cluster=cluster_id, node=x) for x in nodes]
+        cluster_nodes = [Node.create(cluster=cluster_id, node=x) for x in nodes]
 
         return [ cluster ]  + partitions + cluster_nodes + nodes_states
 
@@ -349,7 +349,7 @@ class DBJsonImporter:
                 del job_data['sacct']
 
             slurm_job_samples.append(
-                SampleSlurmJob(
+                SampleSlurmJob.create(
                     cluster=cluster,
                     **job_data,
                     time=time
@@ -360,7 +360,7 @@ class DBJsonImporter:
                     sacct['job_step'] = job_data['job_step']
 
                 slurm_job_samples.append(
-                    SampleSlurmJobAcc(
+                    SampleSlurmJobAcc.create(
                         cluster=cluster,
                         job_id=job_data['job_id'],
                         **sacct,
@@ -376,7 +376,7 @@ class DBJsonImporter:
         """
         error_messages = []
         for error in msg.errors:
-            error_messages.append(ErrorMessage(**error))
+            error_messages.append(ErrorMessage.create(**error))
         return error_messages
 
     def insert(self, message: dict[str, any], update: bool = True):
@@ -409,6 +409,9 @@ def main(*,
 
     if type(topics) is str:
         topics = [topics]
+
+    if strict_mode:
+        TableBase.__extra_values__ = 'forbid'
 
     msg_handler = None
     if database:

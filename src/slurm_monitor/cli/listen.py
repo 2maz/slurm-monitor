@@ -37,6 +37,13 @@ class ListenParser(BaseParser):
                 help="Use this API and DB version"
         )
 
+        parser.add_argument("--use-strict-mode",
+                action="store_true",
+                default=False,
+                help="When receiving message, insert content only for messsages that contain only values "\
+                     "present in the table schema. This means, message format and table schema need to be in sync, since no extra / new fields are allowed"
+        )
+
 
     def execute(self, args):
         super().execute(args)
@@ -69,4 +76,5 @@ class ListenParser(BaseParser):
                 topics=args.topic,
                 cluster_name=args.cluster_name,
                 verbose=args.verbose,
+                strict_mode=args.use_strict_mode
             )
