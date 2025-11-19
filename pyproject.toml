@@ -75,7 +75,7 @@ vendorlibs = [
 dev = [
     "alembic",
     "isort",
-    "jupyter-book",
+    "jupyter-book<2",
     "pre-commit",
     "ruff",
     "sphinx-autoapi",
