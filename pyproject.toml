@@ -68,7 +68,7 @@ repository = "https://github.com/2maz/slurm-monitor"
 [project.optional-dependencies]
 
 vendorlibs = [
-    "pynvml",
+    "nvidia-ml-py",
     "pyrsmi"
 ]
 
