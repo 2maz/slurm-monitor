@@ -1,18 +1,12 @@
 import os
-from collections.abc import Awaitable
-import datetime as dt
 from pydantic import BaseModel
 from sqlalchemy.orm import sessionmaker
 from contextlib import contextmanager, asynccontextmanager
-import sqlalchemy
 from sqlalchemy.engine.url import URL, make_url
 from sqlalchemy import (
-        distinct,
-        Integer,
         MetaData,
         create_engine,
         event,
-        func,
         select,
         text,
 )
@@ -21,14 +15,12 @@ from sqlalchemy.ext.asyncio import (
         async_sessionmaker,
         create_async_engine,
 )
-from tqdm import tqdm
 import logging
 
 from slurm_monitor.db.v2.db_tables import (
     TableBase
 )
 from slurm_monitor.db.v2.validation import Specification
-from slurm_monitor.utils import utcnow, fromtimestamp
 
 logger = logging.getLogger(__name__)
 
@@ -259,5 +251,3 @@ class Database:
 
     async def fetch_latest_async(self, db_cls, where=None):
        return await self.fetch_first_async(db_cls=db_cls, where=where, order_by=db_cls.time.desc())
-
-

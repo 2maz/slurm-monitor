@@ -4,11 +4,11 @@ class ClusterQuery(Query):
     @property
     def statement(self):
         return """
-            SELECT c.* FROM cluster_attributes c 
+            SELECT c.* FROM cluster_attributes c
             JOIN (
-                SELECT cluster, max(time) as max_time 
+                SELECT cluster, max(time) as max_time
                 FROM cluster_attributes group by cluster
-            ) latest 
+            ) latest
             ON c.cluster = latest.cluster and c.time = latest.max_time;
         """
 
@@ -35,7 +35,7 @@ class NodesPartitionsQuery(Query):
     @property
     def statement(self):
         cluster = self.ensure_parameter('cluster')
-        nodes = self.ensure_parameter('nodes')
+        #nodes = self.ensure_parameter('nodes')
         time_in_s = self.ensure_parameter('time_in_s')
         interval_in_s = self.ensure_parameter('interval_in_s')
 
@@ -61,7 +61,7 @@ class GpuNodesQuery(Query):
         return f"""
             SELECT cluster, node, max(time) as time
             FROM sysinfo_attributes
-            WHERE 
+            WHERE
                 cluster = '{cluster}' and
                 time <= to_timestamp({time_in_s}) and
                 time >= to_timestamp({time_in_s} - {interval_in_s}) and
@@ -92,4 +92,3 @@ class PartitionsQuery(Query):
             ON p.time = latest.max_time
             ;
         """
-

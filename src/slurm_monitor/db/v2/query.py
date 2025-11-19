@@ -39,8 +39,8 @@ class Query:
         """
         Check if a parameter exist in the list of given parameters
         """
-        if name  not in self._parameters:
-            raise ValueError(f"Missing '{param}' as parameter in query")
+        if name not in self._parameters:
+            raise ValueError(f"Missing '{name}' as parameter in query")
 
         return self._parameters[name]
 

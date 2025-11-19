@@ -50,10 +50,12 @@ class Message:
     errors: list[ErrorMessage] | None
 
 
+
+
 def expand_node_names(names: str) -> list[str]:
     nodes = []
 
-    if type(names) == str:
+    if type(names) is str:
         names = names.replace("],","];")
         names = names.split(';')
 
@@ -118,10 +120,12 @@ class DBJsonImporter:
         msg = DBJsonImporter.to_message(message)
 
         msg_type = "errors"
-        if msg.errors is None:
+        if not msg.errors:
             msg_type = msg.data.type
+
         if not hasattr(cls, f"parse_{msg_type}"):
             raise NotImplementedError(f"DBJsonImporter.parse: no parser for message type: {msg_type} implemented")
+
         parser_fn = getattr(cls, f"parse_{msg_type}")
         return parser_fn(msg)
 
@@ -394,6 +398,7 @@ def main(*,
         database: ClusterDB | None = None,
         retry_timeout_in_s: int = 5,
         verbose: bool = False,
+        strict_mode: bool = False
         ):
     """
     Set up a kafka consumer that subscribes to a list of topics
@@ -402,7 +407,7 @@ def main(*,
     When an offset is define, the consumption of messages will stop as soon for that given topic.
     """
 
-    if type(topics) == str:
+    if type(topics) is str:
         topics = [topics]
 
     msg_handler = None

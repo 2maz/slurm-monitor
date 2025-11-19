@@ -1,31 +1,16 @@
-import os
 from collections.abc import Awaitable
 import datetime as dt
-from pydantic import BaseModel
-from sqlalchemy.orm import sessionmaker
-from contextlib import contextmanager, asynccontextmanager
 import sqlalchemy
-from sqlalchemy.engine.url import URL, make_url
 from sqlalchemy import (
         distinct,
         Integer,
-        MetaData,
-        create_engine,
-        event,
         func,
         select,
-        text,
-)
-from sqlalchemy.ext.asyncio import (
-        AsyncSession,
-        async_sessionmaker,
-        create_async_engine,
 )
 import time
 from tqdm import tqdm
 import logging
 
-from slurm_monitor.db.v2.validation import Specification
 from slurm_monitor.utils import utcnow, fromtimestamp
 from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.utils.cache import ttl_cache_async
@@ -47,10 +32,10 @@ from slurm_monitor.api.v2.response_models import (
 
 from slurm_monitor.db.v2.db_base import (
     Database,
-    DatabaseSettings,
+    DatabaseSettings,  # noqa
     DEFAULT_HISTORY_INTERVAL_IN_S,
-    INTERVAL_1WEEK,
-    INTERVAL_2WEEKS,
+    INTERVAL_1WEEK,  # noqa
+    INTERVAL_2WEEKS,  # noqa
 )
 
 from .db_tables import (
@@ -69,7 +54,6 @@ from .db_tables import (
     SysinfoAttributes,
     SysinfoGpuCard,
     SysinfoGpuCardConfig,
-    TableBase,
     time_bucket
 )
 
@@ -380,7 +364,7 @@ class ClusterDB(Database):
         """
         Get the list of partitions per node
         """
-        if type(nodes) == str:
+        if type(nodes) is str:
             nodes = [nodes]
 
         if not time_in_s:
@@ -469,7 +453,7 @@ class ClusterDB(Database):
 
         if not nodes:
             nodes = await self.get_nodes(cluster=cluster, time_in_s=time_in_s)
-        elif type(nodes) == str:
+        elif type(nodes) is str:
             nodes = [nodes]
 
         where_timeframe = (SampleSlurmJob.time <= fromtimestamp(time_in_s)) \
@@ -555,7 +539,7 @@ class ClusterDB(Database):
         nodelist = nodes
         if nodes is None:
             nodelist = await self.get_nodes(cluster=cluster)
-        elif type(nodes) == str:
+        elif type(nodes) is str:
             nodelist = [nodes]
 
         try:
@@ -649,7 +633,7 @@ class ClusterDB(Database):
                 cluster=cluster,
                 nodes=nodelist,
                 time_in_s=time_in_s,
-                # ensure that sysinfo contains information about nodes, that 
+                # ensure that sysinfo contains information about nodes, that
                 # have been seen at least once in the past 14 days
                 interval_in_s=3600*24*14
         )
@@ -701,7 +685,7 @@ class ClusterDB(Database):
 
         where = (NodeState.cluster == cluster)
         if nodelist:
-            if type(nodelist) == str:
+            if type(nodelist) is str:
                 nodelist = [nodelist]
 
             where &= NodeState.node.in_(nodelist)
@@ -754,7 +738,7 @@ class ClusterDB(Database):
                     time_in_s=time_in_s,
                     interval_in_s=interval_in_s
             )
-        elif type(node) == str:
+        elif type(node) is str:
             nodelist = [node]
 
         try:

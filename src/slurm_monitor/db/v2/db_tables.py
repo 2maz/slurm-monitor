@@ -6,6 +6,7 @@ import re
 import numpy as np
 from typing import ClassVar, Any, Callable, TypeVar
 import datetime as dt
+import pydantic
 
 import enum
 from sqlalchemy import (
@@ -77,7 +78,7 @@ def compile_time_bucket_timescaledb(expr, compiler, **kwargs):
     time_window = expr.clauses.clauses[0].value
     time_column = f"{compiler.process(expr.clauses.clauses[1], **kwargs)}"
 
-    if type(time_window) == int:
+    if type(time_window) is int:
         return f"time_bucket('{time_window} seconds',{time_column})"
     else:
         return f"time_bucket('{time_window}',{time_column}"
@@ -126,7 +127,7 @@ class HStoreModel(types.TypeDecorator):
         return self.required + self.optional
 
     def process_bind_param(self, value, dialect):
-        if value is None or type(value) != dict:
+        if value is None or type(value) is not dict:
             raise KeyError(f"{self.__class__}: value must be dictionary")
 
         for key in self.required:
@@ -149,11 +150,10 @@ class TableBase:
     __tablename__: ClassVar[str]
     metadata: ClassVar[Any]
 
+    __extra_values__: ClassVar[pydantic.config.ExtraValues] =  'allow'
+
     _primary_key_columns: ClassVar[list[str]] = None
     _non_primary_key_columns: ClassVar[list[str]] = None
-
-    def __init__(self, **kwargs):
-        pass
 
     def __iter__(self):
         return (
@@ -164,7 +164,28 @@ class TableBase:
         return dict(self)
 
     def __eq__(self, other):
-        return type(self) == type(other) and tuple(self) == tuple(other)
+        return type(self) is type(other) and tuple(self) is tuple(other)
+
+    @classmethod
+    def create(cls, **kwargs):
+        if cls.__extra_values__ == 'forbid':
+            return cls(**kwargs)
+        else:
+            return cls(**cls.known_columns(**kwargs))
+
+    @classmethod
+    def unknown_columns(cls, **kwargs):
+        """
+        Filter out all unknown arguments that cannot be mapped to columns
+        """
+        return {x:y for x,y in kwargs.items() if x not in cls.__table__.columns}
+
+    @classmethod
+    def known_columns(cls, **kwargs) -> dict[str, Column]:
+        """
+        Filter out all arguments that cannot be mapped to columns
+        """
+        return {x:y for x,y in kwargs.items() if x in cls.__table__.columns}
 
     @classmethod
     def primary_key_columns(cls):
@@ -216,7 +237,7 @@ class TableBase:
                     kwargs[column_name] = merge_op(values[column_name])
                 except TypeError as e:
                     column = getattr(cls, column_name)
-                    if column.nullable or column.type.python_type == str:
+                    if column.nullable or column.type.python_type is str:
                         kwargs[column_name] = getattr(reference_sample, column_name)
                     else:
                         raise RuntimeError(f"Merging failed for column: '{column_name}'") from e
@@ -245,7 +266,7 @@ class GPUIdList(types.TypeDecorator):
 
     @classmethod
     def get_logical_ids(cls, value: int | str):
-        if type(value) == int:
+        if type(value) is int:
             return value
 
         m = re.match(r".*\(IDX:(.*)\)", value)
@@ -265,9 +286,9 @@ class GPUIdList(types.TypeDecorator):
 
     def transform_input(self, value: list[str|int]):
         if len(set(value)) > 1:
-            if type(value[0]) == str:
+            if type(value[0]) is str:
                 raise RuntimeError(f"Assuming maximum length of 1 for GPU details, but found: {value}")
-            elif type(value[0]) == int:
+            elif type(value[0]) is int:
                 return value
             else:
                 raise RuntimeError(f"Wrong list type in {value}, expected str|int")
@@ -539,7 +560,6 @@ class SampleGpu(TableBase):
             }
         }
     )
-
 
     # local card index, may change at boot
     index = Column(Integer, nullable=True)
@@ -1138,7 +1158,7 @@ class SampleSlurmJobAcc(TableBase):
         mapped_data = {}
         for k, v in data.items():
             if k in mapper.column_attrs:
-                if type(v) == int and type(cls.__table__.columns[k].type) == DateTime:
+                if type(v) is int and type(cls.__table__.columns[k].type) is DateTime:
                     mapped_data[k] = dt.datetime.fromtimestamp(v, dt.timezone.utc)
                 else:
                     mapped_data[k] = v
