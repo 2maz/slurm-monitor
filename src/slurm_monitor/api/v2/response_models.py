@@ -29,7 +29,7 @@ class TimestampedModel(SimpleModel):
 class ClusterResponse(TimestampedModel):
     cluster: str = Field(description="Name of the cluster")
     slurm: int = Field(description="Whether SLURM is in use (1) or not (0)")
-    partitions: list[str] = Field(description="List of available partitions in this cluster")
+    partitions: list[str] = Field(description="List of available partitions in this cluster", default=[])
     nodes: list[str] = Field(description="List of available nodes in this cluster")
 
 doc_sacct = "(see <a href='https://slurm.schedmd.com/sacct.html#SECTION_Job-Accounting-Fields'> " \
@@ -302,11 +302,11 @@ class NodeInfoResponse(TimestampedModel):
     cpu_model: str = Field(description="CPU model specifier")
     memory: int = Field(description="Available memory in this node in KiB")
     topo_svg: str | None = Field(description="The architecture topography (lstopo) as svg")
+    topo_text: str | None = Field(description="The architecture topography (lstopo) as text")
     cards: list[GPUCardResponse] = Field(description="List of GPUs")
 
-
     # augmented field: partitions this node is part of
-    partitions: list[str] = Field(description="List of partitions that this node belongs to")
+    partitions: list[str] = Field(description="List of partitions that this node belongs to", default=[])
 
     # augmented field: allocation of traceable resources
     alloc_tres: AllocTRES = Field(description="Allocation of traceable resources")
