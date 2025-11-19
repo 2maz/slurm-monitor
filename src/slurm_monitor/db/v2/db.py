@@ -195,7 +195,7 @@ class ClusterDB(Database):
             cluster_nodes = cluster_nodes[0][0]
 
             if not sysinfo_nodes:
-                raise RuntimeError("ClusterDB.get_nodes: cluster has nodes: {cluster_nodes}, but "
+                raise RuntimeError(f"ClusterDB.get_nodes: cluster has nodes: {cluster_nodes}, but "
                     " none has a running probe")
 
             unmonitored_nodes = set(cluster_nodes).difference(sysinfo_nodes)
