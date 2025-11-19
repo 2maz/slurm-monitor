@@ -19,6 +19,7 @@ from slurm_monitor.db.v2.db_tables import (
 from slurm_monitor.db.v2.db import (
     ClusterDB
 )
+from slurm_monitor.utils import utcnow
 
 import dataclasses
 import datetime as dt
@@ -418,6 +419,15 @@ class DBJsonImporter:
                             self.cluster_nodes[sample.cluster] = set()
                         self.cluster_nodes[sample.cluster].add(sample.node)
 
+                        # Update the associated cluster at the same time
+                        cluster = Cluster.create(
+                            cluster=sample.cluster,
+                            slurm=False,
+                            partitions=[],
+                            nodes=list(self.cluster_nodes[sample.cluster]),
+                            time=utcnow()
+                        )
+                        self.db.insert_or_update(cluster)
                 except Exception as e:
                     logger.warning(f"Inserting sample {sample} failed. -- {e}")
 
