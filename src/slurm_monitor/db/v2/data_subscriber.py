@@ -25,6 +25,7 @@ import datetime as dt
 import json
 import logging
 import re
+import sqlalchemy
 import time
 import traceback as tb
 
@@ -86,8 +87,36 @@ def expand_node_names(names: str) -> list[str]:
 
 class DBJsonImporter:
     db: ClusterDB
+    cluster_nodes: dict[str, set]
+
     def __init__(self, db: ClusterDB):
         self.db = db
+        self.cluster_nodes = {}
+
+        # Load cluster/node info into memory
+        with self.db.make_session() as session:
+            results = session.execute(sqlalchemy.text("SELECT cluster, node FROM node"))
+
+            for result in results:
+                cluster, node = result
+                if cluster not in self.cluster_nodes:
+                    self.cluster_nodes[cluster] = set()
+                self.cluster_nodes[cluster].add(node)
+
+        logger.debug(f"Nodes already in database: {self.cluster_nodes}")
+
+    def is_known_node(self, cluster: str, node: str) -> bool:
+        """
+        Check if that node has been seen already sending a sysinfo attribute message
+        """
+        return node in self.cluster_nodes.get(cluster, [])
+
+    def ensure_node(self, cluster: str, node: str, samples: list[TableBase]):
+        if self.is_known_node(cluster, node):
+            return samples
+        else:
+            logger.info(f"Creating node: {cluster=} {node=}")
+            return [Node.create(cluster=cluster, node=node)] + samples
 
     @classmethod
     def to_message(cls, message: dict[str, any]) -> Message:
@@ -110,8 +139,7 @@ class DBJsonImporter:
 
         return Message(meta=meta, data=data, errors=errors)
 
-    @classmethod
-    def parse(cls, message: dict[str, any]):
+    def parse(self, message: dict[str, any]):
         """
         Parse a message a trigger parsing according to the respective message type
 
@@ -123,15 +151,14 @@ class DBJsonImporter:
         if not msg.errors:
             msg_type = msg.data.type
 
-        if not hasattr(cls, f"parse_{msg_type}"):
+        if not hasattr(self, f"parse_{msg_type}"):
             raise NotImplementedError(f"DBJsonImporter.parse: no parser for message type: {msg_type} implemented")
 
-        parser_fn = getattr(cls, f"parse_{msg_type}")
+        parser_fn = getattr(self, f"parse_{msg_type}")
         return parser_fn(msg)
 
 
-    @classmethod
-    def parse_sysinfo(cls, msg: Message) -> list[TableBase | list[TableBase]]:
+    def parse_sysinfo(self, msg: Message) -> list[TableBase | list[TableBase]]:
         """
         Parse messages of type 'sysinfo'
         """
@@ -196,8 +223,7 @@ class DBJsonImporter:
 
         return [node, sysinfo] + gpu_info
 
-    @classmethod
-    def parse_sample(cls, msg: Message) -> list[TableBase | list[TableBase]]:
+    def parse_sample(self, msg: Message) -> list[TableBase | list[TableBase]]:
         """
         Parse messages of type 'sample'
         """
@@ -273,10 +299,9 @@ class DBJsonImporter:
 
                    **process)
                 )
-        return [gpu_samples, gpu_card_process_stati, process_stati, sample_system]
+        return self.ensure_node(cluster, node, [gpu_samples, gpu_card_process_stati, process_stati, sample_system])
 
-    @classmethod
-    def parse_cluster(cls, msg: Message) -> list[TableBase | list[TableBase]]:
+    def parse_cluster(self, msg: Message) -> list[TableBase | list[TableBase]]:
         """
         Parse messages of type 'cluster'
         """
@@ -328,8 +353,7 @@ class DBJsonImporter:
 
         return [ cluster ]  + partitions + cluster_nodes + nodes_states
 
-    @classmethod
-    def parse_job(cls, msg: Message) -> list[TableBase | list[TableBase]]:
+    def parse_job(self, msg: Message) -> list[TableBase | list[TableBase]]:
         """
         Parse messages of type 'job'
         """
@@ -369,8 +393,7 @@ class DBJsonImporter:
                 )
         return slurm_job_samples
 
-    @classmethod
-    def parse_errors(cls, msg: Message) -> list[TableBase | list[TableBase]]:
+    def parse_errors(self, msg: Message) -> list[TableBase | list[TableBase]]:
         """
         Parse messages of type 'errors'
         """
@@ -380,7 +403,7 @@ class DBJsonImporter:
         return error_messages
 
     def insert(self, message: dict[str, any], update: bool = True):
-        samples = DBJsonImporter.parse(message)
+        samples = self.parse(message)
         for sample in samples:
             if sample:
                 try:
@@ -388,6 +411,13 @@ class DBJsonImporter:
                         self.db.insert_or_update(sample)
                     else:
                         self.db.insert(sample)
+
+                    if type(sample) is Node:
+                        # Register node
+                        if sample.cluster not in self.cluster_nodes:
+                            self.cluster_nodes[sample.cluster] = set()
+                        self.cluster_nodes[sample.cluster].add(sample.node)
+
                 except Exception as e:
                     logger.warning(f"Inserting sample {sample} failed. -- {e}")
 
