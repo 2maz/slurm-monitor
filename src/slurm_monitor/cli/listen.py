@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+from sqlalchemy import inspect
 
 from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.app_settings import AppSettings
@@ -53,6 +54,9 @@ class ListenParser(BaseParser):
         if args.db_uri is not None:
             app_settings.database.uri = args.db_uri
 
+        # Listener should only operate on an already initialized database
+        app_settings.database.create_missing = False
+
         if args.use_version == "v1":
             from slurm_monitor.db.v1.data_subscriber import main
             from slurm_monitor.db.v1.db import SlurmMonitorDB
@@ -68,6 +72,10 @@ class ListenParser(BaseParser):
             from slurm_monitor.db.v2.db import ClusterDB
 
             database = ClusterDB(db_settings=app_settings.database)
+            inspector = inspect(database.engine)
+            if not inspector.get_table_names():
+                raise RuntimeError("Listener is trying to connect to an uninitialized database."
+                                   f" Call 'slurm-monitor db --init --db-uri {app_settings.database.uri}' for the database first")
 
             # Use asyncio.run to start the event loop and run the main coroutine
             main(host=args.host,

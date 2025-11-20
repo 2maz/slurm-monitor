@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 import logging
 import re
+import sys
 
 from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.app_settings import AppSettings
@@ -174,6 +175,11 @@ class DBParser(BaseParser):
                             help="Database uri"
                             )
 
+        parser.add_argument("--init",
+                            action="store_true",
+                            help="Initialize the database, i.e., create schemas etc"
+                            )
+
         parser.add_argument("--apply-changes",
                             action="store_true",
                             help="Apply changes to the table of the current database"
@@ -210,14 +216,14 @@ class DBParser(BaseParser):
 
         initial_status = get_db_status(app_settings.database.uri)
 
-        app_settings.database.create_missing = args.apply_changes
+        app_settings.database.create_missing = args.apply_changes or args.init
         db = db_ops.get_database(app_settings)
 
         schema = get_db_schema(db)
         tables_in_schema = schema.keys()
 
         deprecated_tables = set(initial_status.keys()) - tables_in_schema
-        if args.apply_changes:
+        if args.apply_changes or args.init:
             new_status = get_db_status(app_settings.database.uri)
             added_tables = set(new_status.keys()) - set(initial_status.keys())
 
