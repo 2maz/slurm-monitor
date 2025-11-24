@@ -115,7 +115,7 @@ def test_GPUStatusCollector(cls: GPUStatusCollector, response: list[str], gpu_co
     assert observer._samples.qsize() == gpu_count
     for i in range(0,gpu_count):
         sample = observer._samples.get()
-        assert type(sample) == GPUStatus
+        assert type(sample) is GPUStatus
 
 def test_GPUStatusCollector_StressTest(db_settings, monkeypatch):
     db = SlurmMonitorDB(db_settings=db_settings)

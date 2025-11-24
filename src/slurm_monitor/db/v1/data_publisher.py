@@ -173,7 +173,7 @@ class Controller:
         handle_message = False
         if "node" in data:
             node = data["node"]
-            if type(node) == list:
+            if type(node) is list:
                 for name_pattern in node:
                     if re.match(name_pattern, self.hostname):
                         handle_message = True

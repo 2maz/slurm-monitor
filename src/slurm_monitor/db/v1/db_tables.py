@@ -79,7 +79,7 @@ class TableBase:
         return dict(self)
 
     def __eq__(self, other):
-        return type(self) == type(other) and tuple(self) == tuple(other)
+        return type(self) is type(other) and tuple(self) is tuple(other)
 
     @classmethod
     def primary_key_columns(cls):
@@ -131,7 +131,7 @@ class TableBase:
                     kwargs[column_name] = merge_op(values[column_name])
                 except TypeError as e:
                     column = getattr(cls, column_name)
-                    if column.nullable or column.type.python_type == str:
+                    if column.nullable or column.type.python_type is str:
                         kwargs[column_name] = getattr(reference_sample, column_name)
                     else:
                         raise RuntimeError(f"Merging failed for column: '{column_name}'") from e
@@ -166,7 +166,7 @@ class TableBase:
             timeseries_id = sample.get_timeseries_id()
 
             sample_timestamp = sample.timestamp
-            if type(sample.timestamp) == str:
+            if type(sample.timestamp) is str:
                 sample_timestamp = dt.datetime.fromisoformat(sample.timestamp)
 
             if not base_time:
@@ -221,7 +221,7 @@ class GPUIdList(types.TypeDecorator):
 
     @classmethod
     def get_logical_ids(cls, value: int | str):
-        if type(value) == int:
+        if type(value) is int:
             return value
 
         m = re.match(r".*\(IDX:(.*)\)", value)
@@ -241,9 +241,9 @@ class GPUIdList(types.TypeDecorator):
 
     def transform_input(self, value: list[str|int]):
         if len(set(value)) > 1:
-            if type(value[0]) == str:
+            if type(value[0]) is str:
                 raise RuntimeError(f"Assuming maximum length of 1 for GPU details, but found: {value}")
-            elif type(value[0]) == int:
+            elif type(value[0]) is int:
                 return value
             else:
                 raise RuntimeError(f"Wrong list type in {value}, expected str|int")
@@ -436,7 +436,7 @@ class JobStatus(TableBase):
         mapped_data = {}
         for k, v in data.items():
             if k in mapper.column_attrs:
-                if type(v) == int and type(cls.__table__.columns[k].type) == DateTime:
+                if type(v) is int and type(cls.__table__.columns[k].type) is DateTime:
                     mapped_data[k] = dt.datetime.fromtimestamp(v, dt.timezone.utc)
                 else:
                     mapped_data[k] = v

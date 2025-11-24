@@ -45,7 +45,7 @@ class TableBase:
         return dict(self)
 
     def __eq__(self, other):
-        return type(self) == type(other) and tuple(self) == tuple(other)
+        return type(self) is type(other) and tuple(self) is tuple(other)
 
 
 class GPUIdList(types.TypeDecorator):

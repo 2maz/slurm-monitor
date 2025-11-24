@@ -110,7 +110,7 @@ async def test_collector_collect(controller, mock_slurm_command_hint, monkeypatc
     assert node_status.jobs[2]
 
     assert node_status.timestamp, "Timestamp must not be empty"
-    assert type(node_status.timestamp) == dt.datetime
+    assert type(node_status.timestamp) is dt.datetime
 
 @pytest.mark.asyncio(loop_scope="module")
 async def test_collector_collect_max_samples(controller, mock_slurm_command_hint, monkeypatch):
@@ -146,7 +146,7 @@ async def test_collector_collect_max_samples(controller, mock_slurm_command_hint
     assert node_status.jobs[2]
 
     assert node_status.timestamp, "Timestamp must not be empty"
-    assert type(node_status.timestamp) == dt.datetime
+    assert type(node_status.timestamp) is dt.datetime
 
 
 def test_controller_set_sampling_interval(controller, nodename):

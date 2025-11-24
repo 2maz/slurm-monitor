@@ -1,7 +1,6 @@
 from argparse import ArgumentParser
 import logging
 import re
-import sys
 
 from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.app_settings import AppSettings
