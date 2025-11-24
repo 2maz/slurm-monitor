@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 from sqlalchemy import inspect
+import asyncio
 
 from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.app_settings import AppSettings
@@ -78,11 +79,13 @@ class ListenParser(BaseParser):
                                    f" Call 'slurm-monitor db --init --db-uri {app_settings.database.uri}' for the database first")
 
             # Use asyncio.run to start the event loop and run the main coroutine
-            main(host=args.host,
-                port=args.port,
-                database=database,
-                topics=args.topic,
-                cluster_name=args.cluster_name,
-                verbose=args.verbose,
-                strict_mode=args.use_strict_mode
+            asyncio.run(
+                main(host=args.host,
+                    port=args.port,
+                    database=database,
+                    topics=args.topic,
+                    cluster_name=args.cluster_name,
+                    verbose=args.verbose,
+                    strict_mode=args.use_strict_mode
+                )
             )

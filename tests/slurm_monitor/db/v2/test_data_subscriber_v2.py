@@ -8,6 +8,7 @@ from slurm_monitor.db.v2.data_subscriber import DBJsonImporter
 from slurm_monitor.utils.system_info import SystemInfo
 import psutil
 import copy
+import sqlalchemy
 
 @pytest.mark.parametrize("names,nodes",[
     ["n[001-003,056],gh001",["n001","n002","n003","n056","gh001"]]
@@ -22,6 +23,54 @@ def sonar_base_message(message_type: str, **kwargs):
         'data': { 'type': message_type, 'attributes': kwargs },
         'errors': {}
     }
+
+def sonar_sample_message():
+    return sonar_base_message('sample',
+        node='c-0-n-0',
+        cluster='c-0',
+        system={},
+        jobs=[
+          { "job": 1,
+            "user": "test-user",
+            "epoch": 1,
+            "processes": [{
+              'resident_memory': 2*1024**3,
+              'virtual_memory': 32*1024**3,
+              'cmd': "test-cmd",
+              'pid': 10000,
+              'ppid': 9999,
+              'num_threads': 1,
+              'cpu_avg': 20,
+              'cpu_util': 20,
+              'cpu_time': 1000,
+              'data_read': 0,
+              'data_written': 0,
+              'data_cancelled': 0,
+              'rolledup': 0,
+              }]
+            },
+            { "job": 2,
+              "user": "test-user",
+              "epoch": 2,
+              "processes": [{
+                'resident_memory': 2*1024**3,
+                'virtual_memory': 32*1024**3,
+                'cmd': "test-cmd",
+                'pid': 10000,
+                'ppid': 9999,
+                'num_threads': 1,
+                'cpu_avg': 20,
+                'cpu_util': 20,
+                'cpu_time': 1000,
+                'data_read': 0,
+                'data_written': 0,
+                'data_cancelled': 0,
+                'rolledup': 0,
+                }]
+             }
+        ],
+        time=str(utcnow())
+    )
 
 def sonar_sysinfo_message():
     si = SystemInfo()
@@ -62,7 +111,7 @@ def sonar_sysinfo_message():
     [sonar_sysinfo_message(), 4],
 
 ])
-def test_DBJsonImporter(sonar_msg, expected_samples, test_db_v2):
+def test_DBJsonImporter_extra_attributes(sonar_msg, expected_samples, test_db_v2):
     importer = DBJsonImporter(db=test_db_v2)
     msg = importer.to_message(sonar_msg)
 
@@ -78,3 +127,30 @@ def test_DBJsonImporter(sonar_msg, expected_samples, test_db_v2):
     TableBase.__extra_values__ = 'forbid'
     with pytest.raises(TypeError):
         importer.parse_sysinfo(copy.deepcopy(msg))
+
+
+@pytest.mark.asyncio(loop_scope="module")
+@pytest.mark.parametrize("sonar_msg",
+    [sonar_sample_message()]
+)
+async def test_DBJsonImporter_non_slurm(sonar_msg, test_db_v2):
+    nodes = []
+    for node in ["c-0-n-1", "c-0-n-2"]:
+        sonar_msg['data']['attributes']['node'] = node
+        cluster = sonar_msg['data']['attributes']['cluster']
+        importers = []
+        for i in range(0, 3):
+            importers.append(DBJsonImporter(db=test_db_v2))
+
+        with test_db_v2.make_session() as session:
+            results = session.execute(sqlalchemy.text(f"SELECT * from cluster_attributes WHERE cluster='{cluster}'")).all()
+            assert len(results) == len(nodes), f"Expected {len(nodes)} cluster_attributes entries got {[x.cluster for x in results]}"
+
+        nodes.append(node)
+        for i in range(0,10):
+            for importer in importers:
+                await importer.insert(copy.deepcopy(sonar_msg))
+
+            with test_db_v2.make_session() as session:
+                results = session.execute(sqlalchemy.text(f"SELECT * from cluster_attributes WHERE cluster='{cluster}'")).all()
+                assert len(results) == len(nodes), f"Update #{i}: expected {len(nodes)} cluster_attributes entries got {[x.cluster for x in results]}"

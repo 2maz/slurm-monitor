@@ -168,8 +168,18 @@ class ClusterDB(Database):
 
     async def get_nodes(self, cluster: str,
             time_in_s: int | None = None,
-            interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S
+            interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S,
+            ensure_sysinfo: bool = True
             ) -> list[str]:
+        """
+            Get the known nodes for the cluster.
+
+            The query will retrieve its information from the cluster_attributes table,
+            and using the given contraint for the time interval defined by
+            time_in_s and interval_in_s.
+
+            :param ensure_sysinfo [bool] Ensure that sysinfo_attributes table has entries
+        """
         if not time_in_s:
             time_in_s = utcnow().timestamp()
 
@@ -184,9 +194,6 @@ class ClusterDB(Database):
                     Cluster.nodes
                 ).order_by(None)
 
-        sysinfo_nodes = await self.get_monitored_nodes(cluster=cluster,
-                time_in_s=time_in_s, interval_in_s=interval_in_s)
-
         async with self.make_async_session() as session:
             cluster_nodes = (await session.execute(query_cluster)).all()
             if not cluster_nodes:
@@ -194,13 +201,19 @@ class ClusterDB(Database):
 
             cluster_nodes = cluster_nodes[0][0]
 
-            if not sysinfo_nodes:
-                raise RuntimeError(f"ClusterDB.get_nodes: cluster has nodes: {cluster_nodes}, but "
-                    " none has a running probe")
+        if not ensure_sysinfo:
+            return cluster_nodes
 
-            unmonitored_nodes = set(cluster_nodes).difference(sysinfo_nodes)
-            logger.warning(f"ClusterDB.get_nodes: there are nodes not monitored: {unmonitored_nodes}")
-            return sysinfo_nodes
+        sysinfo_nodes = await self.get_monitored_nodes(cluster=cluster,
+                time_in_s=time_in_s, interval_in_s=interval_in_s)
+
+        if not sysinfo_nodes:
+            raise RuntimeError(f"ClusterDB.get_nodes: cluster has nodes: {cluster_nodes}, but"
+                " none has a running probe")
+
+        unmonitored_nodes = set(cluster_nodes).difference(sysinfo_nodes)
+        logger.warning(f"ClusterDB.get_nodes: there are nodes not being monitored: {unmonitored_nodes}")
+        return sysinfo_nodes
 
 
     async def get_gpu_nodes(self,
@@ -1927,3 +1940,17 @@ class ClusterDB(Database):
 
             return samples
 #### END JOBS #####################################################################
+    def is_known_node(self, *, cluster: str, node: str) -> bool:
+        """
+        Check if that node has been seen (querying only the
+        """
+        # Load cluster/node info into memory
+        with self.make_session() as session:
+            query = select(
+                        Node
+                    ).where(
+                        Node.cluster == cluster,
+                        Node.node == node
+                    )
+            results = session.execute(query).all()
+            return results != []

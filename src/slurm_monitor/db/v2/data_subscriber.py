@@ -26,7 +26,6 @@ import datetime as dt
 import json
 import logging
 import re
-import sqlalchemy
 import time
 import traceback as tb
 
@@ -92,28 +91,9 @@ class DBJsonImporter:
 
     def __init__(self, db: ClusterDB):
         self.db = db
-        self.cluster_nodes = {}
-
-        # Load cluster/node info into memory
-        with self.db.make_session() as session:
-            results = session.execute(sqlalchemy.text("SELECT cluster, node FROM node"))
-
-            for result in results:
-                cluster, node = result
-                if cluster not in self.cluster_nodes:
-                    self.cluster_nodes[cluster] = set()
-                self.cluster_nodes[cluster].add(node)
-
-        logger.debug(f"Nodes already in database: {self.cluster_nodes}")
-
-    def is_known_node(self, cluster: str, node: str) -> bool:
-        """
-        Check if that node has been seen already sending a sysinfo attribute message
-        """
-        return node in self.cluster_nodes.get(cluster, [])
 
     def ensure_node(self, cluster: str, node: str, samples: list[TableBase]):
-        if self.is_known_node(cluster, node):
+        if self.db.is_known_node(cluster=cluster, node=node):
             return samples
         else:
             logger.info(f"Creating node: {cluster=} {node=}")
@@ -233,38 +213,41 @@ class DBJsonImporter:
         del attributes['time']
 
         cluster = attributes.get('cluster','')
-        system = attributes["system"]
         node = attributes['node']
 
         last_msg_per_node[node] = time
 
         gpu_samples = []
-        if "gpus" in system:
-            gpus = system["gpus"]
-            del system["gpus"]
+        sample_system = None
 
-            for gpu in gpus:
-                if 'uuid' not in gpu:
-                    logger.debug(f"Sample: skipping sample due to missing 'uuid' {gpu=}")
-                    continue
+        system = attributes.get("system",{})
+        if system:
+            if "gpus" in system:
+                gpus = system["gpus"]
+                del system["gpus"]
 
-                gpu_status = SampleGpu.create(
-                        **gpu,
-                        time=time
-                )
-                gpu_samples.append(gpu_status)
+                for gpu in gpus:
+                    if 'uuid' not in gpu:
+                        logger.debug(f"Sample: skipping sample due to missing 'uuid' {gpu=}")
+                        continue
 
-        # consume remaining items from SampleSystem
-        sample_system = SampleSystem.create(
-                cluster=cluster,
-                node=node,
-                **system,
-                time=time
-        )
+                    gpu_status = SampleGpu.create(
+                            **gpu,
+                            time=time
+                    )
+                    gpu_samples.append(gpu_status)
 
-        jobs = attributes["jobs"]
+            # consume remaining items from SampleSystem
+            sample_system = SampleSystem.create(
+                    cluster=cluster,
+                    node=node,
+                    **system,
+                    time=time
+            )
+
         process_stati = []
         gpu_card_process_stati = []
+        jobs = attributes.get("jobs", [])
         for job in jobs:
             job_id = job['job']
 
@@ -342,6 +325,7 @@ class DBJsonImporter:
                 )
             )
 
+        breakpoint()
         cluster = Cluster.create(
             cluster=cluster_id,
             slurm=slurm,
@@ -403,7 +387,7 @@ class DBJsonImporter:
             error_messages.append(ErrorMessage.create(**error))
         return error_messages
 
-    def insert(self, message: dict[str, any], update: bool = True):
+    async def insert(self, message: dict[str, any], update: bool = True):
         samples = self.parse(message)
         for sample in samples:
             if sample:
@@ -414,24 +398,25 @@ class DBJsonImporter:
                         self.db.insert(sample)
 
                     if type(sample) is Node:
-                        # Register node
-                        if sample.cluster not in self.cluster_nodes:
-                            self.cluster_nodes[sample.cluster] = set()
-                        self.cluster_nodes[sample.cluster].add(sample.node)
+                        nodes = await self.db.get_nodes(cluster=sample.cluster, ensure_sysinfo=False)
+                        if sample.node not in nodes:
+                            updated_nodes = set(nodes)
+                            updated_nodes.add(sample.node)
 
-                        # Update the associated cluster at the same time
-                        cluster = Cluster.create(
-                            cluster=sample.cluster,
-                            slurm=False,
-                            partitions=[],
-                            nodes=list(self.cluster_nodes[sample.cluster]),
-                            time=utcnow()
-                        )
-                        self.db.insert_or_update(cluster)
+                            # Update the associated cluster at the same time
+                            cluster = Cluster.create(
+                                cluster=sample.cluster,
+                                slurm=False,
+                                partitions=[],
+                                nodes=updated_nodes,
+                                time=utcnow()
+                            )
+                            self.db.insert(cluster)
                 except Exception as e:
+                    tb.print_tb(e.__traceback__)
                     logger.warning(f"Inserting sample {sample} failed. -- {e}")
 
-def main(*,
+async def main(*,
         host: str, port: int,
         cluster_name: str,
         topics: str | list[str] | None,
@@ -530,9 +515,9 @@ def main(*,
                                 print(msg)
 
                             if topic.endswith("sample"):
-                                msg_handler.insert(json.loads(msg), update=False)
+                                await msg_handler.insert(json.loads(msg), update=False)
                             else:
-                                msg_handler.insert(json.loads(msg), update=True)
+                                await msg_handler.insert(json.loads(msg), update=True)
 
                             print(f"{dt.datetime.now(dt.timezone.utc)} messages consumed: "
                                   f"{idx} since {start_time}\r",
