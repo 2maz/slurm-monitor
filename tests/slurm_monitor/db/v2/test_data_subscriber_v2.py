@@ -9,6 +9,8 @@ from slurm_monitor.utils.system_info import SystemInfo
 import psutil
 import copy
 import sqlalchemy
+import json
+from pathlib import Path
 
 @pytest.mark.parametrize("names,nodes",[
     ["n[001-003,056],gh001",["n001","n002","n003","n056","gh001"]]
@@ -154,3 +156,38 @@ async def test_DBJsonImporter_non_slurm(sonar_msg, test_db_v2):
             with test_db_v2.make_session() as session:
                 results = session.execute(sqlalchemy.text(f"SELECT * from cluster_attributes WHERE cluster='{cluster}'")).all()
                 assert len(results) == len(nodes), f"Update #{i}: expected {len(nodes)} cluster_attributes entries got {[x.cluster for x in results]}"
+
+@pytest.mark.asyncio(loop_scope="module")
+@pytest.mark.parametrize("sonar_msg_files",
+    [
+        [
+         "0+sysinfo-ml1.hpc.uio.no.json",
+         "0+sample-ml1.hpc.uio.no.json"
+        ],
+    ]
+)
+async def test_DBJsonImporter_sonar_examples(sonar_msg_files, test_db_v2, test_data_dir):
+    importer = DBJsonImporter(db=test_db_v2)
+
+    in_msg_uuids = []
+    for sonar_msg_file in sonar_msg_files:
+        json_filename = Path(test_data_dir) / "sonar" / sonar_msg_file
+        with open(json_filename, "r") as f:
+            msg_data = json.load(f)
+            if 'cards' in msg_data['data']['attributes']:
+                in_msg_uuids = [x['uuid'] for x in msg_data['data']['attributes']['cards']]
+
+            await importer.insert(copy.deepcopy(msg_data))
+
+    with test_db_v2.make_session() as session:
+        results = session.execute(sqlalchemy.text("SELECT * from cluster_attributes WHERE 'ml1.hpc.uio.no' = ANY(nodes)")).all()
+        assert len(results) == 1, f"Expected 1 matching cluster_attributes entries got {[x.cluster for x in results]}"
+
+        results = session.execute(sqlalchemy.text("SELECT * from node WHERE node = 'ml1.hpc.uio.no'")).all()
+        assert len(results) == 1, f"Expected 1 matching node entry go {results}"
+
+        results = session.execute(sqlalchemy.text("SELECT uuid from sysinfo_gpu_card")).all()
+        in_db_uuids = [x[0] for x in results]
+
+    for uuid in in_msg_uuids:
+        assert uuid in in_db_uuids, f"Expected uuids {in_msg_uuids} to be present, but found {in_db_uuids}"

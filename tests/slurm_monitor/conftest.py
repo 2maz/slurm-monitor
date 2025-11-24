@@ -55,6 +55,10 @@ def number_of_cpus() -> int:
 def number_of_samples() -> int:
     return 50
 
+@pytest.fixture
+def test_data_dir() -> Path:
+    return (Path(__file__).parent / "data").resolve()
+
 @pytest.fixture(scope="module")
 def test_db_uri(tmp_path_factory, pytestconfig):
     db_uri = pytestconfig.getoption("db_uri")
