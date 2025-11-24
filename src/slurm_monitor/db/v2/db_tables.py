@@ -423,12 +423,14 @@ class SysinfoAttributes(TableBase):
     topo_svg = Column(Text, default=None, nullable=True)
     topo_text = Column(Text, default=None, nullable=True)
 
+    numa_nodes = Column(Integer, nullable=True)
     distances = Column(ARRAY(Integer), nullable=True)
 
     cards = Column(ARRAY(UUID), desc="Array of gpu-card uuid", default=[])
 
     __table_args__ = (
         *ensure_non_negative("sockets", "cores_per_socket", "threads_per_core", "memory"),
+        CheckConstraint("numa_nodes is NULL or numa_nodes >= 0", name="numa_nodes_is_null_or_not_negative"),
         ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
         {
             'info': { 'sonar_spec': 'SysinfoAttributes' },
