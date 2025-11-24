@@ -465,7 +465,7 @@ def mock_gpu(gpu_type, gpu_responses, monkeypatch):
 
     orig_subprocess_run = subprocess.run
     def mock_subprocess_run(cmd, **kwargs):
-        if type(cmd) == str:
+        if type(cmd) is str:
             if cmd.startswith(f"command -v {gpu_type}"):
                 return orig_subprocess_run("echo 'cmd'", **kwargs)
             elif cmd.startswith("command -v"):
