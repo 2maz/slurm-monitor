@@ -116,23 +116,27 @@ def apply_changes(db, schema, status):
             else:
                 typename = dialect_type
 
-            # escape quotes (ensure only single quote is used)
-            comment = column.comment.strip()
-            comment = re.sub("'{2,}","'", comment)
-            comment = re.sub("'","''", comment)
-
             alter_stmt = f"""
                     ALTER TABLE {table} ADD COLUMN {column_name}
                     {typename} NULL DEFAULT NULL
             """
-            alter_comment_stmt = f"""
-                    COMMENT ON COLUMN {table}."{column_name}" IS '{comment}'
-            """
-            print(f"Adding column: {column_name.ljust(20)} {schema[table][column_name].type} with comment '{comment}'")
-
             with db.make_writeable_session() as session:
                 session.execute(sqlalchemy.text(alter_stmt))
-                session.execute(sqlalchemy.text(alter_comment_stmt))
+
+            # escape quotes (ensure only single quote is used)
+            comment = ''
+            if column.comment:
+                comment = column.comment.strip()
+                comment = re.sub("'{2,}","'", comment)
+                comment = re.sub("'","''", comment)
+
+                alter_comment_stmt = f"""
+                        COMMENT ON COLUMN {table}."{column_name}" IS '{comment}'
+                """
+                with db.make_writeable_session() as session:
+                    session.execute(sqlalchemy.text(alter_comment_stmt))
+
+            print(f"Adding column: {column_name.ljust(20)} {schema[table][column_name].type} with comment '{comment}'")
 
             added_columns.append(f"{table}.{column_name}")
 
@@ -155,8 +159,7 @@ def apply_changes(db, schema, status):
                     logger.debug(alter_attribute_stmt)
                     with db.make_writeable_session() as session:
                         session.execute(sqlalchemy.text(alter_attribute_stmt))
-
-        return added_columns
+    return added_columns
 
 
 class DBParser(BaseParser):
