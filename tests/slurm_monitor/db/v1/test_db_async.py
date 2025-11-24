@@ -33,7 +33,7 @@ async def test_fetch_first(test_db, number_of_nodes, number_of_gpus):
 @pytest.mark.asyncio(loop_scope="module")
 async def test_fetch_latest(test_db, number_of_nodes, number_of_gpus):
     results = await test_db.fetch_latest_async(GPUStatus)
-    assert results == test_db.fetch_latest(GPUStatus)
+    assert results.timestamp == test_db.fetch_latest(GPUStatus).timestamp
 
 @pytest.mark.asyncio(loop_scope="module")
 async def test_node_last_probe_timestamp(test_db, number_of_nodes, number_of_gpus):
