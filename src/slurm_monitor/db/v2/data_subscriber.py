@@ -325,7 +325,6 @@ class DBJsonImporter:
                 )
             )
 
-        breakpoint()
         cluster = Cluster.create(
             cluster=cluster_id,
             slurm=slurm,
