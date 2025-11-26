@@ -2,9 +2,8 @@ import pytest
 import platform
 
 from slurm_monitor.db.v2.db_tables import TableBase
-from slurm_monitor.db.v2.data_subscriber import expand_node_names
 from slurm_monitor.utils import utcnow
-from slurm_monitor.db.v2.data_subscriber import DBJsonImporter
+from slurm_monitor.db.v2.importer import Importer, DBJsonImporter
 from slurm_monitor.utils.system_info import SystemInfo
 import psutil
 import copy
@@ -16,7 +15,7 @@ from pathlib import Path
     ["n[001-003,056],gh001",["n001","n002","n003","n056","gh001"]]
 ])
 def test_expand_node_names(names, nodes):
-    assert sorted(expand_node_names(names)) == sorted(nodes)
+    assert sorted(Importer.expand_node_names(names)) == sorted(nodes)
 
 
 def sonar_base_message(message_type: str, **kwargs):

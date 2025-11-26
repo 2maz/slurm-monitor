@@ -1,4 +1,11 @@
-from kafka import KafkaConsumer, TopicPartition
+import logging
+import re
+import json
+import datetime as dt
+import sqlalchemy
+import traceback as tb
+
+from slurm_monitor.utils import utcnow
 from slurm_monitor.db.v2.db_tables import (
     Cluster,
     ErrorMessage,
@@ -19,77 +26,64 @@ from slurm_monitor.db.v2.db_tables import (
 from slurm_monitor.db.v2.db import (
     ClusterDB
 )
-from slurm_monitor.utils import utcnow
 
-import dataclasses
-import datetime as dt
-import json
-import logging
-import re
-import time
-import traceback as tb
+import slurm_monitor.db.v2.sonar as sonar
 
 logger = logging.getLogger(__name__)
 
+class Importer:
+    last_msg_per_node: dict[str, dt.datetime]
+    verbose: bool
 
-last_msg_per_node = {}
+    def __init__(self):
+        self.last_msg_per_node = {}
+        self.verbose = False
 
-@dataclasses.dataclass
-class Meta:
-    producer: str
-    version: str
+    def insert(message: sonar.Message, update: bool):
+        raise NotImplementedError("Importer: insert not implemented")
 
-@dataclasses.dataclass
-class Data:
-    type: str
-    attributes: dict[str, any]
+    def update_last_msg(self, node: str, time: dt.datetime):
+        self.last_msg_per_node[node] = time
 
-@dataclasses.dataclass
-class Message:
-    meta: Meta
-    data: Data | None
-    errors: list[ErrorMessage] | None
+    @classmethod
+    def expand_node_names(cls, names: str) -> list[str]:
+        nodes = []
 
+        if type(names) is str:
+            names = names.replace("],","];")
+            names = names.split(';')
 
-
-
-def expand_node_names(names: str) -> list[str]:
-    nodes = []
-
-    if type(names) is str:
-        names = names.replace("],","];")
-        names = names.split(';')
-
-    for pattern in names:
-        m = re.match(r"(.*)\[(.*)\]$", pattern)
-        if m is None:
-            nodes.append(pattern)
-            continue
-
-        prefix, suffixes = m.groups()
-        # [005-006,001,005]
-        for suffix in suffixes.split(','):
-            #0,0
-            if "-" not in suffix:
-                nodes.append(prefix + suffix)
+        for pattern in names:
+            m = re.match(r"(.*)\[(.*)\]$", pattern)
+            if m is None:
+                nodes.append(pattern)
                 continue
 
-            # 001-010
-            start, end = suffix.split("-")
-            pattern_length = len(start)
+            prefix, suffixes = m.groups()
+            # [005-006,001,005]
+            for suffix in suffixes.split(','):
+                #0,0
+                if "-" not in suffix:
+                    nodes.append(prefix + suffix)
+                    continue
 
-            for i in range(int(start), int(end)+1):
-                node_number = str(i).zfill(pattern_length)
-                nodes.append(prefix + node_number)
+                # 001-010
+                start, end = suffix.split("-")
+                pattern_length = len(start)
 
-    return nodes
+                for i in range(int(start), int(end)+1):
+                    node_number = str(i).zfill(pattern_length)
+                    nodes.append(prefix + node_number)
+
+        return nodes
 
 
-class DBJsonImporter:
+class DBJsonImporter(Importer):
     db: ClusterDB
     cluster_nodes: dict[str, set]
 
     def __init__(self, db: ClusterDB):
+        super().__init__()
         self.db = db
 
     def ensure_node(self, cluster: str, node: str, samples: list[TableBase]):
@@ -100,25 +94,25 @@ class DBJsonImporter:
             return [Node.create(cluster=cluster, node=node)] + samples
 
     @classmethod
-    def to_message(cls, message: dict[str, any]) -> Message:
+    def to_message(cls, message: dict[str, any]) -> sonar.Message:
         if "meta" not in message:
             raise ValueError(f"Missing 'meta' in {message=}")
 
-        meta = Meta(**message['meta'])
+        meta = sonar.Meta(**message['meta'])
 
         data = None
         if "data" not in message and "errors" not in message:
             raise ValueError(f"Either 'data' or 'errors' must be present in {message=}")
 
         if 'data' in message:
-            data = Data(**message['data'])
+            data = sonar.Data(**message['data'])
 
 
         errors = None
         if 'errors' in message:
             errors = [ErrorMessage(**x) for x in message['errors']]
 
-        return Message(meta=meta, data=data, errors=errors)
+        return sonar.Message(meta=meta, data=data, errors=errors)
 
     def parse(self, message: dict[str, any]):
         """
@@ -126,7 +120,7 @@ class DBJsonImporter:
 
         Will call DBJsonImporter.parse_<msgtype> function to handle a message.
         """
-        msg = DBJsonImporter.to_message(message)
+        msg = self.to_message(message)
 
         msg_type = "errors"
         if not msg.errors:
@@ -139,7 +133,7 @@ class DBJsonImporter:
         return parser_fn(msg)
 
 
-    def parse_sysinfo(self, msg: Message) -> list[TableBase | list[TableBase]]:
+    def parse_sysinfo(self, msg: sonar.Message) -> list[TableBase | list[TableBase]]:
         """
         Parse messages of type 'sysinfo'
         """
@@ -149,6 +143,8 @@ class DBJsonImporter:
 
         time = dt.datetime.fromisoformat(attributes["time"])
         del attributes['time']
+
+        self.update_last_msg(node=node, time=time)
 
         gpu_uuids = []
         gpu_info = []
@@ -204,7 +200,7 @@ class DBJsonImporter:
 
         return [node, sysinfo] + gpu_info
 
-    def parse_sample(self, msg: Message) -> list[TableBase | list[TableBase]]:
+    def parse_sample(self, msg: sonar.Message) -> list[TableBase | list[TableBase]]:
         """
         Parse messages of type 'sample'
         """
@@ -215,7 +211,7 @@ class DBJsonImporter:
         cluster = attributes.get('cluster','')
         node = attributes['node']
 
-        last_msg_per_node[node] = time
+        self.update_last_msg(node=node, time=time)
 
         gpu_samples = []
         sample_system = None
@@ -285,7 +281,7 @@ class DBJsonImporter:
                 )
         return self.ensure_node(cluster, node, [gpu_samples, gpu_card_process_stati, process_stati, sample_system])
 
-    def parse_cluster(self, msg: Message) -> list[TableBase | list[TableBase]]:
+    def parse_cluster(self, msg: sonar.Message) -> list[TableBase | list[TableBase]]:
         """
         Parse messages of type 'cluster'
         """
@@ -295,7 +291,6 @@ class DBJsonImporter:
 
         time = dt.datetime.fromisoformat(attributes["time"])
         del attributes['time']
-
 
         nodes = set()
         nodes_states = []
@@ -337,7 +332,7 @@ class DBJsonImporter:
 
         return [ cluster ]  + partitions + cluster_nodes + nodes_states
 
-    def parse_job(self, msg: Message) -> list[TableBase | list[TableBase]]:
+    def parse_job(self, msg: sonar.Message) -> list[TableBase | list[TableBase]]:
         """
         Parse messages of type 'job'
         """
@@ -377,7 +372,7 @@ class DBJsonImporter:
                 )
         return slurm_job_samples
 
-    def parse_errors(self, msg: Message) -> list[TableBase | list[TableBase]]:
+    def parse_errors(self, msg: sonar.Message) -> list[TableBase | list[TableBase]]:
         """
         Parse messages of type 'errors'
         """
@@ -386,7 +381,10 @@ class DBJsonImporter:
             error_messages.append(ErrorMessage.create(**error))
         return error_messages
 
-    async def insert(self, message: dict[str, any], update: bool = True):
+    async def insert(self,
+                     message: dict[str, any],
+                     update: bool = True,
+                     ignore_integrity_errors: bool = False):
         samples = self.parse(message)
         for sample in samples:
             if sample:
@@ -412,141 +410,10 @@ class DBJsonImporter:
                             )
                             self.db.insert(cluster)
                 except Exception as e:
-                    tb.print_tb(e.__traceback__)
-                    logger.warning(f"Inserting sample {sample} failed. -- {e}")
-
-async def main(*,
-        host: str, port: int,
-        cluster_name: str,
-        topics: str | list[str] | None,
-        database: ClusterDB | None = None,
-        retry_timeout_in_s: int = 5,
-        verbose: bool = False,
-        strict_mode: bool = False
-        ):
-    """
-    Set up a kafka consumer that subscribes to a list of topics
-
-    Note that a topic can be defined with a lower bound and and upper bound offset, e.g., as "<topic_name>:<lb-offset>-<ub-offset>.
-    When an offset is define, the consumption of messages will stop as soon for that given topic.
-    """
-
-    if type(topics) is str:
-        topics = [topics]
-
-    if strict_mode:
-        TableBase.__extra_values__ = 'forbid'
-
-    msg_handler = None
-    if database:
-        msg_handler = DBJsonImporter(db=database)
-    else:
-        print("No database specified. Will only run in plain listen mode")
-
-    topic_lb = {}
-    topic_ub = {}
-    if not topics:
-        topics = [f"{cluster_name}.{x}" for x in ['cluster', 'job', 'sample', 'sysinfo']]
-    else:
-        processed_topics = []
-        for t in topics:
-            m = re.match(r"^([^-:]+)(:[0-9]+)?(-[0-9]+)?",t)
-            if m:
-                topic = m.groups()[0]
-                processed_topics.append(topic)
-                for g in m.groups()[1:]:
-                    if not g:
+                    if ignore_integrity_errors and type(e) is sqlalchemy.exc.IntegrityError:
                         continue
+                    else:
+                        if self.verbose:
+                            tb.print_tb(e.__traceback__)
+                        logger.warning(f"Inserting sample {sample} failed. -- {e}")
 
-                    if g.startswith(":"):
-                        topic_lb[topic] = int(g[1:])
-                    elif g.startswith("-"):
-                        topic_ub[topic] = int(g[1:])
-        topics = processed_topics
-
-    while True:
-        try:
-            # https://kafka-python.readthedocs.io/en/master/apidoc/KafkaConsumer.html
-            logger.info(f"Subscribing to topics: {topics}")
-            if not topic_lb:
-                consumer = KafkaConsumer(
-                            *topics,
-                            bootstrap_servers=f"{host}:{port}",
-                            max_poll_records=1000,
-                            fetch_max_bytes=200*1024**2,
-                            max_partition_fetch_bytes=200*1024**2,
-                            )
-            else:
-                consumer = KafkaConsumer(
-                            bootstrap_servers=f"{host}:{port}",
-                            max_poll_records=1000,
-                            fetch_max_bytes=200*1024**2,
-                            max_partition_fetch_bytes=200*1024**2,
-                            )
-
-            start_time = dt.datetime.now(dt.timezone.utc)
-            for topic, lb in topic_lb.items():
-                consumer.assign([TopicPartition(topic, 0)])
-                consumer.seek(TopicPartition(topic, 0), lb)
-
-            while topics:
-                interval_start_time = dt.datetime.now(dt.timezone.utc)
-
-                consumer._fetch_all_topic_metadata()
-                if not consumer.assignment():
-                    # Wait for partitions to become available
-                    time.sleep(5)
-                    continue
-
-                for idx, consumer_record in enumerate(consumer, 1):
-                    try:
-                        if msg_handler:
-                            topic = consumer_record.topic
-                            if topic in topics and topic in topic_ub:
-                                ub = topic_ub[topic]
-                                if consumer_record.offset >= ub:
-                                    print(f"Partition: {topic.ljust(25)} -- upper bound reached: {ub}, pausing: {topic}")
-                                    consumer.pause([TopicPartition(topic, 0)])
-                                    topics.remove(topic)
-
-                            msg = consumer_record.value.decode("UTF-8")
-                            if verbose:
-                                print(msg)
-
-                            if topic.endswith("sample"):
-                                await msg_handler.insert(json.loads(msg), update=False)
-                            else:
-                                await msg_handler.insert(json.loads(msg), update=True)
-
-                            print(f"{dt.datetime.now(dt.timezone.utc)} messages consumed: "
-                                  f"{idx} since {start_time}\r",
-                                  flush=True,
-                                  end=''
-                            )
-                        else:
-                            print(msg.value.decode("UTF-8"))
-
-                        if (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds() > 60:
-                            interval_start_time = dt.datetime.now(dt.timezone.utc)
-                            max_delay = (interval_start_time - min(last_msg_per_node.values())).total_seconds()
-                            print(f"\n\nLast known messages - {interval_start_time} - {max_delay=} s")
-                            for node_num, node in enumerate(sorted(last_msg_per_node.keys())):
-                                print(f"{node_num:03} {node.ljust(20)} {last_msg_per_node[node]}")
-
-                            print(json.dumps(consumer.metrics(), indent=4))
-                            consumer._fetch_all_topic_metadata()
-                            for tp in consumer.assignment():
-                                current_pos = consumer.position(tp)
-                                highwater = consumer.highwater(tp)
-                                print(f"Partition: {tp.topic.ljust(25)} -- {current_pos} / {highwater}")
-
-                    except Exception as e:
-                        tb.print_tb(e.__traceback__)
-                        logger.warning(f"Message processing failed: {e}")
-        except TimeoutError:
-            raise
-        except Exception as e:
-            logger.warning(f"Connection failed - retrying in 5s - {e}")
-            time.sleep(retry_timeout_in_s)
-
-    logger.info("All tasks gracefully stopped")
