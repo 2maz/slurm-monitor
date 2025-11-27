@@ -11,6 +11,7 @@ import time
 import traceback as tb
 
 from slurm_monitor.utils import utcnow
+import slurm_monitor.db.v2.sonar as sonar
 from slurm_monitor.db.v2.importer import DBJsonImporter
 from slurm_monitor.db.v2.db_tables import TableBase
 from slurm_monitor.db.v2.db import (
@@ -25,12 +26,26 @@ KAFKA_CONSUMER_DEFAULTS = {
     'max_partition_fetch_bytes': 200*1024**2
 }
 
+LOOKBACK_IN_H_DEFAULT = 36
 LOOKBACK_IN_H_DEFAULTS = {
-    'sysinfo': 36,
-    'sample': 1,
-    'job': 1,
-    'cluster': 36,
+    sonar.TopicType.cluster: LOOKBACK_IN_H_DEFAULT,
+    sonar.TopicType.sample: 1,
+    sonar.TopicType.job: 1,
+    sonar.TopicType.sysinfo: LOOKBACK_IN_H_DEFAULT,
 }
+
+class TopicBound:
+    topic: str
+    lower_bound: int | None
+    upper_bound: int | None
+
+    def __init__(self, topic: str,
+                 lower_bound: int | None,
+                 upper_bound: int | None):
+        self.topic = topic
+
+        self.lower_bound = lower_bound
+        self.upper_bound = upper_bound
 
 class MessageSubscriber:
     host: str
@@ -50,6 +65,7 @@ class MessageSubscriber:
     class State(str, Enum):
         INITIALIZING = 'INITIALIZING'
         RUNNING = 'RUNNING'
+        STOPPING = 'STOPPING'
         UNKNOWN = 'UNKNOWN'
 
     def __init__(self,
@@ -90,6 +106,7 @@ class MessageSubscriber:
 
         start_time = dt.datetime.now(dt.timezone.utc)
 
+        ignore_integrity_errors = False
         if startup_offsets:
             ignore_integrity_errors = True
         else:
@@ -115,24 +132,31 @@ class MessageSubscriber:
                                     del startup_offsets[topic]
 
                                 if not startup_offsets:
-                                    print(f"Startup completed: historic message lookup finished (after {(utcnow() - start_time).total_seconds()}s)")
+                                    print(f"Startup completed: historic message lookup finished (after {(utcnow() - start_time).total_seconds()}")
                                     self.state = self.State.RUNNING
                                     ignore_integrity_errors = False
 
                             if topic in topic_ub:
                                 ub = topic_ub[topic]
                                 if ub and consumer_record.offset >= ub:
-                                    print(f"Partition: {topic.ljust(25)} -- upper bound reached: {ub}, pausing: {topic}")
-                                    consumer.pause([TopicPartition(topic, 0)])
+                                    print(f"MessageSubscriber.consume: {topic.ljust(25)} -- upper bound reached: {ub}, pausing: {topic}")
+                                    consumer.pause(TopicPartition(topic, 0))
                                     topics.remove(topic)
+                                    if not topics:
+                                        print("MessageSubscriber.consume: no topics left to listen on. Stopping ...")
+                                        self.state = self.State.STOPPING
+                                        return
 
                         msg = consumer_record.value.decode("UTF-8")
                         if self.verbose:
                             print(msg)
 
-                        if topic.endswith("sample"):
+                        # If a sample arrives there should be no duplicates in the database - an exception is the initialization
+                        # where historic records are retrieved
+                        if sonar.TopicType.infer(topic) == sonar.TopicType.sample:
                             await msg_handler.insert(json.loads(msg), update=False, ignore_integrity_errors=ignore_integrity_errors)
                         else:
+                            # Allow to update / merge existing information
                             await msg_handler.insert(json.loads(msg), update=True, ignore_integrity_errors=ignore_integrity_errors)
 
                         print(f"[{self.state.value}] {dt.datetime.now(dt.timezone.utc)} messages consumed: "
@@ -161,6 +185,27 @@ class MessageSubscriber:
                         tb.print_tb(e.__traceback__)
                     logger.warning(f"Message processing failed: {e}")
 
+    @classmethod
+    def extract_offset_bounds(cls, txt) -> TopicBound:
+        # check if topic follows: <topic-name>:<lower-bound-offset>-<upper-bound-offset>
+        m = re.match(r"^([^:]+)(:[0-9]+)?(-[0-9]+)?$", txt)
+        if not m:
+            raise ValueError("MessageSubscriber: invalid pattern: use <topic-name>, or <topic-name>:<lower-bount:int> or <topic-name>:<lower-bound:int>-<upper-bound:int>")
+
+        topic = m.groups()[0]
+        lower_bound = None
+        upper_bound = None
+        for g in m.groups()[1:]:
+            if not g:
+                continue
+
+            if g.startswith(":"):
+                lower_bound = int(g[1:])
+            elif g.startswith("-"):
+                upper_bound = int(g[1:])
+
+        return TopicBound(topic, lower_bound, upper_bound)
+
     def run(self):
         asyncio.run(self._run())
 
@@ -169,7 +214,8 @@ class MessageSubscriber:
         Set up a kafka consumer that subscribes to a list of topics
 
         Note that a topic can be defined with a lower bound and and upper bound offset, e.g., as "<topic_name>:<lb-offset>-<ub-offset>.
-        When an offset is define, the consumption of messages will stop as soon for that given topic.
+            - when an lower bound offset is defined: start the consumption of messages for the related topic at this message offset
+            - when an upper bound offset is defined: end the consumption of messages for the related topic, when a (topic) message with an offset equal or larger than this bound is encountered.
         """
 
         if self.strict_mode:
@@ -186,26 +232,22 @@ class MessageSubscriber:
 
         topics = self.topics
         if not topics:
-            topics = [f"{self.cluster_name}.{x}" for x in ['cluster', 'job', 'sample', 'sysinfo']]
+            topics = [f"{x.get_topic(cluster=self.cluster_name)}" for x in sonar.TopicType]
         else:
+            # Process topic will contain the topics without and lower bound, upper bound constraints
             processed_topics = []
             for t in topics:
-                m = re.match(r"^([^-:]+)(:[0-9]+)?(-[0-9]+)?",t)
-                if m:
-                    topic = m.groups()[0]
-                    processed_topics.append(topic)
-                    for g in m.groups()[1:]:
-                        if not g:
-                            continue
+                topic_bound = self.extract_offset_bounds(t)
+                if topic_bound.lower_bound is not None:
+                    topic_lb[topic_bound.topic] = topic_bound.lower_bound
+                if topic_bound.upper_bound is not None:
+                    topic_ub[topic_bound.topic] = topic_bound.upper_bound
+                processed_topics.append(topic_bound.topic)
 
-                        if g.startswith(":"):
-                            topic_lb[topic] = int(g[1:])
-                        elif g.startswith("-"):
-                            topic_ub[topic] = int(g[1:])
             topics = processed_topics
 
         self.state = self.State.INITIALIZING
-        while True:
+        while self.state != self.State.STOPPING:
             try:
                 # https://kafka-python.readthedocs.io/en/master/apidoc/KafkaConsumer.html
                 logger.info(f"Subscribing to topics: {topics}")
@@ -214,6 +256,7 @@ class MessageSubscriber:
                             bootstrap_servers=f"{self.host}:{self.port}",
                             **self.kafka_consumer_options
                             )
+                consumer._fetch_all_topic_metadata()
 
                 # In particular sysinfo message are expected to run with low
                 # cadence (every 24\,h)
@@ -222,16 +265,16 @@ class MessageSubscriber:
                 # Hence, in cases where sysinfo message have been already recorded
                 # ensure that the listener picks them up
                 startup_offsets = {}
-                for topic_type in self.lookback_in_h:
-                    topic = f"{self.cluster_name}.{topic_type}"
+                for topic in topics:
                     if topic not in topic_lb:
                         tp = TopicPartition(topic, 0)
                         if not consumer.partitions_for_topic(topic):
                             continue
 
-                        timelimit = utcnow() - dt.timedelta(hours=self.lookback_in_h.get(topic_type, 36))
+                        # go back in history to search for topic messages
+                        topic_type = sonar.TopicType.infer(topic=topic)
+                        timelimit = utcnow() - dt.timedelta(hours=self.lookback_in_h.get(topic_type, LOOKBACK_IN_H_DEFAULT))
                         logger.info(f"{topic=}: search offset for {timelimit=}")
-                        # go 36 h back in history to earch for topic messages
                         offset_and_timestamp = consumer.offsets_for_times({ tp: int(timelimit.timestamp()*1000) })[tp]
                         if not offset_and_timestamp:
                             continue

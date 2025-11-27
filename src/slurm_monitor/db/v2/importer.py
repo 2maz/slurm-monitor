@@ -295,7 +295,7 @@ class DBJsonImporter(Importer):
         nodes = set()
         nodes_states = []
         for n in attributes['nodes']:
-            node_names = expand_node_names(n['names'])
+            node_names = self.expand_node_names(n['names'])
             nodes.update(node_names)
 
             states = n['states']
@@ -310,7 +310,7 @@ class DBJsonImporter(Importer):
 
         partitions = []
         for p in attributes['partitions']:
-            node_names = expand_node_names(p["nodes"])
+            node_names = self.expand_node_names(p["nodes"])
             partitions.append(Partition.create(
                     cluster=cluster_id,
                     partition=p["name"],
