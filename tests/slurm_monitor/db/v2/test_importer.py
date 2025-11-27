@@ -163,6 +163,10 @@ async def test_DBJsonImporter_non_slurm(sonar_msg, test_db_v2):
          "0+sysinfo-ml1.hpc.uio.no.json",
          "0+sample-ml1.hpc.uio.no.json"
         ],
+        [
+         "0+sample-g001.ex3.simula.no.json",
+         "0+sysinfo-g001.ex3.simula.no.json"
+        ]
     ]
 )
 async def test_DBJsonImporter_sonar_examples(sonar_msg_files, test_db_v2, test_data_dir):
@@ -171,6 +175,8 @@ async def test_DBJsonImporter_sonar_examples(sonar_msg_files, test_db_v2, test_d
     in_msg_uuids = []
     for sonar_msg_file in sonar_msg_files:
         json_filename = Path(test_data_dir) / "sonar" / sonar_msg_file
+        nodename = sonar_msg_file.split("-")[1].replace(".json","")
+
         with open(json_filename, "r") as f:
             msg_data = json.load(f)
             if 'cards' in msg_data['data']['attributes']:
@@ -179,14 +185,19 @@ async def test_DBJsonImporter_sonar_examples(sonar_msg_files, test_db_v2, test_d
             await importer.insert(copy.deepcopy(msg_data))
 
     with test_db_v2.make_session() as session:
-        results = session.execute(sqlalchemy.text("SELECT * from cluster_attributes WHERE 'ml1.hpc.uio.no' = ANY(nodes)")).all()
+        results = session.execute(sqlalchemy.text(f"SELECT * from cluster_attributes WHERE '{nodename}' = ANY(nodes)")).all()
         assert len(results) == 1, f"Expected 1 matching cluster_attributes entries got {[x.cluster for x in results]}"
 
-        results = session.execute(sqlalchemy.text("SELECT * from node WHERE node = 'ml1.hpc.uio.no'")).all()
+        results = session.execute(sqlalchemy.text(f"SELECT * from node WHERE node = '{nodename}'")).all()
         assert len(results) == 1, f"Expected 1 matching node entry go {results}"
 
         results = session.execute(sqlalchemy.text("SELECT uuid from sysinfo_gpu_card")).all()
         in_db_uuids = [x[0] for x in results]
 
-    for uuid in in_msg_uuids:
-        assert uuid in in_db_uuids, f"Expected uuids {in_msg_uuids} to be present, but found {in_db_uuids}"
+
+        for uuid in in_msg_uuids:
+            assert uuid in in_db_uuids, f"Expected uuids {in_msg_uuids} to be present, but found {in_db_uuids}"
+
+            results = session.execute(sqlalchemy.text(f"SELECT memory from sysinfo_gpu_card WHERE uuid = '{uuid}'")).all()
+            assert len(results) == 1, f"Expected 1 matching uuid entry got {results}"
+            assert results[0][0] != 0, f"Expected memory > 0, but got {results[0][0]}"

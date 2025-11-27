@@ -1,6 +1,5 @@
 import logging
 import re
-import json
 import datetime as dt
 import sqlalchemy
 import traceback as tb
@@ -80,11 +79,15 @@ class Importer:
 
 class DBJsonImporter(Importer):
     db: ClusterDB
-    cluster_nodes: dict[str, set]
+
+    # Check if the the gpu is known and whether the information is 'complete',
+    # i.e., not just a stub entry
+    sysinfo_gpu_cards: dict[str, SysinfoGpuCard]
 
     def __init__(self, db: ClusterDB):
         super().__init__()
         self.db = db
+        self.sysinfo_gpu_cards = {}
 
     def ensure_node(self, cluster: str, node: str, samples: list[TableBase]):
         if self.db.is_known_node(cluster=cluster, node=node):
@@ -92,6 +95,25 @@ class DBJsonImporter(Importer):
         else:
             logger.info(f"Creating node: {cluster=} {node=}")
             return [Node.create(cluster=cluster, node=node)] + samples
+
+    async def sync_with_db(self):
+        await self.update_sysinfo_gpu_cards()
+
+    async def update_sysinfo_gpu_cards(self):
+        sysinfo_gpu_cards = await self.db.get_all_sysinfo_gpu_cards()
+        self.sysinfo_gpu_cards = { x.uuid: x for x in sysinfo_gpu_cards }
+
+    def ensure_gpu(self, cluster: str, node: str, uuid: str, samples: list[TableBase]):
+        if uuid in self.sysinfo_gpu_cards:
+            return samples
+        else:
+            logger.info(f"Creating sysinfo_gpu_card: {cluster=} {node=}")
+            return [SysinfoGpuCard.create(uuid=uuid,
+                                          manufacturer='',
+                                          model='',
+                                          architecture='',
+                                          memory=0
+                                          )] + samples
 
     @classmethod
     def to_message(cls, message: dict[str, any]) -> sonar.Message:
@@ -217,6 +239,8 @@ class DBJsonImporter(Importer):
         sample_system = None
 
         system = attributes.get("system",{})
+
+        active_gpus = set()
         if system:
             if "gpus" in system:
                 gpus = system["gpus"]
@@ -226,6 +250,8 @@ class DBJsonImporter(Importer):
                     if 'uuid' not in gpu:
                         logger.debug(f"Sample: skipping sample due to missing 'uuid' {gpu=}")
                         continue
+
+                    active_gpus.add(gpu['uuid'])
 
                     gpu_status = SampleGpu.create(
                             **gpu,
@@ -255,6 +281,8 @@ class DBJsonImporter(Importer):
 
                 if "gpus" in process:
                     for gpu_data in process['gpus']:
+                        active_gpus.add(gpu_data['uuid'])
+
                         gpu_card_process_stati.append(
                             SampleProcessGpu.create(
                                 cluster=cluster,
@@ -279,7 +307,11 @@ class DBJsonImporter(Importer):
 
                    **process)
                 )
-        return self.ensure_node(cluster, node, [gpu_samples, gpu_card_process_stati, process_stati, sample_system])
+        samples = self.ensure_node(cluster=cluster, node=node, samples=[gpu_samples, gpu_card_process_stati, process_stati, sample_system])
+        for uuid in active_gpus:
+            samples = self.ensure_gpu(cluster=cluster, node=node, uuid=uuid, samples=samples)
+
+        return samples
 
     def parse_cluster(self, msg: sonar.Message) -> list[TableBase | list[TableBase]]:
         """
@@ -385,6 +417,9 @@ class DBJsonImporter(Importer):
                      message: dict[str, any],
                      update: bool = True,
                      ignore_integrity_errors: bool = False):
+        # sync with the current db state once before handling all samples in a message
+        await self.sync_with_db()
+
         samples = self.parse(message)
         for sample in samples:
             if sample:
@@ -416,4 +451,3 @@ class DBJsonImporter(Importer):
                         if self.verbose:
                             tb.print_tb(e.__traceback__)
                         logger.warning(f"Inserting sample {sample} failed. -- {e}")
-

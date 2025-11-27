@@ -472,10 +472,11 @@ class SysinfoGpuCard(TableBase):
 
     uuid = Column(UUID, primary_key=True)
 
-    manufacturer = Column(String)
-    model = Column(String)
-    architecture = Column(String)
-    memory = Column(BigInteger)
+    # permit to create stub entries
+    manufacturer = Column(String, default='')
+    model = Column(String, default='')
+    architecture = Column(String, default='')
+    memory = Column(BigInteger, default=0)
 
 class SysinfoGpuCardConfig(TableBase):
     """

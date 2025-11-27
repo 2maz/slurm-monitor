@@ -730,6 +730,18 @@ class ClusterDB(Database):
             return node_states
 
 ################################################################
+    async def get_all_sysinfo_gpu_cards(self) -> SysinfoGpuCard:
+        """
+        Get all SysinfoGpuCard entries from the db
+        """
+        query = select(SysinfoGpuCard)
+
+        async with self.make_async_session() as session:
+                result = (await session.execute(query)).all()
+                if result:
+                    return [x[0] for x in result]
+        return []
+
     @ttl_cache_async(ttl=90, maxsize=1024)
     async def get_sysinfo_gpu_card(self,
             cluster: str,
