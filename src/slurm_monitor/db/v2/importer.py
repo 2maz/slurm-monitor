@@ -89,12 +89,12 @@ class DBJsonImporter(Importer):
         self.db = db
         self.sysinfo_gpu_cards = {}
 
-    def ensure_node(self, cluster: str, node: str, samples: list[TableBase]):
+    def ensure_node(self, cluster: str, node: str, rows: list[TableBase]):
         if self.db.is_known_node(cluster=cluster, node=node):
-            return samples
+            return rows
         else:
             logger.info(f"Creating node: {cluster=} {node=}")
-            return [Node.create(cluster=cluster, node=node)] + samples
+            return [Node.create(cluster=cluster, node=node)] + rows
 
     async def sync_with_db(self):
         await self.update_sysinfo_gpu_cards()
@@ -103,9 +103,9 @@ class DBJsonImporter(Importer):
         sysinfo_gpu_cards = await self.db.get_all_sysinfo_gpu_cards()
         self.sysinfo_gpu_cards = { x.uuid: x for x in sysinfo_gpu_cards }
 
-    def ensure_gpu(self, cluster: str, node: str, uuid: str, samples: list[TableBase]):
+    def ensure_gpu(self, cluster: str, node: str, uuid: str, rows: list[TableBase]):
         if uuid in self.sysinfo_gpu_cards:
-            return samples
+            return rows
         else:
             logger.info(f"Creating sysinfo_gpu_card: {cluster=} {node=}")
             return [SysinfoGpuCard.create(uuid=uuid,
@@ -113,7 +113,7 @@ class DBJsonImporter(Importer):
                                           model='',
                                           architecture='',
                                           memory=0
-                                          )] + samples
+                                          )] + rows
 
     @classmethod
     def to_message(cls, message: dict[str, any]) -> sonar.Message:
@@ -187,7 +187,7 @@ class DBJsonImporter(Importer):
 
                 gpu_uuid = card['uuid']
                 if gpu_uuid is None or gpu_uuid == '':
-                    logger.debug(f"SysInfo: skipping sample from {cluster=} {node=} due to missing 'uuid' {card=}")
+                    logger.debug(f"SysInfo: skipping message from {cluster=} {node=} due to missing 'uuid' {card=}")
                     continue
 
                 gpu_cards.append(SysinfoGpuCard.create(
@@ -307,11 +307,11 @@ class DBJsonImporter(Importer):
 
                    **process)
                 )
-        samples = self.ensure_node(cluster=cluster, node=node, samples=[gpu_samples, gpu_card_process_stati, process_stati, sample_system])
+        rows = self.ensure_node(cluster=cluster, node=node, rows=[gpu_samples, gpu_card_process_stati, process_stati, sample_system])
         for uuid in active_gpus:
-            samples = self.ensure_gpu(cluster=cluster, node=node, uuid=uuid, samples=samples)
+            rows = self.ensure_gpu(cluster=cluster, node=node, uuid=uuid, rows=rows)
 
-        return samples
+        return rows
 
     def parse_cluster(self, msg: sonar.Message) -> list[TableBase | list[TableBase]]:
         """
@@ -420,24 +420,24 @@ class DBJsonImporter(Importer):
         # sync with the current db state once before handling all samples in a message
         await self.sync_with_db()
 
-        samples = self.parse(message)
-        for sample in samples:
-            if sample:
+        rows = self.parse(message)
+        for row in rows:
+            if row:
                 try:
                     if update:
-                        self.db.insert_or_update(sample)
+                        self.db.insert_or_update(row)
                     else:
-                        self.db.insert(sample)
+                        self.db.insert(row)
 
-                    if type(sample) is Node:
-                        nodes = await self.db.get_nodes(cluster=sample.cluster, ensure_sysinfo=False)
-                        if sample.node not in nodes:
+                    if type(row) is Node:
+                        nodes = await self.db.get_nodes(cluster=row.cluster, ensure_sysinfo=False)
+                        if row.node not in nodes:
                             updated_nodes = set(nodes)
-                            updated_nodes.add(sample.node)
+                            updated_nodes.add(row.node)
 
                             # Update the associated cluster at the same time
                             cluster = Cluster.create(
-                                cluster=sample.cluster,
+                                cluster=row.cluster,
                                 slurm=False,
                                 partitions=[],
                                 nodes=updated_nodes,
@@ -450,4 +450,4 @@ class DBJsonImporter(Importer):
                     else:
                         if self.verbose:
                             tb.print_tb(e.__traceback__)
-                        logger.warning(f"Inserting sample {sample} failed. -- {e}")
+                        logger.warning(f"Inserting {row=} failed. -- {e}")
