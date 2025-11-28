@@ -25,4 +25,3 @@ def test_MessageSubscriber_extract_offset_bounds(txt,
         assert topic_bound.topic == expected_topic
         assert topic_bound.lower_bound == expected_lower_bound
         assert topic_bound.upper_bound == expected_upper_bound
-
