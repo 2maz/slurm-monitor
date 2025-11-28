@@ -20,7 +20,6 @@ import gc
 
 from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.api.v2.router import app as api_v2_app
-from slurm_monitor.utils import utcnow
 
 import logging
 from logging import getLogger
@@ -138,8 +137,6 @@ async def prefetch_data():
     partitions_endpoint = find_endpoint_by_name("partitions")
     jobs_endpoint = find_endpoint_by_name("jobs")
 
-    # query with time_in_s being set to allow usage of caching results
-    time_in_s = utcnow().timestamp()
     for cluster_data in clusters:
         cluster = cluster_data['cluster']
 

@@ -1,14 +1,10 @@
 import re
 import sys
 from argparse import ArgumentParser
-from pathlib import Path
 
 import pytest
-import yaml
-from pytest_console_scripts import ScriptRunner
 
 import slurm_monitor.cli.main as cli_main
-from slurm_monitor.cli.spec import SpecParser
 from slurm_monitor.cli.db import DBParser
 from slurm_monitor.cli.probe import ProbeParser
 from slurm_monitor.cli.listen import ListenParser
@@ -45,15 +41,22 @@ def test_help(subparsers, capsys, monkeypatch):
 
 
 @pytest.mark.parametrize("name, klass", [
+    [ "auto-deploy", AutoDeployParser ],
+    [ "import", ImportParser ],
+    [ "listen", ListenParser ],
+    [ "probe", ProbeParser ],
+    [ "query", QueryParser ],
+    [ "system-info", SystemInfoParser ],
     [ "spec", SpecParser ],
     [ "db", DBParser ],
+    [ "test", TestParser ],
 ])
 def test_subparser(name, klass, script_runner):
     result = script_runner.run(['slurm-monitor', name, "--help"])
-    assert result.returncode == 0
+    assert result.returncode == 0, f"Expected --help option for {name} subparser"
 
     test_parser = ArgumentParser()
-    subparser = klass(parser=test_parser)
+    klass(parser=test_parser)
 
     for a in test_parser._actions:
         if a.help == "==SUPPRESS==":
@@ -70,5 +73,6 @@ def test_spec(script_runner):
 def test_db_parser(script_runner, timescaledb):
     cluster = "my-test-cluster"
     result = script_runner.run(['slurm-monitor', 'db', '--db-uri', timescaledb, "--insert-test-samples", cluster])
+    assert result.returncode == 0
     cluster_result = Command.run("docker exec timescaledb-pytest-db_parser psql -U test test -tAq -c 'SELECT cluster from cluster_attributes'")
     assert cluster_result == cluster

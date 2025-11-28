@@ -11,7 +11,7 @@ v2_routes = []
 for route in app.routes:
     if hasattr(route, "routes") and route.path.endswith("v2"):
         for api_route in route.routes:
-            if type(api_route) == APIRoute:
+            if type(api_route) is APIRoute:
                 r = api_route.path
 
                 if re.search("{query_name}", r):
