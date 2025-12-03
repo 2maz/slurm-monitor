@@ -141,20 +141,26 @@ class ClusterDB(Database):
                 results[x.node] = value
             return results
 
-    async def get_monitored_nodes(self, cluster: str,
+    async def get_sysinfo_nodes(self, cluster: str,
             time_in_s: int | None = None,
             interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S
             ) -> list[str]:
+        """
+        Get all nodes with sysinfo_attributes records for the given time interval
+        """
         if not time_in_s:
             time_in_s = utcnow().timestamp()
+
+        to_time = fromtimestamp(time_in_s)
+        from_time = fromtimestamp(time_in_s - interval_in_s)
 
         query_sysinfo_attributes = select(
                         SysinfoAttributes.node,
                         func.max(SysinfoAttributes.time)
                     ).where(
                         (SysinfoAttributes.cluster == cluster),
-                        (SysinfoAttributes.time <= fromtimestamp(time_in_s)),
-                        (SysinfoAttributes.time >= fromtimestamp(time_in_s - interval_in_s))
+                        (SysinfoAttributes.time <= to_time),
+                        (SysinfoAttributes.time >= from_time)
                     ).group_by(
                         SysinfoAttributes.node
                     ).order_by(None)
@@ -183,13 +189,16 @@ class ClusterDB(Database):
         if not time_in_s:
             time_in_s = utcnow().timestamp()
 
+        to_time = fromtimestamp(time_in_s)
+        from_time = fromtimestamp(time_in_s - interval_in_s)
+
         subquery = select(
                     Cluster.cluster,
                     func.max(Cluster.time).label('max_time')
                 ).where(
                     (Cluster.cluster == cluster),
-                    (Cluster.time <= fromtimestamp(time_in_s)),
-                    (Cluster.time >= fromtimestamp(time_in_s - interval_in_s))
+                    (Cluster.time <= to_time),
+                    (Cluster.time >= from_time)
                 ).group_by(
                     Cluster.cluster
                 ).subquery()
@@ -213,15 +222,18 @@ class ClusterDB(Database):
         if not ensure_sysinfo:
             return cluster_nodes
 
-        sysinfo_nodes = await self.get_monitored_nodes(cluster=cluster,
+        sysinfo_nodes = await self.get_sysinfo_nodes(cluster=cluster,
                 time_in_s=time_in_s, interval_in_s=interval_in_s)
 
         if not sysinfo_nodes:
-            raise RuntimeError(f"ClusterDB.get_nodes: cluster has nodes: {cluster_nodes}, but"
-                " none has a running probe")
+            raise RuntimeError(f"ClusterDB.get_nodes: cluster '{cluster}' has nodes: {cluster_nodes},"
+                " but no system information is (yet) available. "
+                f" (in timeframe from {from_time} to {to_time})"
+            )
 
-        unmonitored_nodes = set(cluster_nodes).difference(sysinfo_nodes)
-        logger.warning(f"ClusterDB.get_nodes: there are nodes not being monitored: {unmonitored_nodes}")
+        no_sysinfo_nodes = set(cluster_nodes).difference(sysinfo_nodes)
+        logger.warning(f"ClusterDB.get_nodes: there are nodes not providing system information : {no_sysinfo_nodes}")
+
         return sysinfo_nodes
 
 
@@ -494,6 +506,7 @@ class ClusterDB(Database):
             time_of_latest_update = result[0][0]
 
         node_allocations = {}
+        latest_timestamp = None
         for node in tqdm(sorted(nodes), total=len(nodes), desc="Get resource allocation"):
             # expecting to have a job sample with a 5 min timeframe to identify
             # an active allocation
@@ -536,7 +549,6 @@ class ClusterDB(Database):
                     )
 
             node_allocations[node] = AllocTRES()
-            latest_timestamp = None
             async with self.make_async_session() as session:
                 results = (await session.execute(query_tres_alloc)).all()
                 for traceable_resource_allocation in results:
@@ -770,7 +782,8 @@ class ClusterDB(Database):
             nodelist = await self.get_nodes(
                     cluster=cluster,
                     time_in_s=time_in_s,
-                    interval_in_s=interval_in_s
+                    interval_in_s=interval_in_s,
+                    ensure_sysinfo=False
             )
         elif type(node) is str:
             nodelist = [node]
@@ -860,7 +873,8 @@ class ClusterDB(Database):
             time_in_s = utcnow().timestamp()
 
         nodes = await self.get_nodes(cluster=cluster,
-                time_in_s=time_in_s)
+                time_in_s=time_in_s,
+                ensure_sysinfo=False)
 
         query = select(
                      SampleProcess.node,
@@ -977,7 +991,10 @@ class ClusterDB(Database):
                 gpu_uuid: Array[{job: int, epoch: int, data: Array[SampleProcessGpu]]
         """
         if not nodes:
-            nodes = await self.get_nodes(cluster=cluster, time_in_s=end_time_in_s)
+            nodes = await self.get_nodes(
+                    cluster=cluster,
+                    time_in_s=end_time_in_s,
+                    ensure_sysinfo=False)
             if not nodes:
                 raise RuntimeError("get_nodes_sample_process_gpu_timeseries: "
                         f" could not find any available node for {cluster=}"
