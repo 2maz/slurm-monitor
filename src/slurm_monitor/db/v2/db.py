@@ -494,6 +494,7 @@ class ClusterDB(Database):
             time_of_latest_update = result[0][0]
 
         node_allocations = {}
+        latest_timestamp = None
         for node in tqdm(sorted(nodes), total=len(nodes), desc="Get resource allocation"):
             # expecting to have a job sample with a 5 min timeframe to identify
             # an active allocation
@@ -536,7 +537,6 @@ class ClusterDB(Database):
                     )
 
             node_allocations[node] = AllocTRES()
-            latest_timestamp = None
             async with self.make_async_session() as session:
                 results = (await session.execute(query_tres_alloc)).all()
                 for traceable_resource_allocation in results:
