@@ -6,9 +6,9 @@
   "data": {
     "type": "sample",
     "attributes": {
-      "time": "2025-11-25T10:52:00+01:00",
+      "time": "2025-11-25T10:54:00+01:00",
       "cluster": "mlx.hpc.uio.no",
-      "node": "ml1",
+      "node": "ml3",
       "system": {
         "cpus": [
           201894,
@@ -70,7 +70,7 @@
         ],
         "gpus": [
           {
-            "uuid": "GPU-35080357-601c-7113-ec05-f6ca1e58a91e",
+            "uuid": "GPU-33080357-601c-7113-ec05-f6ca1e58a91e",
             "fan": 27,
             "performance_state": 9,
             "memory": 266688,
@@ -82,7 +82,7 @@
           },
           {
             "index": 1,
-            "uuid": "GPU-be013a01-364d-ca23-f871-206fe3f259ba",
+            "uuid": "GPU-33013a01-364d-ca23-f871-206fe3f259ba",
             "fan": 28,
             "performance_state": 9,
             "memory": 266688,
@@ -93,7 +93,7 @@
           },
           {
             "index": 2,
-            "uuid": "GPU-daa9f6ac-c8bf-87be-8adc-89b1e7d3f38a",
+            "uuid": "GPU-33a9f6ac-c8bf-87be-8adc-89b1e7d3f38a",
             "fan": 28,
             "performance_state": 9,
             "memory": 266688,

@@ -133,8 +133,11 @@ async def test_job_sample_process_gpu_timeseries(test_db_v2):
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_nodes(test_db_v2, db_config):
-    nodes = await test_db_v2.get_nodes(cluster="cluster-1")
+@pytest.mark.parametrize("ensure_sysinfo",
+    [ True, False ]
+)
+async def test_nodes(ensure_sysinfo, test_db_v2, db_config):
+    nodes = await test_db_v2.get_nodes(cluster="cluster-1", ensure_sysinfo=ensure_sysinfo)
     assert len(nodes) == db_config.number_of_nodes
 
 @pytest.mark.asyncio(loop_scope="module")
