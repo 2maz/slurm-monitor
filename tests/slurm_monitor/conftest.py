@@ -552,3 +552,16 @@ def test_db_v2(timescaledb,
                 pass
             raise
     return db_test
+
+@pytest.fixture(scope="function")
+def test_db_v2__function_scope(timescaledb,
+        db_config) -> db_v2.db.ClusterDB:
+    for i in range(0,3):
+        try:
+            db_test = db_v2_testing.create_test_db(timescaledb, db_config)
+            time.sleep(2)
+        except sqlalchemy.exc.OperationalError as e:
+            if i < 2 and "server closed" in str(e):
+                pass
+            raise
+    return db_test

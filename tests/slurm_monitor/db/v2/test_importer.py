@@ -156,40 +156,75 @@ async def test_DBJsonImporter_non_slurm(sonar_msg, test_db_v2):
                 results = session.execute(sqlalchemy.text(f"SELECT * from cluster_attributes WHERE cluster='{cluster}'")).all()
                 assert len(results) == len(nodes), f"Update #{i}: expected {len(nodes)} cluster_attributes entries got {[x.cluster for x in results]}"
 
-@pytest.mark.asyncio(loop_scope="module")
-@pytest.mark.parametrize("sonar_msg_files",
+@pytest.mark.asyncio(loop_scope="function")
+@pytest.mark.parametrize("sonar_msg_files, expected_clusters",
     [
-        [
-         "0+sysinfo-ml1.hpc.uio.no.json",
-         "0+sample-ml1.hpc.uio.no.json"
+        [[ "0+sysinfo-ml1.hpc.uio.no.json", "0+sample-ml1.hpc.uio.no.json" ], {"mlx.hpc.uio.no": {"ml1"}} ],
+        [[ "0+sample-g001.ex3.simula.no.json", "0+sysinfo-g001.ex3.simula.no.json"], {"ex3.simula.no": {"g001"}}],
+        [ [
+             "0+sysinfo-ml1.hpc.uio.no.json",
+             "0+sample-ml1.hpc.uio.no.json",
+             "0+sample-g001.ex3.simula.no.json",
+             "0+sysinfo-g001.ex3.simula.no.json"
+          ],
+         { "mlx.hpc.uio.no": {"ml1"}, "ex3.simula.no": {"g001"} }
         ],
-        [
-         "0+sample-g001.ex3.simula.no.json",
-         "0+sysinfo-g001.ex3.simula.no.json"
+        [ [
+             "0+sample-g001.ex3.simula.no.json",
+             "0+sample-ml1.hpc.uio.no.json",
+             "0+sysinfo-g001.ex3.simula.no.json",
+             "0+sysinfo-ml1.hpc.uio.no.json",
+          ],
+         { "mlx.hpc.uio.no": {"ml1"}, "ex3.simula.no": {"g001"} }
+        ],
+        [ [
+             "0+sample-g001.ex3.simula.no.json",
+             "0+sample-ml1.hpc.uio.no.json",
+             "0+sample-ml2.hpc.uio.no.json",
+             "0+sample-ml3.hpc.uio.no.json",
+             "0+sysinfo-g001.ex3.simula.no.json",
+             "0+sysinfo-ml1.hpc.uio.no.json",
+             "0+sysinfo-ml2.hpc.uio.no.json",
+             "0+sysinfo-ml3.hpc.uio.no.json",
+          ],
+         { "mlx.hpc.uio.no": {"ml1", "ml2", "ml3"}, "ex3.simula.no": {"g001"}}
+        ],
+        [ [
+             "0+sample-g001.ex3.simula.no.json",
+             "0+sample-ml1.hpc.uio.no.json",
+             "0+sample-ml2.hpc.uio.no.json",
+             "0+sample-ml3.hpc.uio.no.json",
+          ],
+         { "mlx.hpc.uio.no": {"ml1", "ml2", "ml3"}, "ex3.simula.no": {"g001"}}
         ]
     ]
 )
-async def test_DBJsonImporter_sonar_examples(sonar_msg_files, test_db_v2, test_data_dir):
-    importer = DBJsonImporter(db=test_db_v2)
+async def test_DBJsonImporter_sonar_examples(sonar_msg_files,
+                                             expected_clusters,
+                                             test_db_v2__function_scope,
+                                             db_config,
+                                             test_data_dir):
+    db = test_db_v2__function_scope
+    importer = DBJsonImporter(db=db)
 
-    in_msg_uuids = []
+    in_msg_uuids = set()
     for sonar_msg_file in sonar_msg_files:
         json_filename = Path(test_data_dir) / "sonar" / sonar_msg_file
-        nodename = sonar_msg_file.split("-")[1].replace(".json","")
 
         with open(json_filename, "r") as f:
             msg_data = json.load(f)
             if 'cards' in msg_data['data']['attributes']:
-                in_msg_uuids = [x['uuid'] for x in msg_data['data']['attributes']['cards']]
+                in_msg_uuids.union(set([x['uuid'] for x in msg_data['data']['attributes']['cards']]))
 
             await importer.insert(copy.deepcopy(msg_data))
 
-    with test_db_v2.make_session() as session:
-        results = session.execute(sqlalchemy.text(f"SELECT * from cluster_attributes WHERE '{nodename}' = ANY(nodes)")).all()
-        assert len(results) == 1, f"Expected 1 matching cluster_attributes entries got {[x.cluster for x in results]}"
-
-        results = session.execute(sqlalchemy.text(f"SELECT * from node WHERE node = '{nodename}'")).all()
-        assert len(results) == 1, f"Expected 1 matching node entry go {results}"
+    with db.make_session() as session:
+        results = session.execute(sqlalchemy.text("SELECT cluster, nodes from cluster_attributes")).all()
+        clusters = { x[0]: set(x[1]) for x in results}
+        for expected_cluster, expected_nodes in expected_clusters.items():
+            assert clusters[expected_cluster] == expected_clusters[expected_cluster], f"Expected {expected_cluster} with nodes {expected_clusters[expected_cluster]} in cluster_attributes, but got {clusters=}"
+            # existing clusters of test db plus newly added ons
+            assert len(expected_clusters) + db_config.number_of_clusters == len(clusters)
 
         results = session.execute(sqlalchemy.text("SELECT uuid from sysinfo_gpu_card")).all()
         in_db_uuids = [x[0] for x in results]

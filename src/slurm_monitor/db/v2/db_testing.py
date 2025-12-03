@@ -109,6 +109,17 @@ def create_test_db(
         partitions = [ f"{cluster_name}-partition-{p}" for p in range(0, config.number_of_partitions) ]
         nodes = [ f"{cluster_name}-node-{n}" for n in range(0, config.number_of_nodes) ]
 
+        # Ensure multiple (timeseries entries) exist with
+        # a smaller set of nodes
+        dbi.insert(Cluster(
+                cluster=cluster_name,
+                slurm=True,
+                partitions=partitions,
+                nodes=[nodes[0]],
+                time=time - dt.timedelta(days=1)
+            )
+        )
+
         dbi.insert(Cluster(
                 cluster=cluster_name,
                 slurm=True,

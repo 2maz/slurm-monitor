@@ -7,7 +7,8 @@
     "type": "sample",
     "attributes": {
       "time": "2025-11-27T09:44:04+01:00",
-      "node": "g001.ex3.simula.no",
+      "cluster": "ex3.simula.no",
+      "node": "g001",
       "jobs": [
         {
           "job": 928613,

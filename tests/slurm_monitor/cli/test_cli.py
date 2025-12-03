@@ -75,4 +75,11 @@ def test_db_parser(script_runner, timescaledb):
     result = script_runner.run(['slurm-monitor', 'db', '--db-uri', timescaledb, "--insert-test-samples", cluster])
     assert result.returncode == 0
     cluster_result = Command.run("docker exec timescaledb-pytest-db_parser psql -U test test -tAq -c 'SELECT cluster from cluster_attributes'")
-    assert cluster_result == cluster
+
+    cluster_entries = cluster_result.split("\n")
+    assert len(cluster_entries) == 2
+
+    unique_clusters = set(cluster_entries)
+    assert len(unique_clusters) == 1
+
+    assert list(unique_clusters)[0] == cluster

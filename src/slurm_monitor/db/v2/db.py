@@ -183,23 +183,32 @@ class ClusterDB(Database):
         if not time_in_s:
             time_in_s = utcnow().timestamp()
 
-        query_cluster = select(
-                    Cluster.nodes,
-                    func.max(Cluster.time)
+        subquery = select(
+                    Cluster.cluster,
+                    func.max(Cluster.time).label('max_time')
                 ).where(
                     (Cluster.cluster == cluster),
                     (Cluster.time <= fromtimestamp(time_in_s)),
                     (Cluster.time >= fromtimestamp(time_in_s - interval_in_s))
                 ).group_by(
+                    Cluster.cluster
+                ).subquery()
+
+        query = select(
                     Cluster.nodes
-                ).order_by(None)
+                ).select_from(
+                    subquery
+                ).where(
+                    Cluster.time == subquery.c.max_time,
+                    Cluster.cluster == subquery.c.cluster
+                )
 
         async with self.make_async_session() as session:
-            cluster_nodes = (await session.execute(query_cluster)).all()
-            if not cluster_nodes:
+            result = (await session.execute(query)).all()
+            if not result:
                 return []
 
-            cluster_nodes = cluster_nodes[0][0]
+            cluster_nodes = result[0][0]
 
         if not ensure_sysinfo:
             return cluster_nodes
