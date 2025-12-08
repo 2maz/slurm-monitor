@@ -8,24 +8,75 @@ from pathlib import Path
 import json
 import jwt
 import copy
+import time
 
 from slurm_monitor.v2 import app
 from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.db.v2.importer import DBJsonImporter
 from slurm_monitor.app_settings import AppSettings
 
+from slurm_monitor.utils.api import find_endpoint_by_name
+
+@pytest.fixture
+def mock_token(monkeypatch) -> str:
+    """
+    Mock authentication for a test token, which is returned.
+    This should be used as Bearer token in the header
+    """
+    payload = {
+        'exp': 1765187642,
+        'iat': 1765187342,
+        'jti': 'onrtro:e0070d78-9c5c-04ba-22b9-fbcecb759fe4',
+        'iss': 'http://158.39.75.110/realms/naic-monitor',
+        'aud': 'account',
+        'sub': 'fbf4b6c4-bdd3-4aea-8b47-3a87e9c96633',
+        'typ': 'Bearer',
+        'azp': 'slurm-monitor.no',
+        'sid': '0e7aad19-8b15-06c2-1449-616b92625b9b',
+        'acr': 1,
+        'allowed-origins': ['', 'https://naic-monitor.simula.no'],
+        'realm_access' : { 'roles' : ['default-roles-naic-monitor', 'offline_access', 'uma_authorization'] },
+        'resource_access': { 'account' : { 'roles': ['manage-account', 'manage-account-links', 'view-profile']}},
+        'scope': 'email profile',
+        'email_verified': False,
+        'name': 'Test User',
+        'preferred_username': 'test-user',
+        'given_name': 'Test',
+        'family_name': 'User',
+        'email': 'test-user@xyz.com'
+    }
+
+    test_token = "oauth-test-token"
+    def patch_decode(*args, **kwargs):
+        token = args[0]
+        if not token == test_token:
+            raise jwt.InvalidTokenError(f"The expected token is {test_token}, but was {token}")
+
+        return payload
+
+    def patch_get_signing_key_from_jwt(token):
+        class SigningKey:
+            key: str = "signing_key"
+
+        return SigningKey()
+
+    monkeypatch.setattr(jwt, "decode", patch_decode)
+
+    app_settings = AppSettings.get_instance()
+    monkeypatch.setattr(app_settings.oauth.jwks_client, "get_signing_key_from_jwt", patch_get_signing_key_from_jwt)
+    return test_token
+
+
 def parametrize_route(path,
                       cluster="cluster-0",
                       node="cluster-0-node-0"):
-    if re.search("{query_name}", path):
-        return path
-
     path = path.replace("{cluster}", cluster)
     path = path.replace("{nodename}", node)
     path = path.replace("{partition}","cluster-0-partition-0")
     path = path.replace("{job_id}","1")
     path = path.replace("{epoch}","0")
     path = path.replace("{benchmark_name}","lambdal")
+    path = path.replace("{query_name}", "popular-partitions-by-number-of-jobs")
 
     m = re.search(r"[{}]", path)
     if m is not None:
@@ -65,8 +116,24 @@ async def test_metrics(client):
 @pytest.mark.parametrize("endpoint",
      v2_routes
     )
-async def test_ensure_response_from_all_endpoints(endpoint, client):
-    client.get(f"/api/v2{endpoint}")
+async def test_ensure_non_authenticated_response_from_all_endpoints(endpoint, client):
+    response = client.get(f"/api/v2{endpoint}")
+    if endpoint == "/":
+        assert response.status_code == 200
+        assert response.json() == {'message': 'Slurm Monitor API v2'}
+    else:
+        assert response.status_code == 401
+        assert "Not authenticated" in response.json()["detail"]
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint",
+     v2_routes
+    )
+async def test_ensure_response_from_all_endpoints(endpoint, client, mock_token):
+
+    response = client.get(f"/api/v2{endpoint}",
+                          headers={"Authorization": f"Bearer {mock_token}"})
+    assert response.status_code in [200, 204]
 
 
 @pytest.mark.asyncio
@@ -116,52 +183,10 @@ async def test_ensure_response_with_partial_rows(endpoint,
                                                  client,
                                                  test_db_v2__function_scope,
                                                  test_data_dir,
-                                                 monkeypatch,
+                                                 mock_token,
                                                 ):
     db = test_db_v2__function_scope
     importer = DBJsonImporter(db=db)
-
-    payload = {
-        'exp': 1765187642,
-        'iat': 1765187342,
-        'jti': 'onrtro:e0070d78-9c5c-04ba-22b9-fbcecb759fe4',
-        'iss': 'http://158.39.75.110/realms/naic-monitor',
-        'aud': 'account',
-        'sub': 'fbf4b6c4-bdd3-4aea-8b47-3a87e9c96633',
-        'typ': 'Bearer',
-        'azp': 'slurm-monitor.no',
-        'sid': '0e7aad19-8b15-06c2-1449-616b92625b9b',
-        'acr': 1,
-        'allowed-origins': ['', 'https://naic-monitor.simula.no'],
-        'realm_access' : { 'roles' : ['default-roles-naic-monitor', 'offline_access', 'uma_authorization'] },
-        'resource_access': { 'account' : { 'roles': ['manage-account', 'manage-account-links', 'view-profile']}},
-        'scope': 'email profile',
-        'email_verified': False,
-        'name': 'Test User',
-        'preferred_username': 'test-user',
-        'given_name': 'Test',
-        'family_name': 'User',
-        'email': 'test-user@xyz.com'
-    }
-
-    test_token = "oauth-test-token"
-    def patch_decode(*args, **kwargs):
-        token = args[0]
-        if not token == test_token:
-            raise jwt.InvalidTokenError(f"The expected token is {test_token}, but was {token}")
-
-        return payload
-
-    def patch_get_signing_key_from_jwt(token):
-        class SigningKey:
-            key: str = "signing_key"
-
-        return SigningKey()
-
-    monkeypatch.setattr(jwt, "decode", patch_decode)
-
-    app_settings = AppSettings.get_instance()
-    monkeypatch.setattr(app_settings.oauth.jwks_client, "get_signing_key_from_jwt", patch_get_signing_key_from_jwt)
 
     for sonar_msg_file in sonar_msg_files:
         json_filename = Path(test_data_dir) / "sonar" / sonar_msg_file
@@ -172,7 +197,7 @@ async def test_ensure_response_with_partial_rows(endpoint,
     route = parametrize_route(endpoint, cluster=cluster, node=node)
     try:
         response = client.get(f"{route}",
-                              headers={"Authorization": f"Bearer {test_token}"}
+                              headers={"Authorization": f"Bearer {mock_token}"}
                    )
         assert not expected_exception, "Exception exception for '{route}', but was not raised"
 
@@ -186,3 +211,30 @@ async def test_ensure_response_with_partial_rows(endpoint,
             assert data == {}, f"{node=} is expected to have no system information, but was {data}"
     except fastapi.exceptions.HTTPException:
         assert expected_exception
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prefix,name",
+    [
+      ["api/v2", "cluster"]
+    ])
+async def test_ensure_response_for_prefetch(prefix, name, client, db_config):
+    endpoint = find_endpoint_by_name(app=app, name="cluster", prefix=prefix)
+    clusters = await endpoint(token_payload=None)
+
+    assert len(clusters) == db_config.number_of_clusters, f"{db_config.number_of_clusters} should be available, but only {len(clusters)}"
+
+    nodes_sysinfo_endpoint = find_endpoint_by_name(app=app, name="nodes_sysinfo")
+
+    for cluster_data in clusters:
+        cluster = cluster_data['cluster']
+
+        start_time = time.time()
+        nodes_sysinfo = await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster)
+        delay_in_s = (time.time() - start_time)
+
+        start_time = time.time()
+        nodes_sysinfo = await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster)
+        delay_in_s_cached = (time.time() - start_time)
+
+        print(f"Cache improve: {delay_in_s / delay_in_s_cached}")
+        assert (delay_in_s / delay_in_s_cached) > 2, f"Returning cached results should be significantly faster, but was {delay_in_s=} vs. {delay_in_s_cached=}"

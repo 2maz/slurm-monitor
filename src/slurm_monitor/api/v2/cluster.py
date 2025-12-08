@@ -1,4 +1,4 @@
-from fastapi import Request, Depends
+from fastapi import Depends
 from fastapi_cache.decorator import cache
 import slurm_monitor.db_operations as db_ops
 from slurm_monitor.api.v2.routes import api_router, get_token_payload, TokenPayload

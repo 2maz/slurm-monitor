@@ -18,7 +18,7 @@ from slurm_monitor.api.v2.routes import (
 from .response_models import (
     PartitionResponse,
     QueriesResponse,
-   JobQueryResultItem,
+    JobQueryResultItem,
     JobProfileResultItem,
 )
 
@@ -27,7 +27,9 @@ from slurm_monitor.db.v2.query import QueryMaker
 logger: Logger = getLogger(__name__)
 
 @api_router.get("/clear_cache")
-async def clear_cache():
+async def clear_cache(
+        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    ):
     await FastAPICache.clear()
     return {"message": "Cache cleared"}
 
@@ -147,6 +149,7 @@ async def partitions(
 ## DASHBOARD RELATED
 @api_router.get("/jobquery", response_model=list[JobQueryResultItem])
 async def dashboard_job_query(
+        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
         cluster: str | None = None,
         user: str = '-',
         host: str = '',
@@ -201,12 +204,13 @@ async def dashboard_job_query(
 # FIMXE: parameters are inconsistently named
 @api_router.get("/jobprofile", response_model=list[JobProfileResultItem])
 async def dashboard_job_profile(
+        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
         cluster: str | None = None,
         user: str = '-',
         host: str = '',
         job: int = 0,
         to: str = '',
-        _from: str = Query(alias='from'),
+        _from: str = Query(default='', alias='from'),
         fmt: str = ''
     ):
         end_time = utcnow()
@@ -242,6 +246,7 @@ async def dashboard_job_profile(
         response_model=QueriesResponse
 )
 async def list_queries(
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
     cluster: str,
 ):
     return { 'queries': QueryMaker.list_available() }
@@ -252,6 +257,7 @@ async def list_queries(
     response_model=None
 )
 async def queries(
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
     cluster: str,
     query_name: str
 ):
@@ -268,7 +274,9 @@ async def queries(
         )
 
 @api_router.get("/cluster/{cluster}/benchmarks/{benchmark_name}")
-def benchmarks(cluster: str,
+def benchmarks(
+        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+        cluster: str,
         benchmark_name: str = "lambdal"):
     app_settings = AppSettings.initialize()
     if app_settings.data_dir is None:

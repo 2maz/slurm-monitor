@@ -1,11 +1,10 @@
-import base64
-import datetime as dt
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends
 from fastapi_cache.decorator import cache
 from typing import Annotated
 
 
+from slurm_monitor.utils import utcnow
 import slurm_monitor.db_operations as db_ops
 from slurm_monitor.api.v2.routes import (
     api_router,
@@ -188,11 +187,12 @@ async def job_status(
                 states=job_states
     )
 
-@api_router.get("/cluster/{cluster}/jobs/query",
+@api_router.get("/cluster/{cluster}/query/jobs",
         summary="Provides a generic job query interface",
         tags=["cluster"],
+        response_model=None
         )
-async def jobs_query(
+async def query_jobs(
     token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
     cluster: str,
     user: str | None = None,
@@ -227,4 +227,3 @@ async def jobs_query(
         limit=limit
         )
     }
-

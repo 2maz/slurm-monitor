@@ -45,6 +45,8 @@ class AppSettings(BaseSettings):
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     data_dir: str | None = Field(default=None)
 
+    prefetch: bool = True
+
     db_schema_version: str | None = Field(default=None)
     oauth: OAuthSettings = Field(default_factory=OAuthSettings)
 

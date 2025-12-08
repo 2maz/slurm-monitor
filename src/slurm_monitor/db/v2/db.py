@@ -439,7 +439,8 @@ class ClusterDB(Database):
         )
         start = time.time()
         result = await query.execute_async()
-        print(f"new ELAPSED: {time.time() - start}")
+        logger.info(f"get_partitions_base: took {time.time() - start} s")
+
         return result.to_dict(orient="records")
 
         #where = Partition.cluster == cluster
