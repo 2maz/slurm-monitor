@@ -1,0 +1,748 @@
+{
+  "meta": {
+    "producer": "sonar",
+    "version": "0.16.0-rc7"
+  },
+  "data": {
+    "type": "sample",
+    "attributes": {
+      "time": "2025-11-27T09:44:04+01:00",
+      "cluster": "cluster-0",
+      "node": "node-X",
+      "jobs": [
+        {
+          "job": 928613,
+          "user": "user-0",
+          "processes": [
+            {
+              "resident_memory": 408,
+              "virtual_memory": 576,
+              "cmd": "slurm_script",
+              "pid": 3499255,
+              "ppid": 3498654
+            },
+            {
+              "resident_memory": 875388,
+              "virtual_memory": 1527652,
+              "cmd": "python",
+              "pid": 3500412,
+              "ppid": 3499255,
+              "num_threads": 5,
+              "cpu_avg": 94,
+              "cpu_util": 100,
+              "cpu_time": 37868,
+              "gpus": [
+                {
+                  "index": 11,
+                  "uuid": "GPU-97062550-625d-1c91-43ed-05d5efb2e4b5",
+                  "gpu_util": 16,
+                  "gpu_memory": 432128
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "job": 2917246,
+          "user": "user-1",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 2324,
+              "virtual_memory": 2360,
+              "cmd": "bash",
+              "pid": 2917246,
+              "ppid": 1,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 93825,
+          "user": "user-4",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 6216,
+              "virtual_memory": 22124,
+              "cmd": "(sd-pam)",
+              "pid": 93826,
+              "ppid": 93825
+            },
+            {
+              "resident_memory": 2276,
+              "virtual_memory": 1780,
+              "cmd": "systemd",
+              "pid": 93825,
+              "ppid": 1,
+              "cpu_time": 522
+            }
+          ]
+        },
+        {
+          "job": 2857687,
+          "user": "user-1",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 3188,
+              "virtual_memory": 9804,
+              "cmd": "srun",
+              "pid": 2857687,
+              "ppid": 2302516,
+              "num_threads": 5
+            },
+            {
+              "resident_memory": 848,
+              "virtual_memory": 2124,
+              "cmd": "srun",
+              "pid": 2863964,
+              "ppid": 2857687
+            }
+          ]
+        },
+        {
+          "job": 928057,
+          "user": "user-5",
+          "processes": [
+            {
+              "resident_memory": 83804,
+              "virtual_memory": 95604,
+              "cmd": "jupyter-nbconve",
+              "pid": 1770835,
+              "ppid": 1770830,
+              "num_threads": 5,
+              "cpu_avg": 0.1,
+              "cpu_time": 114
+            },
+            {
+              "resident_memory": 836,
+              "virtual_memory": 968,
+              "cmd": "srun",
+              "pid": 1770823,
+              "ppid": 1770822
+            },
+            {
+              "resident_memory": 348,
+              "virtual_memory": 572,
+              "cmd": "slurm_script",
+              "pid": 1770814,
+              "ppid": 1770810,
+              "cpu_time": 1
+            },
+            {
+              "resident_memory": 1101080,
+              "virtual_memory": 14696204,
+              "cmd": "pt_main_thread",
+              "pid": 1770936,
+              "ppid": 1770835,
+              "num_threads": 112,
+              "cpu_avg": 99.2,
+              "cpu_util": 99.174,
+              "cpu_time": 165102,
+              "gpus": [
+                {
+                  "index": 10,
+                  "uuid": "GPU-b12c6a1a-e055-02e8-84a3-107cf392b7d8",
+                  "gpu_util": 48,
+                  "gpu_memory": 5007360,
+                  "gpu_memory_util": 7
+                }
+              ]
+            },
+            {
+              "resident_memory": 3184,
+              "virtual_memory": 7620,
+              "cmd": "srun",
+              "pid": 1770822,
+              "ppid": 1770814,
+              "num_threads": 3
+            }
+          ]
+        },
+        {
+          "job": 1924456,
+          "user": "user-2",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 1360,
+              "virtual_memory": 1076,
+              "data_read": 2050,
+              "cmd": "sonar",
+              "pid": 1924456,
+              "ppid": 1923558,
+              "cpu_avg": 22.2,
+              "cpu_util": 8.333
+            }
+          ]
+        },
+        {
+          "job": 928480,
+          "user": "user-6",
+          "processes": [
+            {
+              "resident_memory": 416,
+              "virtual_memory": 572,
+              "cmd": "slurm_script",
+              "pid": 2512656,
+              "ppid": 2512000
+            },
+            {
+              "resident_memory": 1580176,
+              "virtual_memory": 6553372,
+              "cmd": "python",
+              "pid": 2513765,
+              "ppid": 2513210,
+              "num_threads": 178,
+              "cpu_avg": 71.7,
+              "cpu_util": 99.174,
+              "cpu_time": 48375,
+              "gpus": [
+                {
+                  "index": 5,
+                  "uuid": "GPU-f184e8d3-dbd3-224f-a6e0-a66252975282",
+                  "gpu_util": 74,
+                  "gpu_memory": 10835968,
+                  "gpu_memory_util": 24
+                }
+              ]
+            },
+            {
+              "resident_memory": 832,
+              "virtual_memory": 968,
+              "cmd": "srun",
+              "pid": 2513117,
+              "ppid": 2513022
+            },
+            {
+              "resident_memory": 3168,
+              "virtual_memory": 7616,
+              "cmd": "srun",
+              "pid": 2513022,
+              "ppid": 2512656,
+              "num_threads": 3,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 924383,
+          "user": "user-1",
+          "processes": [
+            {
+              "resident_memory": 2408,
+              "virtual_memory": 2428,
+              "cmd": "bash",
+              "pid": 3455467,
+              "ppid": 3453649,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 2912338,
+          "user": "user-1",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 188,
+              "virtual_memory": 1428,
+              "cmd": "podman pause",
+              "pid": 2912339,
+              "ppid": 2912270
+            }
+          ]
+        },
+        {
+          "job": 3161031,
+          "user": "user-1",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 2408,
+              "virtual_memory": 2540,
+              "cmd": "bash",
+              "pid": 3161031,
+              "ppid": 2935378,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 927056,
+          "user": "user-7",
+          "processes": [
+            {
+              "resident_memory": 440,
+              "virtual_memory": 572,
+              "cmd": "slurm_script",
+              "pid": 2704427,
+              "ppid": 2704422
+            },
+            {
+              "resident_memory": 19387672,
+              "virtual_memory": 24119564,
+              "cmd": "pt_main_thread",
+              "pid": 2704443,
+              "ppid": 2704427,
+              "num_threads": 176,
+              "cpu_avg": 1391.1,
+              "cpu_util": 1216.667,
+              "cpu_time": 3567709,
+              "gpus": [
+                {
+                  "index": 2,
+                  "uuid": "GPU-eb3c30c2-a906-1551-1c60-f0a3e3221001",
+                  "gpu_util": 84,
+                  "gpu_memory": 10874880,
+                  "gpu_memory_util": 88
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "job": 1724012,
+          "user": "user-2",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 188,
+              "virtual_memory": 1428,
+              "cmd": "podman pause",
+              "pid": 1724013,
+              "ppid": 1723865
+            }
+          ]
+        },
+        {
+          "job": 3437377,
+          "user": "user-1",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 848,
+              "virtual_memory": 2124,
+              "cmd": "srun",
+              "pid": 3453468,
+              "ppid": 3437377
+            },
+            {
+              "resident_memory": 3188,
+              "virtual_memory": 9804,
+              "cmd": "srun",
+              "pid": 3437377,
+              "ppid": 3161031,
+              "num_threads": 5
+            }
+          ]
+        },
+        {
+          "job": 501980,
+          "user": "user-4",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 3116,
+              "virtual_memory": 3728,
+              "cmd": "bash",
+              "pid": 501980,
+              "ppid": 501979,
+              "cpu_time": 12705
+            }
+          ]
+        },
+        {
+          "job": 2964937,
+          "user": "user-1",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 2444,
+              "virtual_memory": 2540,
+              "cmd": "bash",
+              "pid": 2964937,
+              "ppid": 2935378,
+              "cpu_time": 2460
+            }
+          ]
+        },
+        {
+          "job": 1723865,
+          "user": "user-2",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 6324,
+              "virtual_memory": 22396,
+              "cmd": "(sd-pam)",
+              "pid": 1723867,
+              "ppid": 1723865
+            },
+            {
+              "resident_memory": 2228,
+              "virtual_memory": 1652,
+              "data_read": 168,
+              "data_written": 20,
+              "cmd": "systemd",
+              "pid": 1723865,
+              "ppid": 1,
+              "cpu_time": 119
+            }
+          ]
+        },
+        {
+          "job": 93919,
+          "user": "user-4",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 188,
+              "virtual_memory": 1428,
+              "cmd": "podman pause",
+              "pid": 93920,
+              "ppid": 93825
+            }
+          ]
+        },
+        {
+          "job": 2912719,
+          "user": "user-1",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 340,
+              "virtual_memory": 520,
+              "cmd": "dbus-daemon",
+              "pid": 2912719,
+              "ppid": 2912270
+            }
+          ]
+        },
+        {
+          "job": 928614,
+          "user": "user-0",
+          "processes": [
+            {
+              "resident_memory": 408,
+              "virtual_memory": 576,
+              "cmd": "slurm_script",
+              "pid": 3499443,
+              "ppid": 3498886
+            },
+            {
+              "resident_memory": 800824,
+              "virtual_memory": 1451380,
+              "cmd": "python",
+              "pid": 3501143,
+              "ppid": 3499443,
+              "num_threads": 5,
+              "cpu_avg": 94.2,
+              "cpu_util": 107.438,
+              "cpu_time": 37962,
+              "gpus": [
+                {
+                  "index": 7,
+                  "uuid": "GPU-0a4d23ff-bbc5-b048-bcd5-db96716c86a2",
+                  "gpu_util": 18,
+                  "gpu_memory": 415744
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "job": 2912426,
+          "user": "user-1",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 47740,
+              "virtual_memory": 71268,
+              "cmd": "python",
+              "pid": 3849852,
+              "ppid": 1,
+              "num_threads": 10
+            },
+            {
+              "resident_memory": 2042040,
+              "virtual_memory": 4330712,
+              "cmd": "python",
+              "pid": 3836659,
+              "ppid": 1,
+              "num_threads": 76,
+              "cpu_time": 24
+            },
+            {
+              "resident_memory": 55044,
+              "virtual_memory": 78552,
+              "cmd": "python",
+              "pid": 3832089,
+              "ppid": 1,
+              "num_threads": 10
+            }
+          ]
+        },
+        {
+          "job": 924382,
+          "user": "user-1",
+          "processes": [
+            {
+              "resident_memory": 2408,
+              "virtual_memory": 2428,
+              "cmd": "bash",
+              "pid": 2865472,
+              "ppid": 2864074,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 2302516,
+          "user": "user-1",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 2436,
+              "virtual_memory": 2540,
+              "cmd": "bash",
+              "pid": 2302516,
+              "ppid": 2935378,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 927619,
+          "user": "user-3",
+          "processes": [
+            {
+              "resident_memory": 412,
+              "virtual_memory": 576,
+              "cmd": "slurm_script",
+              "pid": 17534,
+              "ppid": 15918,
+              "cpu_time": 596
+            },
+            {
+              "resident_memory": 5368620,
+              "virtual_memory": 10434064,
+              "cmd": "python3",
+              "pid": 1924045,
+              "ppid": 3270629,
+              "num_threads": 2,
+              "cpu_avg": 77.4,
+              "cpu_time": 5
+            },
+            {
+              "resident_memory": 5369148,
+              "virtual_memory": 10434064,
+              "cmd": "python3",
+              "pid": 1923919,
+              "ppid": 3270629,
+              "num_threads": 2,
+              "cpu_avg": 88.5,
+              "cpu_time": 6
+            },
+            {
+              "resident_memory": 5369364,
+              "virtual_memory": 10434080,
+              "cmd": "python3",
+              "pid": 1923856,
+              "ppid": 3270629,
+              "num_threads": 2,
+              "cpu_avg": 90.3,
+              "cpu_time": 7
+            },
+            {
+              "resident_memory": 5368884,
+              "virtual_memory": 10434064,
+              "cmd": "python3",
+              "pid": 1923982,
+              "ppid": 3270629,
+              "num_threads": 2,
+              "cpu_avg": 81.1,
+              "cpu_time": 6
+            },
+            {
+              "resident_memory": 5226492,
+              "virtual_memory": 10536416,
+              "cmd": "python3",
+              "pid": 3270629,
+              "ppid": 17534,
+              "num_threads": 56,
+              "cpu_avg": 98.8,
+              "cpu_util": 99.174,
+              "cpu_time": 367081,
+              "gpus": [
+                {
+                  "index": 12,
+                  "uuid": "GPU-3dc3397d-6caa-8a32-1299-aa3166d0d578",
+                  "gpu_util": 88,
+                  "gpu_memory": 27801600,
+                  "gpu_memory_util": 63
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "job": 2935380,
+          "user": "user-1",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 2416,
+              "virtual_memory": 2540,
+              "cmd": "bash",
+              "pid": 2935380,
+              "ppid": 2935378,
+              "cpu_time": 1888
+            }
+          ]
+        },
+        {
+          "job": 501979,
+          "user": "user-4",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 2144,
+              "virtual_memory": 3380,
+              "cmd": "tmux: server",
+              "pid": 501979,
+              "ppid": 1,
+              "cpu_time": 269
+            }
+          ]
+        },
+        {
+          "job": 1923558,
+          "user": "user-2",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 3268,
+              "virtual_memory": 3356,
+              "data_read": 1836,
+              "data_written": 12,
+              "cmd": "bash",
+              "pid": 1923558,
+              "ppid": 1923557,
+              "cpu_avg": 0.4,
+              "cpu_time": 1
+            }
+          ]
+        },
+        {
+          "job": 1724370,
+          "user": "user-2",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 340,
+              "virtual_memory": 520,
+              "cmd": "dbus-daemon",
+              "pid": 1724370,
+              "ppid": 1723865
+            }
+          ]
+        },
+        {
+          "job": 2935378,
+          "user": "user-1",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 3516,
+              "virtual_memory": 4836,
+              "cmd": "tmux: server",
+              "pid": 2935378,
+              "ppid": 1,
+              "cpu_time": 637
+            }
+          ]
+        },
+        {
+          "job": 94245,
+          "user": "user-4",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 340,
+              "virtual_memory": 520,
+              "cmd": "dbus-daemon",
+              "pid": 94245,
+              "ppid": 93825
+            }
+          ]
+        },
+        {
+          "job": 2912270,
+          "user": "user-1",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 6324,
+              "virtual_memory": 22396,
+              "cmd": "(sd-pam)",
+              "pid": 2912271,
+              "ppid": 2912270
+            },
+            {
+              "resident_memory": 2216,
+              "virtual_memory": 1644,
+              "cmd": "systemd",
+              "pid": 2912270,
+              "ppid": 1,
+              "cpu_time": 176
+            }
+          ]
+        },
+        {
+          "job": 1724108,
+          "user": "user-2",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 436,
+              "virtual_memory": 576,
+              "data_read": 9,
+              "data_written": 1,
+              "cmd": "sonar-service.s",
+              "pid": 1724133,
+              "ppid": 1
+            },
+            {
+              "resident_memory": 18016,
+              "virtual_memory": 36636,
+              "data_read": 4572,
+              "data_written": 6423,
+              "cmd": "sonar",
+              "pid": 1724159,
+              "ppid": 1724133,
+              "num_threads": 8,
+              "cpu_avg": 2.2,
+              "cpu_time": 30390
+            }
+          ]
+        },
+        {
+          "job": 1923429,
+          "user": "user-2",
+          "epoch": 181388846,
+          "processes": [
+            {
+              "resident_memory": 2456,
+              "virtual_memory": 2132,
+              "cmd": "sshd",
+              "pid": 1923557,
+              "ppid": 1923429
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
