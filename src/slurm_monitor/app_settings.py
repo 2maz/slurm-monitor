@@ -1,9 +1,35 @@
 from __future__ import annotations
+from jwt import PyJWKClient
 from pathlib import Path
-from pydantic import Field
+from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from slurm_monitor.db import DatabaseSettings
+
+class OAuthSettings(BaseSettings):
+    required: bool = Field(default=False)
+
+    client: str = Field(default='')
+    client_secret: str = Field(default='')
+    url: str = Field(default='')
+    realm: str = Field(default='')
+
+    @computed_field
+    @property
+    def issuer(self) -> str:
+        return f"{self.url}/realms/{self.realm}"
+
+    @computed_field
+    @property
+    def jwks_url(self) -> str:
+        return f"{self.issuer}/protocol/openid-connect/certs"
+
+    @computed_field
+    @property
+    def jwks_client(self) -> PyJWKClient:
+        if not hasattr(self, '_jwks_client'):
+            self._jwks_client = PyJWKClient(self.jwks_url)
+        return self._jwks_client
 
 
 class AppSettings(BaseSettings):
@@ -20,7 +46,7 @@ class AppSettings(BaseSettings):
     data_dir: str | None = Field(default=None)
 
     db_schema_version: str | None = Field(default=None)
-    oauth_required: bool = Field(default=False)
+    oauth: OAuthSettings = Field(default_factory=OAuthSettings)
 
     @classmethod
     def get_instance(cls) -> AppSettings:

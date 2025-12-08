@@ -48,6 +48,7 @@ dependencies = [
     "pyarrow",
     "pydantic",
     "pydantic-settings",
+    "pyjwt[crypto]",
     "pyyaml",
     "psycopg2-binary",
     "python-snappy",

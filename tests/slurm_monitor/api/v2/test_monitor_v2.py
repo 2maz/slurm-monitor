@@ -6,11 +6,13 @@ from fastapi.testclient import TestClient
 import re
 from pathlib import Path
 import json
+import jwt
 import copy
 
 from slurm_monitor.v2 import app
 from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.db.v2.importer import DBJsonImporter
+from slurm_monitor.app_settings import AppSettings
 
 def parametrize_route(path,
                       cluster="cluster-0",
@@ -113,10 +115,53 @@ async def test_ensure_response_with_partial_rows(endpoint,
                                                  has_sysinfo,
                                                  client,
                                                  test_db_v2__function_scope,
-                                                 test_data_dir
+                                                 test_data_dir,
+                                                 monkeypatch,
                                                 ):
     db = test_db_v2__function_scope
     importer = DBJsonImporter(db=db)
+
+    payload = {
+        'exp': 1765187642,
+        'iat': 1765187342,
+        'jti': 'onrtro:e0070d78-9c5c-04ba-22b9-fbcecb759fe4',
+        'iss': 'http://158.39.75.110/realms/naic-monitor',
+        'aud': 'account',
+        'sub': 'fbf4b6c4-bdd3-4aea-8b47-3a87e9c96633',
+        'typ': 'Bearer',
+        'azp': 'slurm-monitor.no',
+        'sid': '0e7aad19-8b15-06c2-1449-616b92625b9b',
+        'acr': 1,
+        'allowed-origins': ['', 'https://naic-monitor.simula.no'],
+        'realm_access' : { 'roles' : ['default-roles-naic-monitor', 'offline_access', 'uma_authorization'] },
+        'resource_access': { 'account' : { 'roles': ['manage-account', 'manage-account-links', 'view-profile']}},
+        'scope': 'email profile',
+        'email_verified': False,
+        'name': 'Test User',
+        'preferred_username': 'test-user',
+        'given_name': 'Test',
+        'family_name': 'User',
+        'email': 'test-user@xyz.com'
+    }
+
+    test_token = "oauth-test-token"
+    def patch_decode(*args, **kwargs):
+        token = args[0]
+        if not token == test_token:
+            raise jwt.InvalidTokenError(f"The expected token is {test_token}, but was {token}")
+
+        return payload
+
+    def patch_get_signing_key_from_jwt(token):
+        class SigningKey:
+            key: str = "signing_key"
+
+        return SigningKey()
+
+    monkeypatch.setattr(jwt, "decode", patch_decode)
+
+    app_settings = AppSettings.get_instance()
+    monkeypatch.setattr(app_settings.oauth.jwks_client, "get_signing_key_from_jwt", patch_get_signing_key_from_jwt)
 
     for sonar_msg_file in sonar_msg_files:
         json_filename = Path(test_data_dir) / "sonar" / sonar_msg_file
@@ -126,7 +171,9 @@ async def test_ensure_response_with_partial_rows(endpoint,
 
     route = parametrize_route(endpoint, cluster=cluster, node=node)
     try:
-        response = client.get(f"{route}")
+        response = client.get(f"{route}",
+                              headers={"Authorization": f"Bearer {test_token}"}
+                   )
         assert not expected_exception, "Exception exception for '{route}', but was not raised"
 
         data = response.json()
