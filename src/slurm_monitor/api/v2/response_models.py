@@ -483,7 +483,9 @@ class AllocTRES(BaseModel):
     memory: int = Field(description="The reserved memory", default=0)
     gpu: int = Field(description="The reserved number of gpus", default=0)
     node: int = Field(description="The involved number of nodes", default=0)
-    billing: int = Field(description="The actual billing count", default=0)
+    billing: float | int = Field(description="The actual billing count", default=0)
+
+    model_config = ConfigDict(extra='allow')
 
     def add(self, other: AllocTRES):
         """
