@@ -101,6 +101,20 @@ class Slurm:
             values[key] = 0
             m = re.search(key + "=([^,]+)", txt)
             if m and m.groups():
-                values[key] = int(m.groups()[0])
+                v = m.groups()[0]
+                scale = 1
+                if v.endswith("G"):
+                    v = v.removesuffix("G")
+                    scale = 1024 * 1024 * 1024
+                elif v.endswith("M"):
+                    v = v.removesuffix("M")
+                    scale = 1024 * 1024
+                elif v.endswith("K"):
+                    v = v.removesuffix("K")
+                    scale = 1024
+                if "." in v:
+                    values[key] = int(float(v)) * scale
+                else:
+                    values[key] = int(v) * scale
 
         return values
