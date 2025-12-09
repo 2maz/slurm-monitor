@@ -8,6 +8,12 @@ from slurm_monitor.utils.command import Command
 
 logger = logging.getLogger(__name__)
 
+SCALE_BY_UNIT = { 'K': 1024, 'M': 1024**2, 'G': 1024**3, 'T': 1024**4, 'P': 1024**5 }
+
+TRES_KEYS = ["cpu", "mem", "gpu", "node", "billing"]
+TRES_PATTERN = r"([^/]+)(:[^=]+)?=([0-9.]+)([" + ''.join(SCALE_BY_UNIT.keys()) + "])?"
+TRES_REGEXP = re.compile(TRES_PATTERN)
+
 class Slurm:
     API_PREFIX: ClassVar[str] = "/slurm/v0.0.37"
 
@@ -92,21 +98,18 @@ class Slurm:
         return pids
 
     @classmethod
-    def parse_sacct_tres(cls, txt: str) -> dict[str, int]:
+    def parse_sacct_tres(cls, txt: str) -> dict[str, int | float]:
         """
         Parse TRES and return a dictionary mapping cpu, mem, gpu to the actual count
         """
-        SCALE_BY_UNIT = { 'K': 1024, 'M': 1024**2, 'G': 1024**3, 'T': 1024**4, 'P': 1024**5 }
-        TRES_KEYS = ["cpu", "mem", "gpu", "node", "billing"]
-
         values = {x: 0 for x in TRES_KEYS}
 
         for field in txt.split(","):
-            m = re.search("([^/]+)(:[^=]+)?=([0-9.]+)([KMGTP]?)", field)
+            m = TRES_REGEXP.search(field)
             if m and m.groups():
                 key = m.groups()[0]
                 if key not in TRES_KEYS:
-                    logger.warning(f"{key} is not a default used TRES field")
+                    logger.debug(f"{key} is not a default used TRES field")
 
                 # check details, e.g., gres/gpu:modelname=1 -> gpu:modelname
                 specifier = m.groups()[1]
@@ -121,11 +124,11 @@ class Slurm:
 
                 # apply unit based scaling
                 unit = m.groups()[3]
-                if not unit or unit == '':
+                if not unit:
                     continue
 
-                if unit not in SCALE_BY_UNIT:
-                    raise ValueError("Slurm.parse_sacct_tres: '{unit}' is not a known unit")
                 values[key] *= SCALE_BY_UNIT[unit]
+            else:
+                logger.info(f"Slurm.parse_sacct_tres: invalid pattern encountered {txt}")
 
         return values

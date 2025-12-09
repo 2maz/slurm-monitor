@@ -39,6 +39,7 @@ def test_get_node_names(mock_slurm_command_hint):
         ["billing=2.0,cpu=4,gres/gpu=3,mem=50000K,node=2", {'billing': 2.0, 'cpu': 4, 'gpu': 3, 'mem': 50000*1024, 'node': 2}],
         ["billing=1,cpu=2,gres/gpu=1,mem=5T,node=1", {'billing': 1, 'cpu': 2, 'gpu': 1, 'mem': 5*1024**4, 'node': 1}],
         ["billing=1,cpu=2,gres/gpu=1,mem=5P,node=1", {'billing': 1, 'cpu': 2, 'gpu': 1, 'mem': 5*1024**5, 'node': 1}],
+        ["billing=1,cpuasdfasdfas,gasdfa", {'billing': 1, 'cpu': 0, 'gpu': 0, 'mem': 0, 'node': 0}],
     ]
 )
 def test_parse_sacct_tres(txt: str, expected: dict[str, int]):
