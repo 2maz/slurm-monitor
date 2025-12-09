@@ -94,13 +94,38 @@ class Slurm:
     @classmethod
     def parse_sacct_tres(cls, txt: str) -> dict[str, int]:
         """
-        Parse TRES and return a dictionary mapping cpu,mem,gpu to the actual count
+        Parse TRES and return a dictionary mapping cpu, mem, gpu to the actual count
         """
-        values = {}
-        for key in ["cpu", "mem", "gpu", "node", "billing"]:
-            values[key] = 0
-            m = re.search(key + "=([^,]+)", txt)
+        SCALE_BY_UNIT = { 'K': 1024, 'M': 1024**2, 'G': 1024**3, 'T': 1024**4, 'P': 1024**5 }
+        TRES_KEYS = ["cpu", "mem", "gpu", "node", "billing"]
+
+        values = {x: 0 for x in TRES_KEYS}
+
+        for field in txt.split(","):
+            m = re.search("([^/]+)(:[^=]+)?=([0-9.]+)([KMGTP]?)", field)
             if m and m.groups():
-                values[key] = int(m.groups()[0])
+                key = m.groups()[0]
+                if key not in TRES_KEYS:
+                    logger.warning(f"{key} is not a default used TRES field")
+
+                # check details, e.g., gres/gpu:modelname=1 -> gpu:modelname
+                specifier = m.groups()[1]
+                if specifier is not None:
+                    key += specifier
+
+                value = m.groups()[2]
+                if '.' in value:
+                    values[key] = float(value)
+                else:
+                    values[key] = int(value)
+
+                # apply unit based scaling
+                unit = m.groups()[3]
+                if not unit or unit == '':
+                    continue
+
+                if unit not in SCALE_BY_UNIT:
+                    raise ValueError("Slurm.parse_sacct_tres: '{unit}' is not a known unit")
+                values[key] *= SCALE_BY_UNIT[unit]
 
         return values
