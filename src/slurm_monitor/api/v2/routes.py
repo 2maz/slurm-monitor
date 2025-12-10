@@ -141,12 +141,15 @@ async def verify_token(token: str) -> TokenPayload:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-async def get_token_payload(token: Annotated[str, Depends(oauth2_scheme)]) -> TokenPayload:
+async def get_token_payload(request: Request) -> TokenPayload:
     app_settings = AppSettings.get_instance()
+
     if app_settings.oauth.required:
+        oauth2: str = Depends(oauth2_scheme)
+        token = await oauth2.dependency(request)
+
         logger.info(f"Retrieved token: {token}")
         return await verify_token(token)
-    else:
-        logger.warning("get_token_payload: authentication disabled")
 
+    logger.info("get_token_payload: authentication disabled")
     return None
