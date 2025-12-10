@@ -196,6 +196,25 @@ async def test_DBJsonImporter_non_slurm(sonar_msg, test_db_v2):
              "0+sample-ml3.hpc.uio.no.json",
           ],
          { "mlx.hpc.uio.no": {"ml1", "ml2", "ml3"}, "ex3.simula.no": {"g001"}}
+        ],
+        [
+          [
+             "0+cluster.ex3.simula.no.json",
+             "0+sysinfo-g001.ex3.simula.no.json",
+             "0+sysinfo-g002.ex3.simula.no.json",
+             "0+cluster.ex3.simula.no.json"
+          ],
+         { "ex3.simula.no": {"g001", "g002"}}
+        ],
+        [
+          [
+             "0+cluster.ex3.simula.no.json",
+             "0+sysinfo-g001.ex3.simula.no.json",
+             "0+sysinfo-g002.ex3.simula.no.json",
+             "0+cluster.ex3.simula.no.json",
+             "0+sample-g001.ex3.simula.no.json"
+          ],
+         { "ex3.simula.no": {"g001", "g002"}}
         ]
     ]
 )
@@ -208,8 +227,11 @@ async def test_DBJsonImporter_sonar_examples(sonar_msg_files,
     importer = DBJsonImporter(db=db)
 
     in_msg_uuids = set()
+    has_sysinfo = False
     for sonar_msg_file in sonar_msg_files:
         json_filename = Path(test_data_dir) / "sonar" / sonar_msg_file
+
+        has_sysinfo = has_sysinfo or "sysinfo" in sonar_msg_file
 
         with open(json_filename, "r") as f:
             msg_data = json.load(f)
@@ -225,6 +247,11 @@ async def test_DBJsonImporter_sonar_examples(sonar_msg_files,
             assert clusters[expected_cluster] == expected_clusters[expected_cluster], f"Expected {expected_cluster} with nodes {expected_clusters[expected_cluster]} in cluster_attributes, but got {clusters=}"
             # existing clusters of test db plus newly added ons
             assert len(expected_clusters) + db_config.number_of_clusters == len(clusters)
+
+        if has_sysinfo:
+            results = session.execute(sqlalchemy.text("SELECT cluster, node, architecture from node")).all()
+            for x in results:
+                assert x[2] != '', f"cluster {x[0]} node {x[1]} should have architecture, but was {x[2]}"
 
         results = session.execute(sqlalchemy.text("SELECT uuid from sysinfo_gpu_card")).all()
         in_db_uuids = [x[0] for x in results]

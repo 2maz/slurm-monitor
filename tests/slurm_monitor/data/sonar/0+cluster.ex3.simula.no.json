@@ -1,0 +1,32 @@
+{
+	"meta": {
+		"producer": "sonar",
+		"version": "0.16.0-rc7"
+	},
+	"data": {
+		"type": "cluster",
+		"attributes": {
+			"time": "2025-12-09T15:00:01+01:00",
+			"cluster": "ex3.simula.no",
+			"slurm": true,
+			"partitions": [
+				{
+					"name": "dgx2q",
+					"nodes": [
+						"g001"
+					]
+				}
+			],
+			"nodes": [
+				{
+					"names": [
+						"g[001-002]"
+					],
+					"states": [
+						"MIXED"
+					]
+				}
+			]
+		}
+	}
+}
