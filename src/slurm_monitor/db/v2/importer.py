@@ -54,6 +54,8 @@ class Importer:
         into single node names
         """
         nodes = []
+        if type(names) is not str:
+            raise TypeError(f"Importer.expand_node_names: expects names to be str, but was '{type(names)}'")
 
         current_expr = None
         for chunk in names.split(","):
@@ -349,8 +351,9 @@ class DBJsonImporter(Importer):
         nodes = set()
         nodes_states = []
         for n in attributes['nodes']:
-            node_names = self.expand_node_names(n['names'])
-            nodes.update(node_names)
+            for names in n['names']:
+                node_names = self.expand_node_names(names)
+                nodes.update(node_names)
 
             states = n['states']
             for n in node_names:
@@ -364,7 +367,11 @@ class DBJsonImporter(Importer):
 
         partitions = []
         for p in attributes['partitions']:
-            node_names = self.expand_node_names(p["nodes"])
+            partition_nodes = set()
+            for names in p["nodes"]:
+                node_names = self.expand_node_names(names)
+                partition_nodes.update(node_names)
+
             partitions.append(Partition.create(
                     cluster=cluster_id,
                     partition=p["name"],
