@@ -30,6 +30,9 @@ import slurm_monitor.db.v2.sonar as sonar
 
 logger = logging.getLogger(__name__)
 
+COMPACT_NODE_EXPRESSION_PATTERN: str = r"(.*)\[(.*)\](\..+){0,}$"
+COMPACT_NODE_EXPRESSION_REXEXP = re.compile(COMPACT_NODE_EXPRESSION_PATTERN)
+
 class Importer:
     last_msg_per_node: dict[str, dt.datetime]
     verbose: bool
@@ -46,24 +49,40 @@ class Importer:
 
     @classmethod
     def expand_node_names(cls, names: str) -> list[str]:
+        """
+        Handle and expand compact node patterns: n[001-002,004],g[001-g003].domain,n001
+        into single node names
+        """
         nodes = []
 
-        if type(names) is str:
-            names = names.replace("],","];")
-            names = names.split(';')
+        current_expr = None
+        for chunk in names.split(","):
+            if not current_expr:
+                current_expr = chunk
+            else:
+                current_expr += "," + chunk
 
-        for pattern in names:
-            m = re.match(r"(.*)\[(.*)\]$", pattern)
+            if "[" in current_expr:
+                if "]" not in current_expr:
+                    continue
+
+            m = COMPACT_NODE_EXPRESSION_REXEXP.match(current_expr)
             if m is None:
-                nodes.append(pattern)
+                nodes.append(current_expr)
+                current_expr = None
                 continue
 
-            prefix, suffixes = m.groups()
+            prefix, suffixes = m.groups()[:2]
+            domain = m.groups()[2]
             # [005-006,001,005]
             for suffix in suffixes.split(','):
                 #0,0
                 if "-" not in suffix:
-                    nodes.append(prefix + suffix)
+                    nodename = f"{prefix}{suffix}"
+                    if domain:
+                        nodename = f"{nodename}{domain}"
+                    nodes.append(nodename)
+                    current_expr = None
                     continue
 
                 # 001-010
@@ -72,7 +91,11 @@ class Importer:
 
                 for i in range(int(start), int(end)+1):
                     node_number = str(i).zfill(pattern_length)
-                    nodes.append(prefix + node_number)
+                    nodename = f"{prefix}{node_number}"
+                    if domain:
+                        nodename = f"{nodename}{domain}"
+                    nodes.append(nodename)
+                    current_expr = None
 
         return nodes
 
@@ -219,7 +242,6 @@ class DBJsonImporter(Importer):
                     cards=gpu_uuids,
                     **attributes
                 )
-
         return [node, sysinfo] + gpu_info
 
     def parse_sample(self, msg: sonar.Message) -> list[TableBase | list[TableBase]]:
