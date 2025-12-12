@@ -36,6 +36,10 @@ class OAuthSettings(BaseSettings):
             self._jwks_client = PyJWKClient(self.jwks_url)
         return self._jwks_client
 
+class PrefetchSettings(BaseSettings):
+    enabled: bool = Field(default=True)
+    interval: int = Field(default=90)
+
 class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
                     env_file='.env',
@@ -49,7 +53,7 @@ class AppSettings(BaseSettings):
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     data_dir: str | None = Field(default=None)
 
-    prefetch: bool = True
+    prefetch: PrefetchSettings = Field(default_factory=PrefetchSettings)
 
     db_schema_version: str | None = Field(default=None)
     oauth: OAuthSettings = Field(default_factory=OAuthSettings)
