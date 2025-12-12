@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, exception_handlers, HTTPException
+from fastapi import FastAPI, Request, Response, exception_handlers, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_cache import FastAPICache
@@ -14,18 +15,20 @@ from fastapi_utils.tasks import repeat_every
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
 import traceback
-import asyncio
 import gc
 
 
 from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.api.v2.router import app as api_v2_app
+from slurm_monitor.utils.api import find_endpoint_by_name
 
 import logging
 from logging import getLogger
 
 logger = getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+app_settings = AppSettings.initialize()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -36,22 +39,26 @@ async def lifespan(app: FastAPI):
     logging.basicConfig(level=logging.INFO)
     logger.setLevel(logging.DEBUG)  # output of exception handlers above
     logger.info("Setting up cache ...")
-    FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
+    FastAPICache.init(
+            backend=InMemoryBackend(),
+            prefix="fastapi-cache"
+    )
 
     logger.info("Setting up database ...")
-    app_settings = AppSettings.initialize()
     app_settings.db_schema_version = "v2"
 
-    logger.info("Setting up prefetching ...")
-    task = asyncio.create_task(prefetch_data(), name="prefetch_data")
+    if app_settings.prefetch.enabled:
+        logger.info("Setting up prefetching ...")
+        task = asyncio.create_task(prefetch_data(), name="prefetch_data")
 
     yield
 
-    task.cancel("Application is stopping")
-    try:
-        await task
-    except asyncio.CancelledError:
-        logger.info("Prefetching has been stopped")
+    if app_settings.prefetch.enabled:
+        task.cancel("Application is stopping")
+        try:
+            await task
+        except asyncio.CancelledError:
+            logger.info("Prefetching has been stopped")
     logger.info("Shutting down ...")
 
 tags_metadata = [
@@ -116,35 +123,24 @@ async def runtime_exception_handler(request: Request, exc: Exception):
     raise HTTPException(status_code=500,
             detail=f"Internal Error: {exc}")
 
-def find_endpoint_by_name(name: str):
-    api_v2_route = [x for x in app.routes if x.name == "api/v2"][0]
-    matching_routes = [x for x in api_v2_route.routes if x.name == name]
-    if not matching_routes:
-        raise KeyError(f"find_endpoint_by_name: could not find route {name}")
-
-    return matching_routes[0].endpoint
-
-
-
-@repeat_every(seconds=30, logger=logger)
+@repeat_every(seconds=app_settings.prefetch.interval, logger=logger)
 async def prefetch_data():
     logger.info("Prefetch starting")
-    cluster_endpoint = find_endpoint_by_name("cluster")
-    clusters = await cluster_endpoint()
+    cluster_endpoint = find_endpoint_by_name(app=app, name="cluster")
+    clusters = await cluster_endpoint(token_payload=None)
 
-
-    nodes_sysinfo_endpoint = find_endpoint_by_name("nodes_sysinfo")
-    partitions_endpoint = find_endpoint_by_name("partitions")
-    jobs_endpoint = find_endpoint_by_name("jobs")
+    nodes_sysinfo_endpoint = find_endpoint_by_name(app=app, name="nodes_sysinfo")
+    partitions_endpoint = find_endpoint_by_name(app=app, name="partitions")
+    jobs_endpoint = find_endpoint_by_name(app=app, name="jobs")
 
     for cluster_data in clusters:
         cluster = cluster_data['cluster']
 
         # DO NOT use a dynamic argument such as time_in_s, since that will
         # prevent the caching to work
-        await nodes_sysinfo_endpoint(cluster=cluster, time_in_s=None)
-        await partitions_endpoint(cluster=cluster, time_in_s=None)
-        await jobs_endpoint(cluster=cluster)
+        await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster, time_in_s=None)
+        await partitions_endpoint(token_payload=None, cluster=cluster, time_in_s=None)
+        await jobs_endpoint(token_payload=None, cluster=cluster)
 
     logger.info("Prefetching done")
 

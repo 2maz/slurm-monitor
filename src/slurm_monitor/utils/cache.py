@@ -27,7 +27,7 @@ def hashkey_generator(*args, **kwargs):
     return hashkey(*updated_args, **updated_kwargs)
 
 
-def ttl_cache_async(*, ttl, maxsize: int = 128):
+def ttl_cache_async(*, ttl, maxsize: int = 128, ignore_args: list[str] = []):
     """
     Enable a timeout cache for an async function
 
@@ -39,7 +39,8 @@ def ttl_cache_async(*, ttl, maxsize: int = 128):
     def decorator(func):
         @functools.wraps(func)
         async def wrapped(*args, **kwargs):
-            k = hashkey_generator(*args, **kwargs)
+            relevant_kwargs = { x: y for x,y in kwargs.items() if x not in ignore_args }
+            k = hashkey_generator(*args, **relevant_kwargs)
 
             try:
                 return cache[k]
