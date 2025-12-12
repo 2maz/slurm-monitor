@@ -2,7 +2,7 @@ import asyncio
 import base64
 import datetime as dt
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Response
 from fastapi_cache.decorator import cache
 from typing import Annotated
 

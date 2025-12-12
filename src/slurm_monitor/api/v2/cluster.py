@@ -6,7 +6,6 @@ from slurm_monitor.api.v2.response_models import ClusterResponse
 
 from typing import Annotated
 
-
 @api_router.get("/cluster",
         summary="Available clusters",
         tags=["cluster"],

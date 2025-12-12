@@ -1,11 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.security import OAuth2PasswordBearer, HTTPBearer, HTTPAuthorizationCredentials
-from fastapi_cache.decorator import cache
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.security import OAuth2PasswordBearer
 from pydantic import Field
 from pydantic_settings import BaseSettings
-import functools
 
-from typing import Annotated
 
 from logging import getLogger, Logger
 import jwt
@@ -43,7 +40,7 @@ class TokenPayload(BaseSettings):
     sub: str # subject
     typ: str # type: Bearer
     azp: str # client name
-    sid: str # 
+    sid: str #
     acr: int
 
     allowed_origins: list[str] = Field(alias='allowed-origins', default=[])

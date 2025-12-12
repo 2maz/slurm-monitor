@@ -12,7 +12,10 @@ from slurm_monitor.utils import utcnow
 from slurm_monitor.app_settings import AppSettings
 import slurm_monitor.db_operations as db_ops
 from slurm_monitor.api.v2.routes import (
-    api_router, cache, get_token_payload, TokenPayload
+    api_router,
+    cache,
+    get_token_payload,
+    TokenPayload
 )
 
 from .response_models import (

@@ -7,6 +7,3 @@ def find_endpoint_by_name(app: FastAPI, name: str, prefix: str = "api/v2"):
         raise KeyError(f"find_endpoint_by_name: could not find route {name}")
 
     return matching_routes[0].endpoint
-
-
-
