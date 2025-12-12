@@ -3,6 +3,7 @@ import datetime as dt
 from fastapi import Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi_cache import FastAPICache
+from fastapi_cache.decorator import cache
 from logging import getLogger, Logger
 import pandas as pd
 from pathlib import Path
@@ -13,7 +14,6 @@ from slurm_monitor.app_settings import AppSettings
 import slurm_monitor.db_operations as db_ops
 from slurm_monitor.api.v2.routes import (
     api_router,
-    cache,
     get_token_payload,
     TokenPayload
 )
