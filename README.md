@@ -151,6 +151,19 @@ To run with ssl, get or create a certificate and run as follows:
     python3 -m uvicorn --reload slurm_monitor.main:app --port 12000 --host 0.0.0.0 --ssl-keyfile key.pem --ssl-certfile cert.pem
 ```
 
+### Enabling Authentication
+
+By default Bearer token based authentication is disabled. To enable set the configuration according to
+your identity provider. The setup has been tested with keycloak.
+
+Add the authentication configuration to the .env file, e.g.:
+
+```
+SLURM_MONITOR_OAUTH_REQUIRED=true
+SLURM_MONITOR_OAUTH_URL="http://slurm-monitor.identity-provider.org"
+SLURM_MONITOR_OAUTH_REALM="slurm-monitor-realm"
+```
+
 
 ## Probe
 

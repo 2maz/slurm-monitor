@@ -341,6 +341,11 @@ class Cluster(TableBase):
 
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
+    __table_args__ = (
+        Index("ix_cluster_attributes__cluster_nodes_time","cluster", "nodes", time.desc()),
+        Index("ix_cluster_attributes__cluster_partitions_time", "cluster", "partitions", time.desc())
+    )
+
 class Node(TableBase):
     __tablename__ = "node"
 
@@ -519,6 +524,7 @@ class SysinfoGpuCardConfig(TableBase):
             'max_ce_clock',
             'max_memory_clock',
         ),
+        Index("ix_sysinfo_gpu_card_config__cluster_node","cluster", "node", time.desc()),
         ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
         {
             'info': { 'sonar_spec': 'SysinfoGpuCard', 'requires_tables': ['sysinfo_gpu_card'] },
@@ -643,6 +649,7 @@ class SampleProcessGpu(TableBase):
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
     __table_args__ = (
+        Index("ix_sample_process_gpu__cluster_node","cluster", "node", time.desc()),
         Index("ix_sample_process_gpu__cluster_job_time","cluster", "job", time.desc()),
         Index("ix_sample_process_gpu__uuid_time", "uuid", "time"),
         ForeignKeyConstraint(["cluster", "node"], [Node.cluster, Node.node]),
@@ -951,6 +958,7 @@ class SampleSlurmJob(TableBase):
             'suspend_time',
             'exit_code',
         ),
+        Index("ix_sample_slurm_job__cluster_nodes_time","cluster", "nodes", time.desc()),
         {
             'info': { 'sonar_spec': 'JobsAttributes.slurm_jobs' },
             'timescaledb_hypertable': {

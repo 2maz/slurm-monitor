@@ -174,7 +174,7 @@ class ClusterDB(Database):
 
     async def get_nodes(self, cluster: str,
             time_in_s: int | None = None,
-            interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S,
+            interval_in_s: int | None = None,
             ensure_sysinfo: bool = True
             ) -> list[str]:
         """
@@ -186,6 +186,9 @@ class ClusterDB(Database):
 
             :param ensure_sysinfo [bool] Ensure that sysinfo_attributes table has entries
         """
+        if interval_in_s is None:
+            interval_in_s = DEFAULT_HISTORY_INTERVAL_IN_S
+
         if not time_in_s:
             time_in_s = utcnow().timestamp()
 
@@ -285,6 +288,7 @@ class ClusterDB(Database):
 
     async def get_partitions(self, cluster: str,
             time_in_s: int | None = None):
+
         if time_in_s is None:
             time_in_s = utcnow().timestamp()
 
@@ -312,11 +316,17 @@ class ClusterDB(Database):
                     (Partition.time == subquery.c.max_time)
                 )
 
-        nodes = await self.get_nodes_sysinfo(cluster=cluster, time_in_s=time_in_s)
+        nodes = await self.get_nodes_sysinfo(cluster=cluster, time_in_s=time_in_s,
+                                             fields=["cores_per_socket",
+                                                     "sockets",
+                                                     "threads_per_core",
+                                                     "cards"],
+                                             )
 
         partitions = []
         async with self.make_async_session() as session:
-            for x in (await session.execute(query)).all():
+            rows = (await session.execute(query)).all()
+            for x in tqdm(rows, total=len(rows), desc="Query partitions"):
                 partition_name = x[1]
                 partition_nodes = x[2]
 
@@ -439,7 +449,8 @@ class ClusterDB(Database):
         )
         start = time.time()
         result = await query.execute_async()
-        print(f"new ELAPSED: {time.time() - start}")
+        logger.info(f"get_partitions_base: took {time.time() - start} s")
+
         return result.to_dict(orient="records")
 
         #where = Partition.cluster == cluster
@@ -564,11 +575,14 @@ class ClusterDB(Database):
             cluster: str,
             nodes: str | list[str] | None = None,
             time_in_s: int | None = None,
-            interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S
+            interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S,
+            fields: list[str] | None = None
             ) -> list[SysinfoAttributes]:
         """
         Retrieve the node configuration that is active at the given point in time
         if no time is given, the current time (as of 'now') is used
+
+        If only a subset of fields is required, provide the fields argument to improve performenc
         """
         nodelist = nodes
         if nodes is None:
@@ -600,8 +614,26 @@ class ClusterDB(Database):
                          SysinfoAttributes.node,
                        ).subquery()
 
+            sysinfo_attr = []
+            if fields is None:
+                sysinfo_attr.append(SysinfoAttributes)
+            else:
+                if type(fields) is not list:
+                    raise TypeError("ClusterDB.get_nodes_sysinfo_attributes:"
+                                    f"fields should be list, but was {type(fields)}")
+                selected_fields = set(fields)
+                # default fields
+                selected_fields.add("cluster")
+                selected_fields.add("node")
+                selected_fields.add("time")
+
+                for field in selected_fields:
+                    if not hasattr(SysinfoAttributes, field):
+                        raise ValueError(f"ClusterDB.get_nodes_sysinfo: field {field=} does not exist for SysinfoAttributes")
+                    sysinfo_attr.append(getattr(SysinfoAttributes, field))
+
             query = select(
-                        SysinfoAttributes
+                        *sysinfo_attr
                     ).join(
                         subquery,
                         (SysinfoAttributes.cluster == subquery.c.cluster) &
@@ -610,9 +642,17 @@ class ClusterDB(Database):
                         where
                     ).order_by(None)
 
-
             async with self.make_async_session() as session:
-                node_config = [x[0] for x in (await session.execute(query)).all()]
+
+                rows = (await session.execute(query)).all()
+                if fields is None:
+                    node_config = [x[0] for x in rows]
+                else:
+                    node_config = []
+                    for x in rows:
+                        values = { field: x[idx] for idx, field in enumerate(selected_fields) }
+                        node_config.append(SysinfoAttributes(**values))
+
                 if node_config or time_in_s is None:
                     return node_config
 
@@ -655,13 +695,20 @@ class ClusterDB(Database):
             cluster: str,
             nodelist: list[str] | str | None = None,
             time_in_s: int | None = None,
-            interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S
+            interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S,
+            fields: list[str] | None = None
         ):
         """
-        Get the (full) sysinfo information for all nodes
+        Get the sysinfo information for all nodes
+
+        If only a subset of fields is required, provide the fields argument to improve performenc
 
         The search back for sysinfo is per default limited to the past 7 days
         """
+
+        if fields is not None:
+            # required in this function
+            fields.append("cards")
 
         node_configs = await self.get_nodes_sysinfo_attributes(
                 cluster=cluster,
@@ -669,7 +716,8 @@ class ClusterDB(Database):
                 time_in_s=time_in_s,
                 # ensure that sysinfo contains information about nodes, that
                 # have been seen at least once in the past 14 days
-                interval_in_s=3600*24*14
+                interval_in_s=3600*24*14,
+                fields=fields
         )
 
         nodes = [x.node for x in node_configs]
@@ -789,7 +837,7 @@ class ClusterDB(Database):
             nodelist = [node]
 
         try:
-            # Configuration needs to be active before or at that timepoint gvein
+            # Configuration needs to be active before or at that timepoint given
             if not time_in_s:
                 time_in_s = utcnow().timestamp()
 
@@ -797,13 +845,15 @@ class ClusterDB(Database):
 
             where = (SysinfoGpuCardConfig.cluster == cluster) & SysinfoGpuCardConfig.node.in_(nodelist)
             where &= (SysinfoGpuCardConfig.time <= time)
-            where_last_active = SampleProcessGpu.time <= time
+
+            where_last_active = (SampleProcessGpu.cluster == cluster) & SampleProcessGpu.node.in_(nodelist)
+            where_last_active &= SampleProcessGpu.time <= time
 
             if interval_in_s:
                 where &= (SysinfoGpuCardConfig.time >= fromtimestamp(time_in_s - interval_in_s))
                 where_last_active &= (SampleProcessGpu.time >= fromtimestamp(time_in_s - interval_in_s))
 
-            # Find the lastest configuration in a particular timewindow
+            # Find the latest configuration in a particular timewindow
             # for a given node
             subquery = select(
                          SysinfoGpuCardConfig.node,
@@ -1004,6 +1054,7 @@ class ClusterDB(Database):
                            cluster=cluster,
                            nodes=nodes,
                            time_in_s=start_time_in_s,
+                           fields=["node", "cards"],
                         )
 
         if not node_configs:
@@ -1207,7 +1258,8 @@ class ClusterDB(Database):
         node_config = await self.get_nodes_sysinfo_attributes(
                     cluster=cluster,
                     nodes=node,
-                    time_in_s=reference_time_in_s - window_in_s
+                    time_in_s=reference_time_in_s - window_in_s,
+                    fields=["cards"]
                 )
 
         if node_config:
@@ -1432,6 +1484,7 @@ class ClusterDB(Database):
                            cluster=cluster,
                            nodes=nodes,
                            time_in_s=start_time_in_s,
+                           fields=["node", "memory"]
                         )
 
         if not node_configs:

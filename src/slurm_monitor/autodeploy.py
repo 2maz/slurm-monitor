@@ -11,7 +11,7 @@ from pathlib import Path
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
 
-import slurm_monitor.db_operations as db_ops
+from slurm_monitor.db_operations import DBManager
 from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.utils import utcnow
 from slurm_monitor.utils.command import Command
@@ -49,7 +49,7 @@ class AutoDeployer:
             allow_list: list[str] | None = None
         ):
         self.app_settings = app_settings
-        self.dbi = db_ops.get_database(app_settings=app_settings)
+        self.dbi = DBManager.get_database(app_settings=app_settings)
 
         self.thread = Thread(target=self.run, args=())
         self._sampling_interval_in_s = sampling_interval_in_s

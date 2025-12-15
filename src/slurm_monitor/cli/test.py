@@ -54,7 +54,7 @@ class TestParser(BaseParser):
                 password=args.password,
                 container_name=args.container_name,
                 image=args.image,
-                stats=True
+                stats=args.with_stats
         )
 
         create_test_db(uri)
