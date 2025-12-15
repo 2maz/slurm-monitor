@@ -1,4 +1,6 @@
 from __future__ import annotations
+import hashlib
+import json
 from jwt import PyJWKClient
 import os
 import logging
@@ -80,3 +82,10 @@ class AppSettings(BaseSettings):
         if cls._instance.data_dir:
             cls._instance.data_dir = str(Path(cls._instance.data_dir).resolve())
         return cls._instance
+
+    def hexdigest(self) -> str:
+        """
+        Return hexdigest of hashed object
+        """
+        txt = json.dumps(self.model_dump(), sort_keys=True, default=str)
+        return hashlib.sha256(txt.encode('UTF-8')).hexdigest()
