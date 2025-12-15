@@ -1,6 +1,9 @@
 import pytest
 import pytest_asyncio
+
+from cachetools import TTLCache
 import fastapi
+from fastapi_cache import FastAPICache
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 import re
@@ -36,7 +39,7 @@ def mock_token(monkeypatch, mock_appsettings_with_oauth_required) -> str:
         'exp': 1765187642,
         'iat': 1765187342,
         'jti': 'onrtro:e0070d78-9c5c-04ba-22b9-fbcecb759fe4',
-        'iss': 'http://158.39.75.110/realms/naic-monitor',
+        'iss': 'http://myidentityprovider.com/realms/naic-monitor',
         'aud': 'account',
         'sub': 'fbf4b6c4-bdd3-4aea-8b47-3a87e9c96633',
         'typ': 'Bearer',
@@ -112,6 +115,7 @@ def client(mock_slurm_command_hint, test_db_v2, timescaledb, monkeypatch_module)
 
     monkeypatch_module.setenv("SLURM_MONITOR_DATABASE_URI", f"{timescaledb}")
     monkeypatch_module.setenv("SLURM_MONITOR_JOBS_COLLECTOR", "false")
+    monkeypatch_module.setenv("SLURM_MONITOR_PREFETCH_ENABLED", "false")
 
     with TestClient(app) as c:
         yield c
@@ -226,10 +230,16 @@ async def test_ensure_response_with_partial_rows(endpoint,
     [
       ["api/v2", "cluster"]
     ])
-async def test_ensure_response_for_prefetch(prefix, name, client, db_config):
+async def test_ensure_response_for_prefetch(prefix, name, client, db_config, monkeypatch):
     clear_cache = find_endpoint_by_name(app=app, name="clear_cache", prefix=prefix)
-    response = await clear_cache(token_payload=None)
-    assert response["message"] == "Cache cleared"
+
+    # Ensure to disable the TTLCache (that cache queries at db interface level)
+    setattr(TTLCache, "ttl_cache_hit", 0)
+    def mock_TTLCache__getitem__(self, item):
+        TTLCache.ttl_cache_hit += 1
+        raise KeyError(f"No item {item}")
+
+    monkeypatch.setattr(TTLCache, "__getitem__", mock_TTLCache__getitem__)
 
     dbi = DBManager.get_database()
     endpoint = find_endpoint_by_name(app=app, name="cluster", prefix=prefix)
@@ -242,6 +252,12 @@ async def test_ensure_response_for_prefetch(prefix, name, client, db_config):
     for cluster_data in clusters:
         cluster = cluster_data['cluster']
 
+        TTLCache.ttl_cache_hit = 0
+        # Ensure that we work with a clean FastAPICache
+        response = await clear_cache(token_payload=None)
+        assert response["message"] == "Cache cleared"
+        assert FastAPICache.get_backend()._store == {}, "Expect FastAPICache to be cleared, after API call"
+
         start_time = time.time()
         nodes_sysinfo = await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster, dbi=dbi)
         delay_in_s = (time.time() - start_time)
@@ -252,3 +268,6 @@ async def test_ensure_response_for_prefetch(prefix, name, client, db_config):
 
         print(f"Cache improve: {delay_in_s / delay_in_s_cached}")
         assert (delay_in_s / delay_in_s_cached) > 2, f"Returning cached results should be significantly faster, but was {delay_in_s=} vs. {delay_in_s_cached=}"
+
+        # ensure that TTLCache will be hit
+        assert TTLCache.ttl_cache_hit > 0
