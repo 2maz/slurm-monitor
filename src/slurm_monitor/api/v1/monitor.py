@@ -10,7 +10,7 @@ import tempfile
 from tqdm import tqdm
 
 from slurm_monitor.utils import utcnow
-import slurm_monitor.db_operations as db_ops
+from slurm_monitor.db_operations import DBManager
 from slurm_monitor.utils.command import Command
 from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.db.v1.query import QueryMaker
@@ -91,7 +91,7 @@ def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None
 
 def load_node_infos() -> dict[str, any]:
     global NODE_INFOS
-    dbi = db_ops.get_database()
+    dbi = DBManager.get_database()
     NODE_INFOS = _get_nodeinfo(None, dbi)
     return NODE_INFOS
 
@@ -115,7 +115,7 @@ async def nodes():
 
 @api_router.get("/nodes/{nodename}/info", response_model=None)
 @cache(expire=3600*24)
-async def nodes_nodename_info(nodename: str, dbi = Depends(db_ops.get_database)):
+async def nodes_nodename_info(nodename: str, dbi = Depends(DBManager.get_database)):
     global NODE_INFOS
 
     if not NODE_INFOS:
@@ -179,7 +179,7 @@ async def partitions():
 
 @api_router.get("/nodes/info", response_model=None)
 @cache(expire=3600*24)
-async def nodes_info(nodes: list[str] | None = None, dbi=Depends(db_ops.get_database)):
+async def nodes_info(nodes: list[str] | None = None, dbi=Depends(DBManager.get_database)):
     global NODE_INFOS
 
     if not NODE_INFOS:
@@ -194,7 +194,7 @@ async def nodes_refreshinfo():
 
 @api_router.get("/nodes/last_probe_timestamp", response_model=None)
 async def nodes_last_probe_timestamp():
-    dbi = db_ops.get_database()
+    dbi = DBManager.get_database()
     return await dbi.get_last_probe_timestamp()
 
 @api_router.get("/nodes/{nodename}/gpu_status")
@@ -205,7 +205,7 @@ async def gpustatus(
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
     local_indices: str | None = None,
-    dbi=Depends(db_ops.get_database),
+    dbi=Depends(DBManager.get_database),
 ):
     start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
             start_time_in_s=start_time_in_s,
@@ -234,7 +234,7 @@ async def cpu_status(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi=Depends(db_ops.get_database),
+    dbi=Depends(DBManager.get_database),
 ):
     start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
             start_time_in_s=start_time_in_s,
@@ -259,7 +259,7 @@ async def memory_status(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi=Depends(db_ops.get_database),
+    dbi=Depends(DBManager.get_database),
 ):
     start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
             start_time_in_s=start_time_in_s,
@@ -292,7 +292,7 @@ async def jobs_query(
     max_duration_in_s: float | None = None,
     limit: int = 100,
 ):
-    dbi = db_ops.get_database()
+    dbi = DBManager.get_database()
     return {"jobs": await dbi.get_jobs(
         user=user,
         user_id=user_id,
@@ -316,7 +316,7 @@ async def job_status(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi=Depends(db_ops.get_database),
+    dbi=Depends(DBManager.get_database),
 ):
     return {"job_status": await dbi.get_job(job_id=job_id) }
 
@@ -328,7 +328,7 @@ async def job_system_status(
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
     detailed: bool = False,
-    dbi=Depends(db_ops.get_database),
+    dbi=Depends(DBManager.get_database),
 ):
     start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
             start_time_in_s=start_time_in_s,
@@ -353,7 +353,7 @@ async def job_export(
         job_id: int,
         refresh: bool = False
 ) -> FileResponse:
-    dbi = db_ops.get_database()
+    dbi = DBManager.get_database()
     zip_filename = Path(f"{dbi.get_export_data_dirname(job_id=job_id)}.zip")
     if refresh or not zip_filename.exists():
         zip_filename = await dbi.export_data(job_id=job_id)
@@ -373,7 +373,7 @@ async def queries(
         return { 'queries': QueryMaker.list_available() }
 
     try:
-        query_maker = QueryMaker(db_ops.get_database())
+        query_maker = QueryMaker(DBManager.get_database())
         query = query_maker.create(query_name)
         df = await query.execute_async()
 

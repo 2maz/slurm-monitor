@@ -11,14 +11,23 @@ import copy
 import time
 
 from slurm_monitor.v2 import app
+from slurm_monitor.db_operations import DBManager
 from slurm_monitor.utils.slurm import Slurm
+from slurm_monitor.db.v2.db_base import DatabaseSettings
 from slurm_monitor.db.v2.importer import DBJsonImporter
 from slurm_monitor.app_settings import AppSettings
 
 from slurm_monitor.utils.api import find_endpoint_by_name
 
 @pytest.fixture
-def mock_token(monkeypatch) -> str:
+def mock_appsettings_with_oauth_required(monkeypatch, timescaledb):
+    app_settings = AppSettings.get_instance()
+    monkeypatch.setattr(app_settings.oauth, "required", True)
+    monkeypatch.setattr(app_settings, "database", DatabaseSettings(uri=timescaledb))
+    return app_settings
+
+@pytest.fixture
+def mock_token(monkeypatch, mock_appsettings_with_oauth_required) -> str:
     """
     Mock authentication for a test token, which is returned.
     This should be used as Bearer token in the header
@@ -62,10 +71,10 @@ def mock_token(monkeypatch) -> str:
 
     monkeypatch.setattr(jwt, "decode", patch_decode)
 
-    app_settings = AppSettings.get_instance()
+    app_settings = mock_appsettings_with_oauth_required
     monkeypatch.setattr(app_settings.oauth.jwks_client, "get_signing_key_from_jwt", patch_get_signing_key_from_jwt)
-    return test_token
 
+    return test_token
 
 def parametrize_route(path,
                       cluster="cluster-0",
@@ -116,7 +125,7 @@ async def test_metrics(client):
 @pytest.mark.parametrize("endpoint",
      v2_routes
     )
-async def test_ensure_non_authenticated_response_from_all_endpoints(endpoint, client):
+async def test_ensure_non_authenticated_response_from_all_endpoints(endpoint, client, mock_appsettings_with_oauth_required):
     response = client.get(f"/api/v2{endpoint}")
     if endpoint == "/":
         assert response.status_code == 200
@@ -218,8 +227,13 @@ async def test_ensure_response_with_partial_rows(endpoint,
       ["api/v2", "cluster"]
     ])
 async def test_ensure_response_for_prefetch(prefix, name, client, db_config):
+    clear_cache = find_endpoint_by_name(app=app, name="clear_cache", prefix=prefix)
+    response = await clear_cache(token_payload=None)
+    assert response["message"] == "Cache cleared"
+
+    dbi = DBManager.get_database()
     endpoint = find_endpoint_by_name(app=app, name="cluster", prefix=prefix)
-    clusters = await endpoint(token_payload=None)
+    clusters = await endpoint(token_payload=None, dbi=dbi)
 
     assert len(clusters) == db_config.number_of_clusters, f"{db_config.number_of_clusters} should be available, but only {len(clusters)}"
 
@@ -229,11 +243,11 @@ async def test_ensure_response_for_prefetch(prefix, name, client, db_config):
         cluster = cluster_data['cluster']
 
         start_time = time.time()
-        nodes_sysinfo = await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster)
+        nodes_sysinfo = await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster, dbi=dbi)
         delay_in_s = (time.time() - start_time)
 
         start_time = time.time()
-        nodes_sysinfo = await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster)
+        nodes_sysinfo = await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster, dbi=dbi)
         delay_in_s_cached = (time.time() - start_time)
 
         print(f"Cache improve: {delay_in_s / delay_in_s_cached}")

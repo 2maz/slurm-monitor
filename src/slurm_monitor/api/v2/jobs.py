@@ -5,7 +5,8 @@ from typing import Annotated
 
 
 from slurm_monitor.utils import utcnow
-import slurm_monitor.db_operations as db_ops
+from slurm_monitor.db_operations import DBManager
+from slurm_monitor.db.v2.db import ClusterDB
 from slurm_monitor.api.v2.routes import (
     api_router,
     validate_interval,
@@ -40,7 +41,7 @@ async def job_sample_process_system(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi=Depends(db_ops.get_database),
+    dbi: ClusterDB = Depends(DBManager.get_database)
 ):
     """
     Get job-related timeseries for all processes running on cpu and gpu
@@ -86,7 +87,7 @@ async def job_sample_process_gpu_timeseries(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi=Depends(db_ops.get_database),
+    dbi: ClusterDB = Depends(DBManager.get_database)
 ):
     """
     Get job-related timeseries data for processes running on gpu
@@ -115,16 +116,15 @@ async def job_sample_process_gpu_timeseries(
         response_model=JobsResponse)
 @cache(expire=30)
 async def jobs(cluster: str,
-        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
-        start_time_in_s: int | None = None,
-        end_time_in_s: int | None = None,
-        states: str | None = None
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    start_time_in_s: int | None = None,
+    end_time_in_s: int | None = None,
+    states: str | None = None,
+    dbi: ClusterDB = Depends(DBManager.get_database)
    ):
     """
     Check current status of jobs
     """
-    dbi = db_ops.get_database()
-
     if end_time_in_s is None:
         end_time_in_s = utcnow().timestamp()
 
@@ -169,7 +169,7 @@ async def job_status(
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
     states: str | None = None,
-    dbi=Depends(db_ops.get_database),
+    dbi: ClusterDB = Depends(DBManager.get_database)
 ):
     """
     Get job information optionally limited by a given timeframe and output provided in a specified resolution of time
@@ -208,8 +208,8 @@ async def query_jobs(
     max_duration_in_s: float | None = None,
     states: str = "",
     limit: int = 100,
+    dbi: ClusterDB = Depends(DBManager.get_database)
 ):
-    dbi = db_ops.get_database()
     return {"jobs": await dbi.query_jobs(
         cluster=cluster,
         user=user,

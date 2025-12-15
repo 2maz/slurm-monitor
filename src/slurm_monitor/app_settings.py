@@ -55,7 +55,7 @@ class AppSettings(BaseSettings):
 
     prefetch: PrefetchSettings = Field(default_factory=PrefetchSettings)
 
-    db_schema_version: str | None = Field(default=None)
+    db_schema_version: str | None = Field(default="v2")
     oauth: OAuthSettings = Field(default_factory=OAuthSettings)
 
     @classmethod
@@ -68,7 +68,7 @@ class AppSettings(BaseSettings):
         return cls._instance
 
     @classmethod
-    def initialize(cls) -> AppSettings:
+    def initialize(cls, **kwargs) -> AppSettings:
         env_file = ".env"
         if "SLURM_MONITOR_ENVFILE" in os.environ:
             env_file = os.environ["SLURM_MONITOR_ENVFILE"]
@@ -76,7 +76,7 @@ class AppSettings(BaseSettings):
                 raise FileNotFoundError(f"AppSettings.initialize: could not find {env_file=}")
 
         logger.info(f"AppSettings.initialize: loading {env_file=}")
-        cls._instance = AppSettings(_env_file=env_file)
+        cls._instance = AppSettings(_env_file=env_file, **kwargs)
         if cls._instance.data_dir:
             cls._instance.data_dir = str(Path(cls._instance.data_dir).resolve())
         return cls._instance

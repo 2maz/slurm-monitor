@@ -9,9 +9,10 @@ import pandas as pd
 from pathlib import Path
 from typing import Annotated
 
+from slurm_monitor.db.v2.db import ClusterDB
 from slurm_monitor.utils import utcnow
 from slurm_monitor.app_settings import AppSettings
-import slurm_monitor.db_operations as db_ops
+from slurm_monitor.db_operations import DBManager
 from slurm_monitor.api.v2.routes import (
     api_router,
     get_token_payload,
@@ -45,11 +46,12 @@ async def clear_cache(
 async def partitions(
         token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
         cluster: str,
-        time_in_s: int | None = None):
+        time_in_s: int | None = None,
+        dbi = Depends(DBManager.get_database)
+        ):
     """
     Get status of partitions of a cluster (for a specific time point)
     """
-    dbi = db_ops.get_database()
     return await dbi.get_partitions(cluster, time_in_s)
 
 
@@ -65,7 +67,7 @@ async def partitions(
 #    start_time_in_s: float | None = None,
 #    end_time_in_s: float | None = None,
 #    resolution_in_s: int | None = None,
-#    dbi=Depends(db_ops.get_database),
+#    dbi=Depends(DBManager.get_database),
 #):
 #    """
 #    Get node-related timeseries data for processes running on cpu
@@ -106,7 +108,7 @@ async def partitions(
 #    start_time_in_s: float | None = None,
 #    end_time_in_s: float | None = None,
 #    resolution_in_s: int | None = None,
-#    dbi=Depends(db_ops.get_database),
+#    dbi=Depends(DBManager.get_database),
 #):
 #    try:
 #        start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
@@ -177,7 +179,7 @@ async def dashboard_job_query(
     host.split(",")
     job_id.split(",")
 
-    #dbi = db_ops.get_database()
+    #dbi = DBManager.get_database()
     #await jobs = dbi.query_jobs(
     #    cluster=cluster,
     #    user_id=None if user == '-' else user,
@@ -262,10 +264,11 @@ async def list_queries(
 async def queries(
     token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
     cluster: str,
-    query_name: str
+    query_name: str,
+    dbi: ClusterDB = Depends(DBManager.get_database)
 ):
     try:
-        query_maker = QueryMaker(db_ops.get_database())
+        query_maker = QueryMaker(dbi)
         query = query_maker.create(query_name, { 'cluster': cluster })
         df = await query.execute_async()
 
@@ -302,9 +305,9 @@ if False:
     @api_router.get("/jobs/{job_id}/export")
     async def job_export(
             job_id: int,
-            refresh: bool = False
+            refresh: bool = False,
+            dbi : ClusterDB = Depends(DBManager.get_database)
     ) -> FileResponse:
-        dbi = db_ops.get_database()
         zip_filename = Path(f"{dbi.get_export_data_dirname(job_id=job_id)}.zip")
         if refresh or not zip_filename.exists():
             zip_filename = await dbi.export_data(job_id=job_id)

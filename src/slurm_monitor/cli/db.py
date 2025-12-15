@@ -4,7 +4,7 @@ import re
 
 from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.app_settings import AppSettings
-import slurm_monitor.db_operations as db_ops
+from slurm_monitor.db_operations import DBManager
 
 logger = logging.getLogger(__name__)
 
@@ -219,7 +219,7 @@ class DBParser(BaseParser):
         initial_status = get_db_status(app_settings.database.uri)
 
         app_settings.database.create_missing = args.apply_changes or args.init
-        db = db_ops.get_database(app_settings)
+        db = DBManager.get_database(app_settings)
 
         schema = get_db_schema(db)
         tables_in_schema = schema.keys()

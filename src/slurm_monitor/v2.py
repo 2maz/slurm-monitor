@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response, exception_handlers, HTTPException
+from fastapi import FastAPI, Request, exception_handlers, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_cache import FastAPICache
@@ -19,6 +19,7 @@ import gc
 
 
 from slurm_monitor.app_settings import AppSettings
+from slurm_monitor.db_operations import DBManager
 from slurm_monitor.api.v2.router import app as api_v2_app
 from slurm_monitor.utils.api import find_endpoint_by_name
 
@@ -27,10 +28,6 @@ from logging import getLogger
 
 logger = getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-breakpoint()
-app_settings = AppSettings.initialize()
-app_settings.db_schema_version = "v2"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -47,9 +44,13 @@ async def lifespan(app: FastAPI):
     )
 
     logger.info("Setting up database ...")
+    app_settings = AppSettings.initialize(db_schema_version="v2")
     if app_settings.prefetch.enabled:
         logger.info("Setting up prefetching ...")
-        task = asyncio.create_task(prefetch_data(), name="prefetch_data")
+
+        # Keeping it here to parametrize via app_settings
+        repeat_decorator = repeat_every(seconds=app_settings.prefetch.interval, logger=logger)
+        task = asyncio.create_task(repeat_decorator(prefetch_data)(), name="prefetch_data")
 
     yield
 
@@ -123,11 +124,11 @@ async def runtime_exception_handler(request: Request, exc: Exception):
     raise HTTPException(status_code=500,
             detail=f"Internal Error: {exc}")
 
-@repeat_every(seconds=app_settings.prefetch.interval, logger=logger)
 async def prefetch_data():
     logger.info("Prefetch starting")
+    dbi = DBManager.get_database()
     cluster_endpoint = find_endpoint_by_name(app=app, name="cluster")
-    clusters = await cluster_endpoint(token_payload=None)
+    clusters = await cluster_endpoint(token_payload=None, dbi=dbi)
 
     nodes_sysinfo_endpoint = find_endpoint_by_name(app=app, name="nodes_sysinfo")
     partitions_endpoint = find_endpoint_by_name(app=app, name="partitions")
@@ -138,9 +139,9 @@ async def prefetch_data():
 
         # DO NOT use a dynamic argument such as time_in_s, since that will
         # prevent the caching to work
-        await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster, time_in_s=None)
-        await partitions_endpoint(token_payload=None, cluster=cluster, time_in_s=None)
-        await jobs_endpoint(token_payload=None, cluster=cluster)
+        await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster, time_in_s=None, dbi=dbi)
+        await partitions_endpoint(token_payload=None, cluster=cluster, time_in_s=None, dbi=dbi)
+        await jobs_endpoint(token_payload=None, cluster=cluster, dbi=dbi)
 
     logger.info("Prefetching done")
 

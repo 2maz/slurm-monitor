@@ -89,7 +89,8 @@ async def test_collector_collect(controller, mock_slurm_command_hint, monkeypatc
     shutdown_event = asyncio.Event()
 
     collector = NodeStatusCollector(sampling_interval_in_s=2)
-    collector_task = asyncio.create_task(collector.collect(shutdown_event, publish_fn))
+    collector_task = asyncio.create_task(collector.collect(shutdown_event, publish_fn),
+                                         name="test_collector_collect")
     future = asyncio.gather(collector_task)
 
     await asyncio.sleep(4)
@@ -128,7 +129,8 @@ async def test_collector_collect_max_samples(controller, mock_slurm_command_hint
     shutdown_event = asyncio.Event()
 
     collector = NodeStatusCollector(sampling_interval_in_s=2)
-    collector_task = asyncio.create_task(collector.collect(shutdown_event, publish_fn, max_samples=3))
+    collector_task = asyncio.create_task(collector.collect(shutdown_event, publish_fn, max_samples=3),
+                                         name="test_collector_collect_max_samples")
     future = asyncio.gather(collector_task)
 
     await future

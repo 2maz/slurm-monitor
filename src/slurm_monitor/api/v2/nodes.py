@@ -6,7 +6,8 @@ from fastapi import Depends, HTTPException, Response
 from fastapi_cache.decorator import cache
 from typing import Annotated
 
-import slurm_monitor.db_operations as db_ops
+from slurm_monitor.db_operations import DBManager
+from slurm_monitor.db.v2.db import ClusterDB
 from slurm_monitor.api.v2.routes import (
     api_router,
     validate_interval,
@@ -34,13 +35,12 @@ from slurm_monitor.api.v2.response_models import (
 async def nodes(
         token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
         cluster: str,
-        time_in_s: int | None = None
+        time_in_s: int | None = None,
+        dbi: ClusterDB = Depends(DBManager.get_database),
     ):
     """
     Get the list of node names in a cluster
     """
-
-    dbi = db_ops.get_database()
     return await dbi.get_nodes(cluster, time_in_s)
 
 @api_router.get("/cluster/{cluster}/error_messages",
@@ -57,11 +57,12 @@ async def error_messages(
         token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
         cluster: str,
         nodename: str | None = None,
-        time_in_s: int | None = None):
+        time_in_s: int | None = None,
+        dbi: ClusterDB = Depends(DBManager.get_database),
+        ):
     """
     Get error_message of a cluster (for a specific time point) (or nodes)
     """
-    dbi = db_ops.get_database()
     return await dbi.get_error_messages(cluster, nodename, time_in_s)
 
 
@@ -79,7 +80,8 @@ async def error_messages(
 async def nodes_sysinfo(cluster: str,
         token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
         nodename: str | None = None,
-        time_in_s: int | None = None
+        time_in_s: int | None = None,
+        dbi: ClusterDB = Depends(DBManager.get_database),
     ):
     """
     Get available information about nodes in a cluster
@@ -88,8 +90,6 @@ async def nodes_sysinfo(cluster: str,
     node might exist in a cluster, but not system information has been received
     yet.  To check - compare with the complete node list /cluster/{cluster}/nodes
     """
-
-    dbi = db_ops.get_database()
     return await dbi.get_nodes_sysinfo(cluster, nodename, time_in_s)
 
 @api_router.get("/cluster/{cluster}/nodes/states",
@@ -107,11 +107,11 @@ async def nodes_states(
         cluster: str,
         nodename: str | None = None,
         time_in_s: int | None = None,
+        dbi: ClusterDB = Depends(DBManager.get_database),
         ):
     """
     Get the state(s) of nodes in a given cluster
     """
-    dbi = db_ops.get_database()
     return await dbi.get_nodes_states(cluster, nodename, time_in_s)
 
 @api_router.get("/cluster/{cluster}/nodes/{nodename}/topology",
@@ -121,12 +121,12 @@ async def nodes_states(
 async def nodes_nodename_topology(
         token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
         cluster: str,
-        nodename: str
+        nodename: str,
+        dbi: ClusterDB = Depends(DBManager.get_database),
     ):
     """
     Get the topology information for a node (if available)
     """
-    dbi = db_ops.get_database()
     node_config = await dbi.get_nodes_sysinfo(cluster, nodename)
     encoded_data = node_config[nodename].get('topo_svg', None)
     if encoded_data:
@@ -144,14 +144,15 @@ async def nodes_nodename_topology(
 async def nodes_last_probe_timestamp(
         token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
         cluster: str,
-        time_in_s: int = None):
+        time_in_s: int = None,
+        dbi: ClusterDB = Depends(DBManager.get_database),
+        ):
     """
     Retrieve the last known timestamps of records added for nodes in the cluster
 
     A timestamp of None (or null in the Json response) means, that no monitoring data has been recorded for this node.
     In this case the node has probably no probe, i.e. sonar daemon running.
     """
-    dbi = db_ops.get_database()
     return await dbi.get_last_probe_timestamp(cluster=cluster, time_in_s=time_in_s)
 
 
@@ -169,12 +170,11 @@ async def nodes_process_gpu_util(
     nodename: str | None = None,
     reference_time_in_s: float | None = None,
     window_in_s: int | None = None,
+    dbi: ClusterDB = Depends(DBManager.get_database),
 ):
     """
     Retrieve the latest gpu utilization
     """
-    dbi = db_ops.get_database()
-
     nodes = [nodename] if nodename else (await dbi.get_nodes(cluster))
     tasks = {}
     for node in nodes:
@@ -183,7 +183,8 @@ async def nodes_process_gpu_util(
                 node=node,
                 reference_time_in_s=reference_time_in_s,
                 window_in_s=window_in_s
-            )
+            ),
+            name=f"nodes_process_gpu_util-{node}"
         )
     return { x: (await task) for x, task in tasks.items()}
 
@@ -209,7 +210,7 @@ async def nodes_sample_process_gpu(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi=Depends(db_ops.get_database),
+    dbi: ClusterDB = Depends(DBManager.get_database)
 ):
     """
     Get node-related timeseries for processes running on gpu
@@ -259,7 +260,7 @@ async def nodes_process_cpu_memory_timeseries(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi=Depends(db_ops.get_database),
+    dbi: ClusterDB = Depends(DBManager.get_database),
 ):
     """
     Get node-related timeseries data for processes running on memory
@@ -279,7 +280,8 @@ async def nodes_process_cpu_memory_timeseries(
                     start_time_in_s=start_time_in_s,
                     end_time_in_s=end_time_in_s,
                     resolution_in_s=resolution_in_s,
-                )
+                ),
+                name=f"nodes_process_cpu_memory_timeseries-{node}"
             )
         return { node : (await tasks[node]) for node in nodes}
     except Exception as e:
@@ -304,7 +306,7 @@ async def nodes_sample_gpu(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi=Depends(db_ops.get_database),
+    dbi: ClusterDB = Depends(DBManager.get_database)
 ):
     try:
         start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
@@ -322,7 +324,8 @@ async def nodes_sample_gpu(
                     start_time_in_s=start_time_in_s,
                     end_time_in_s=end_time_in_s,
                     resolution_in_s=resolution_in_s,
-                )
+                ),
+                name=f"nodes_sample_gpu-{node}"
             )
         return { node : (await tasks[node]) for node in nodes}
     except Exception as e:
