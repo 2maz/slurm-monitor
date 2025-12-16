@@ -733,6 +733,14 @@ class ClusterDB(Database):
                 interval_in_s=interval_in_s
         )
 
+        nodes_gpu_cards = await self.get_sysinfo_gpu_card(
+            cluster=cluster,
+            node=nodes,
+            time_in_s=time_in_s,
+            interval_in_s=interval_in_s
+            )
+        nodes_gpu_cards = { x['uuid'] : x for x in nodes_gpu_cards }
+
         nodeinfo = {}
         time_start = utcnow()
         for node_config in tqdm(node_configs, total=len(node_configs), desc="Collection node configurations"):
@@ -746,13 +754,9 @@ class ClusterDB(Database):
                 nodeinfo[nodename].update({'partitions': nodes_partitions[nodename]})
 
             if node_config.cards:
+                cards = [ nodes_gpu_cards[uuid] for uuid in node_config.cards ]
                 try:
-                    nodeinfo[nodename].update({'cards': await self.get_sysinfo_gpu_card(
-                        cluster=cluster,
-                        node=nodename,
-                        time_in_s=time_in_s,
-                        interval_in_s=interval_in_s
-                        )})
+                    nodeinfo[nodename].update({'cards': cards})
                 except Exception as e:
                     logger.warn(f"Internal error: Retrieving GPU info for {nodename} failed -- {e}")
 
@@ -841,13 +845,13 @@ class ClusterDB(Database):
             if not time_in_s:
                 time_in_s = utcnow().timestamp()
 
-            time = fromtimestamp(time_in_s)
+            sample_time = fromtimestamp(time_in_s)
 
             where = (SysinfoGpuCardConfig.cluster == cluster) & SysinfoGpuCardConfig.node.in_(nodelist)
-            where &= (SysinfoGpuCardConfig.time <= time)
+            where &= (SysinfoGpuCardConfig.time <= sample_time)
 
             where_last_active = (SampleProcessGpu.cluster == cluster) & SampleProcessGpu.node.in_(nodelist)
-            where_last_active &= SampleProcessGpu.time <= time
+            where_last_active &= SampleProcessGpu.time <= sample_time
 
             if interval_in_s:
                 where &= (SysinfoGpuCardConfig.time >= fromtimestamp(time_in_s - interval_in_s))
@@ -878,14 +882,12 @@ class ClusterDB(Database):
                         SysinfoGpuCardConfig,
                         last_active_subquery.c.last_active
                     ).where(
-                        where
+                        where,
+                        (SysinfoGpuCard.uuid == SysinfoGpuCardConfig.uuid)
                     ).join(
                         subquery,
                         (SysinfoGpuCardConfig.node == subquery.c.node) &
                         (SysinfoGpuCardConfig.time == subquery.c.max_time)
-                    ).join(
-                        SysinfoGpuCard,
-                        (SysinfoGpuCard.uuid == SysinfoGpuCardConfig.uuid)
                     ).join(
                         last_active_subquery,
                         (SysinfoGpuCardConfig.uuid == last_active_subquery.c.uuid),
@@ -971,7 +973,7 @@ class ClusterDB(Database):
                 nodes=nodes
             )
 
-        active_jobs = await self.get_active_jobs(
+        active_jobs = await self.get_active_jobs_with_nodes(
                 cluster=cluster,
                 start_time_in_s=start_time_in_s,
                 end_time_in_s=end_time_in_s,
@@ -1711,7 +1713,6 @@ class ClusterDB(Database):
 
 
 #### BEGIN JOBS #####################################################################
-
     async def get_active_jobs(self,
                 cluster: str,
                 start_time_in_s: int,
@@ -1721,6 +1722,38 @@ class ClusterDB(Database):
                 ):
         """
             Get all active jobs in the cluster
+            return
+                [ (job, epoch) ]
+        """
+        where = (SampleProcess.cluster == cluster) & \
+                (SampleProcess.time >= fromtimestamp(start_time_in_s)) & \
+                (SampleProcess.time <= fromtimestamp(end_time_in_s))
+
+        if job_id is not None:
+            where &= (SampleProcess.job == job_id)
+
+        if node is not None:
+            where &= (SampleProcess.node == node)
+
+        query = select(
+                    SampleProcess.job,
+                    SampleProcess.epoch,
+                ).where(
+                    where
+                ).distinct()
+
+        async with self.make_async_session() as session:
+            return (await session.execute(query)).all()
+
+    async def get_active_jobs_with_nodes(self,
+                cluster: str,
+                start_time_in_s: int,
+                end_time_in_s: int,
+                node: str | None = None,
+                job_id: int | None = None,
+                ):
+        """
+            Get all active jobs in the cluster with related node information
             return
                 [ (job, epoch, nodes) ]
         """
@@ -1747,6 +1780,7 @@ class ClusterDB(Database):
 
         async with self.make_async_session() as session:
             return (await session.execute(query)).all()
+
 
     async def get_jobs(
             self,
@@ -1943,9 +1977,6 @@ class ClusterDB(Database):
         if start_time_in_s is None:
             start_time_in_s = end_time_in_s - 300
 
-        if start_time_in_s is None:
-            start_time_in_s = end_time_in_s - 300
-
         where &= (SampleSlurmJob.time >= fromtimestamp(start_time_in_s))
         where &= (SampleSlurmJob.time <= fromtimestamp(end_time_in_s))
 
@@ -2000,14 +2031,16 @@ class ClusterDB(Database):
                     (SampleSlurmJob.cluster == cluster) &
                     (subquery.c.job_id == SampleSlurmJob.job_id) &
                     (subquery.c.job_step == SampleSlurmJob.job_step) &
-                    (subquery.c.max_time == SampleSlurmJob.time),
+                    (subquery.c.max_time == SampleSlurmJob.time) &
+                    (fromtimestamp(start_time_in_s) <= SampleSlurmJob.time) &
+                    (fromtimestamp(end_time_in_s) >= SampleSlurmJob.time)
                 ).join(SampleSlurmJobAcc,
                     (SampleSlurmJobAcc.cluster == cluster) &
                     (subquery.c.job_id == SampleSlurmJobAcc.job_id) &
                     (subquery.c.job_step == SampleSlurmJobAcc.job_step) &
                     (subquery.c.max_time == SampleSlurmJobAcc.time) &
-                    (SampleSlurmJobAcc.time >= fromtimestamp(start_time_in_s)) &
-                    (SampleSlurmJobAcc.time <= fromtimestamp(end_time_in_s)),
+                    (fromtimestamp(start_time_in_s) <= SampleSlurmJobAcc.time) &
+                    (fromtimestamp(end_time_in_s) >= SampleSlurmJobAcc.time),
                     isouter=True
                 ).join(gpus_subquery,
                     (gpus_subquery.c.cluster == cluster) &
