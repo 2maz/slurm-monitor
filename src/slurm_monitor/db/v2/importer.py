@@ -1,10 +1,10 @@
 import logging
-import re
 import datetime as dt
 import sqlalchemy
 import traceback as tb
 
 from slurm_monitor.utils import utcnow
+from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.db.v2.db_tables import (
     Cluster,
     ErrorMessage,
@@ -30,9 +30,6 @@ import slurm_monitor.db.v2.sonar as sonar
 
 logger = logging.getLogger(__name__)
 
-COMPACT_NODE_EXPRESSION_PATTERN: str = r"(.*)\[(.*)\](\..+){0,}$"
-COMPACT_NODE_EXPRESSION_REXEXP = re.compile(COMPACT_NODE_EXPRESSION_PATTERN)
-
 class Importer:
     last_msg_per_node: dict[str, dt.datetime]
     verbose: bool
@@ -47,60 +44,8 @@ class Importer:
     def update_last_msg(self, node: str, time: dt.datetime):
         self.last_msg_per_node[node] = time
 
-    @classmethod
-    def expand_node_names(cls, names: str) -> list[str]:
-        """
-        Handle and expand compact node patterns: n[001-002,004],g[001-g003].domain,n001
-        into single node names
-        """
-        nodes = []
-        if type(names) is not str:
-            raise TypeError(f"Importer.expand_node_names: expects names to be str, but was '{type(names)}'")
-
-        current_expr = None
-        for chunk in names.split(","):
-            if not current_expr:
-                current_expr = chunk
-            else:
-                current_expr += "," + chunk
-
-            if "[" in current_expr:
-                if "]" not in current_expr:
-                    continue
-
-            m = COMPACT_NODE_EXPRESSION_REXEXP.match(current_expr)
-            if m is None:
-                nodes.append(current_expr)
-                current_expr = None
-                continue
-
-            prefix, suffixes = m.groups()[:2]
-            domain = m.groups()[2]
-            # [005-006,001,005]
-            for suffix in suffixes.split(','):
-                #0,0
-                if "-" not in suffix:
-                    nodename = f"{prefix}{suffix}"
-                    if domain:
-                        nodename = f"{nodename}{domain}"
-                    nodes.append(nodename)
-                    current_expr = None
-                    continue
-
-                # 001-010
-                start, end = suffix.split("-")
-                pattern_length = len(start)
-
-                for i in range(int(start), int(end)+1):
-                    node_number = str(i).zfill(pattern_length)
-                    nodename = f"{prefix}{node_number}"
-                    if domain:
-                        nodename = f"{nodename}{domain}"
-                    nodes.append(nodename)
-                    current_expr = None
-
-        return nodes
-
+    async def autoupdate(self, cluster: str):
+        pass
 
 class DBJsonImporter(Importer):
     db: ClusterDB
@@ -123,6 +68,9 @@ class DBJsonImporter(Importer):
 
     async def sync_with_db(self):
         await self.update_sysinfo_gpu_cards()
+
+    async def autoupdate(self, cluster: str):
+        await self.db.sync_cluster_and_nodes_with_jobs(cluster=cluster)
 
     async def update_sysinfo_gpu_cards(self):
         sysinfo_gpu_cards = await self.db.get_all_sysinfo_gpu_cards()
@@ -352,7 +300,7 @@ class DBJsonImporter(Importer):
         nodes_states = []
         for n in attributes['nodes']:
             for names in n['names']:
-                node_names = self.expand_node_names(names)
+                node_names = Slurm.expand_node_names(names)
                 nodes.update(node_names)
 
             states = n['states']
@@ -369,7 +317,7 @@ class DBJsonImporter(Importer):
         for p in attributes['partitions']:
             partition_nodes = set()
             for names in p["nodes"]:
-                node_names = self.expand_node_names(names)
+                node_names = Slurm.expand_node_names(names)
                 partition_nodes.update(node_names)
 
             partitions.append(Partition.create(

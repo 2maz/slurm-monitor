@@ -1,27 +1,17 @@
 import pytest
 import platform
 
+import datetime as dt
+
 from slurm_monitor.db.v2.db_tables import TableBase
 from slurm_monitor.utils import utcnow
-from slurm_monitor.db.v2.importer import Importer, DBJsonImporter
+from slurm_monitor.db.v2.importer import DBJsonImporter
 from slurm_monitor.utils.system_info import SystemInfo
 import psutil
 import copy
 import sqlalchemy
 import json
 from pathlib import Path
-
-@pytest.mark.parametrize("names,nodes",[
-    ["n001",["n001"]],
-    ["n001,gh001",["n001","gh001"]],
-    ["n[001-002].domain",["n001.domain","n002.domain"]],
-    ["n[001-003,056],gh001",["n001","n002","n003","n056","gh001"]],
-    ["n[001-003,056].ex3,gh001.ex3",["n001.ex3","n002.ex3","n003.ex3","n056.ex3","gh001.ex3"]],
-    ["n[001-003,056].ex3,gh001.ex3.simula.no",["n001.ex3","n002.ex3","n003.ex3","n056.ex3","gh001.ex3.simula.no"]]
-])
-def test_expand_node_names(names, nodes):
-    assert sorted(Importer.expand_node_names(names)) == sorted(nodes)
-
 
 def sonar_base_message(message_type: str, **kwargs):
     return {
@@ -268,3 +258,39 @@ async def test_DBJsonImporter_sonar_examples(sonar_msg_files,
             results = session.execute(sqlalchemy.text(f"SELECT memory from sysinfo_gpu_card WHERE uuid = '{uuid}'")).all()
             assert len(results) == 1, f"Expected 1 matching uuid entry got {results}"
             assert results[0][0] != 0, f"Expected memory > 0, but got {results[0][0]}"
+
+
+
+@pytest.mark.asyncio(loop_scope="function")
+@pytest.mark.parametrize("sonar_msg_files, expected_clusters",
+    [
+        [ ["0+job-srl-login3.ex3.simula.no.json"], {"ex3.simula.no": {"nodes": ['h001', 'n004', 'g001'], "partitions": ['dgx2q', 'habanaq', 'hgx2q', 'mi100q'] }}]
+    ]
+)
+async def test_DBJsonImporter_autoupdate(sonar_msg_files,
+                                         expected_clusters,
+                                         test_db_v2__function_scope,
+                                         db_config,
+                                         test_data_dir):
+    db = test_db_v2__function_scope
+    importer = DBJsonImporter(db=db)
+
+    for idx, sonar_msg_file in enumerate(sonar_msg_files):
+        json_filename = Path(test_data_dir) / "sonar" / sonar_msg_file
+        with open(json_filename, "r") as f:
+            msg_data = json.load(f)
+            msg_data["data"]["attributes"]["time"] = (utcnow() - dt.timedelta(seconds=(3600 - idx*60))).isoformat()
+            await importer.insert(copy.deepcopy(msg_data))
+
+    for cluster_name, nodes in expected_clusters.items():
+        await importer.autoupdate(cluster=cluster_name)
+
+        with db.make_session() as session:
+            results = session.execute(sqlalchemy.text(f"SELECT cluster, nodes, partitions from cluster_attributes where cluster = '{cluster_name}'")).all()
+            assert results
+            cluster, nodes, partitions = results[0]
+            expected_nodes = expected_clusters[cluster_name]['nodes']
+            expected_partitions = expected_clusters[cluster_name]['partitions']
+
+            assert sorted(nodes) == sorted(expected_nodes), f"Expected nodes {expected_nodes} in cluster_attributes, but got {nodes=}"
+            assert sorted(partitions) == sorted(expected_partitions), f"Expected partitions {expected_partitions} in cluster_attributes, but got {partitions=}"

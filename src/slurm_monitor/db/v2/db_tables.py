@@ -893,6 +893,8 @@ class SlurmJobState(enum.Enum):
 
 
 class SampleSlurmJob(TableBase):
+    NONE_ASSIGNED: str = "None assigned"
+
     __tablename__ = "sample_slurm_job"
     cluster = Column(String, index=True, primary_key=True)
 

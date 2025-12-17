@@ -14,6 +14,9 @@ TRES_KEYS = ["cpu", "mem", "gpu", "node", "billing"]
 TRES_PATTERN = r"([^/]+)(:[^=]+)?=([0-9.]+)([" + ''.join(SCALE_BY_UNIT.keys()) + "])?"
 TRES_REGEXP = re.compile(TRES_PATTERN)
 
+COMPACT_NODE_EXPRESSION_PATTERN: str = r"(.*)\[(.*)\](\..+){0,}$"
+COMPACT_NODE_EXPRESSION_REXEXP = re.compile(COMPACT_NODE_EXPRESSION_PATTERN)
+
 class Slurm:
     API_PREFIX: ClassVar[str] = "/slurm/v0.0.37"
 
@@ -132,3 +135,57 @@ class Slurm:
                 logger.info(f"Slurm.parse_sacct_tres: invalid pattern encountered {txt}")
 
         return values
+
+    @classmethod
+    def expand_node_names(cls, names: str) -> list[str]:
+        """
+        Handle and expand compact node patterns: n[001-002,004],g[001-g003].domain,n001
+        into single node names
+        """
+        nodes = []
+        if type(names) is not str:
+            raise TypeError(f"Importer.expand_node_names: expects names to be str, but was '{type(names)}'")
+
+        current_expr = None
+        for chunk in names.split(","):
+            if not current_expr:
+                current_expr = chunk
+            else:
+                current_expr += "," + chunk
+
+            if "[" in current_expr:
+                if "]" not in current_expr:
+                    continue
+
+            m = COMPACT_NODE_EXPRESSION_REXEXP.match(current_expr)
+            if m is None:
+                nodes.append(current_expr)
+                current_expr = None
+                continue
+
+            prefix, suffixes = m.groups()[:2]
+            domain = m.groups()[2]
+            # [005-006,001,005]
+            for suffix in suffixes.split(','):
+                #0,0
+                if "-" not in suffix:
+                    nodename = f"{prefix}{suffix}"
+                    if domain:
+                        nodename = f"{nodename}{domain}"
+                    nodes.append(nodename)
+                    current_expr = None
+                    continue
+
+                # 001-010
+                start, end = suffix.split("-")
+                pattern_length = len(start)
+
+                for i in range(int(start), int(end)+1):
+                    node_number = str(i).zfill(pattern_length)
+                    nodename = f"{prefix}{node_number}"
+                    if domain:
+                        nodename = f"{nodename}{domain}"
+                    nodes.append(nodename)
+                    current_expr = None
+
+        return nodes

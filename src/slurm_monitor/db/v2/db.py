@@ -34,6 +34,7 @@ from slurm_monitor.db.v2.db_base import (
     Database,
     DatabaseSettings,  # noqa
     DEFAULT_HISTORY_INTERVAL_IN_S,
+    INTERVAL_1DAY, # noqa
     INTERVAL_1WEEK,  # noqa
     INTERVAL_2WEEKS,  # noqa
 )
@@ -113,6 +114,37 @@ class ClusterDB(Database):
         async with self.make_async_session() as session:
             result = (await session.execute(query)).all()
             return [dict(x[0]) for x in result]
+
+    async def get_cluster(self,
+                          cluster: str,
+                          time_in_s: int | None = None,
+                          interval_in_s: int = INTERVAL_1DAY) -> Cluster | None:
+        """
+        Get cluster_attributes for a given cluster name
+
+        return cluster_attributes for the cluster with the given name or None
+        """
+
+        if not time_in_s:
+            time_in_s = utcnow().timestamp()
+
+        where = (Cluster.cluster == cluster)
+        where &= (Cluster.time <= fromtimestamp(time_in_s))
+        where &= (Cluster.time >= fromtimestamp(time_in_s - interval_in_s))
+
+        query = select(
+            Cluster
+        ).where(
+            where
+        ).order_by(
+            Cluster.time.desc()
+        ).limit(1)
+
+        async with self.make_async_session() as session:
+            rows = (await session.execute(query)).all()
+            if rows:
+                return rows[0][0]
+            return None
 
     async def get_error_messages(self,
             cluster: str,
@@ -497,7 +529,10 @@ class ClusterDB(Database):
 
 
         if not nodes:
-            nodes = await self.get_nodes(cluster=cluster, time_in_s=time_in_s)
+            nodes = await self.get_nodes(cluster=cluster,
+                                         time_in_s=time_in_s,
+                                         ensure_sysinfo=False
+                    )
         elif type(nodes) is str:
             nodes = [nodes]
 
@@ -700,12 +735,8 @@ class ClusterDB(Database):
         ):
         """
         Get the sysinfo information for all nodes
-
-        If only a subset of fields is required, provide the fields argument to improve performenc
-
-        The search back for sysinfo is per default limited to the past 7 days
+        If only a subset of fields is required, provide the fields argument to improve performance
         """
-
         if fields is not None:
             # required in this function
             fields.append("cards")
@@ -716,11 +747,15 @@ class ClusterDB(Database):
                 time_in_s=time_in_s,
                 # ensure that sysinfo contains information about nodes, that
                 # have been seen at least once in the past 14 days
-                interval_in_s=3600*24*14,
+                interval_in_s=INTERVAL_2WEEKS,
                 fields=fields
         )
 
         nodes = [x.node for x in node_configs]
+
+        if not nodes:
+            return {}
+
         nodes_partitions = await self.get_nodes_partitions(cluster=cluster,
                 nodes=nodes,
                 time_in_s=time_in_s,
@@ -2078,3 +2113,73 @@ class ClusterDB(Database):
                     )
             results = session.execute(query).all()
             return results != []
+
+#### Consistency checking / handling partial information
+    async def sync_cluster_and_nodes_with_jobs(self, *, cluster: str,
+                                         time_in_s: int | None = None,
+                                         interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S) -> bool:
+        """
+        Check job samples and align observed cluster information with the existing ones in the database
+        """
+        if not time_in_s:
+            time_in_s = utcnow().timestamp()
+
+        info_from_jobs = select(
+                            func.array_agg(SampleSlurmJob.partition.distinct()),
+                            func.array_agg(SampleSlurmJob.nodes.distinct())
+                          ).where(
+                              (SampleSlurmJob.cluster == cluster) &
+                              (SampleSlurmJob.time >= fromtimestamp(time_in_s - interval_in_s)) &
+
+                              (SampleSlurmJob.time <= fromtimestamp(time_in_s))
+                          )
+        async with self.make_async_session() as session:
+            rows = (await session.execute(info_from_jobs)).all()
+
+            observed_nodes = []
+            observed_partitions = []
+
+            partitions, nodeslist = rows[0]
+            if nodeslist:
+                for nodes in nodeslist:
+                    for txt in nodes:
+                        if txt.lower() == SampleSlurmJob.NONE_ASSIGNED.lower():
+                            continue
+                        observed_nodes += Slurm.expand_node_names(txt)
+                    observed_nodes = list(set(observed_nodes))
+
+            if partitions:
+                observed_partitions = [x for x in partitions if x != '']
+
+        cluster_attributes = await self.get_cluster(cluster=cluster,
+                         time_in_s=time_in_s,
+                         interval_in_s=INTERVAL_1DAY)
+
+        to_add = { 'partitions': [] , 'nodes': [] }
+        if cluster_attributes:
+            known_partitions = set(cluster_attributes.partitions)
+            if known_partitions.issuperset(observed_partitions):
+                logger.info(f"Cluster {cluster} information on partitions and information inferred from jobs is consistent")
+            else:
+                to_add['partitions'] = observed_partitions.difference(known_partitions)
+                logger.warning(f"Cluster {cluster} information on partitions is incomplete -- {observed_partitions=} currently {known_partitions=}")
+
+            known_nodes = set(cluster_attributes.nodes)
+            if known_nodes.issuperset(observed_nodes):
+                logger.info(f"Cluster {cluster} information on nodes and information inferred from jobs is consistent")
+            else:
+                to_add['nodes'] = observed_nodes.difference(known_nodes)
+                logger.warning(f"Cluster {cluster} information on nodes is incomplete -- {observed_nodes=} currently {known_nodes=}")
+        else:
+            logger.info(f"Cluster {cluster} - job samples indicate the existance of (this unseen) cluster. Inferring information: "
+                        f"{cluster=} {observed_nodes=} {observed_partitions=} and adding cluster information to db")
+
+            cluster_attributes = Cluster.create(cluster=cluster,
+                           partitions=observed_partitions,
+                           nodes=observed_nodes,
+                           time=utcnow()
+                )
+            self.insert(cluster_attributes)
+            to_add = {'partitions': observed_partitions, 'nodes': observed_nodes }
+
+        return to_add
