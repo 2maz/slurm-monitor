@@ -621,7 +621,7 @@ class ClusterDB(Database):
         """
         nodelist = nodes
         if nodes is None:
-            nodelist = await self.get_nodes(cluster=cluster)
+            nodelist = await self.get_nodes(cluster=cluster, ensure_sysinfo=False)
         elif type(nodes) is str:
             nodelist = [nodes]
 

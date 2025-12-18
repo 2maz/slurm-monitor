@@ -87,7 +87,7 @@ async def nodes_sysinfo(cluster: str,
     Get available information about nodes in a cluster
 
     It will only contain information about reporting nodes - in some case a
-    node might exist in a cluster, but not system information has been received
+    node might exist in a cluster, but no system information has been received
     yet.  To check - compare with the complete node list /cluster/{cluster}/nodes
     """
     return await dbi.get_nodes_sysinfo(cluster, nodename, time_in_s)

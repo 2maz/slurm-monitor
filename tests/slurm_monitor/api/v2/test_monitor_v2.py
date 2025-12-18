@@ -15,7 +15,7 @@ import time
 import datetime as dt
 
 from slurm_monitor.utils import utcnow
-from slurm_monitor.v2 import app
+from slurm_monitor.v2 import app, prefetch_data
 from slurm_monitor.db_operations import DBManager
 from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.db.v2.db_base import DatabaseSettings
@@ -283,3 +283,121 @@ async def test_ensure_response_for_prefetch(prefix, name, client, db_config, mon
 
         # ensure that TTLCache will be hit
         assert TTLCache.ttl_cache_hit > 0
+
+
+@pytest.mark.asyncio(loop_scope="function")
+@pytest.mark.parametrize("sonar_msg_files, expected_clusters",
+    [
+        [[ "0+sysinfo-ml1.hpc.uio.no.json", "0+sample-ml1.hpc.uio.no.json" ], {"mlx.hpc.uio.no": {"ml1"}} ],
+        [[ "0+sample-g001.ex3.simula.no.json", "0+sysinfo-g001.ex3.simula.no.json"], {"ex3.simula.no": {"g001"}}],
+        [ [
+             "0+sysinfo-ml1.hpc.uio.no.json",
+             "0+sample-ml1.hpc.uio.no.json",
+             "0+sample-g001.ex3.simula.no.json",
+             "0+sysinfo-g001.ex3.simula.no.json"
+          ],
+         { "mlx.hpc.uio.no": {"ml1"}, "ex3.simula.no": {"g001"} }
+        ],
+        [ [
+             "0+sample-g001.ex3.simula.no.json",
+             "0+sample-ml1.hpc.uio.no.json",
+             "0+sysinfo-g001.ex3.simula.no.json",
+             "0+sysinfo-ml1.hpc.uio.no.json",
+          ],
+         { "mlx.hpc.uio.no": {"ml1"}, "ex3.simula.no": {"g001"} }
+        ],
+        [ [
+             "0+sample-g001.ex3.simula.no.json",
+             "0+sample-ml1.hpc.uio.no.json",
+             "0+sample-ml2.hpc.uio.no.json",
+             "0+sample-ml3.hpc.uio.no.json",
+             "0+sysinfo-g001.ex3.simula.no.json",
+             "0+sysinfo-ml1.hpc.uio.no.json",
+             "0+sysinfo-ml2.hpc.uio.no.json",
+             "0+sysinfo-ml3.hpc.uio.no.json",
+          ],
+         { "mlx.hpc.uio.no": {"ml1", "ml2", "ml3"}, "ex3.simula.no": {"g001"}}
+        ],
+        [ [
+             "0+sample-g001.ex3.simula.no.json",
+             "0+sample-ml1.hpc.uio.no.json",
+             "0+sample-ml2.hpc.uio.no.json",
+             "0+sample-ml3.hpc.uio.no.json",
+          ],
+         { "mlx.hpc.uio.no": {"ml1", "ml2", "ml3"}, "ex3.simula.no": {"g001"}}
+        ],
+        [
+          [
+             "0+cluster.ex3.simula.no.json",
+             "0+sysinfo-g001.ex3.simula.no.json",
+             "0+sysinfo-g002.ex3.simula.no.json",
+             "0+cluster.ex3.simula.no.json"
+          ],
+         { "ex3.simula.no": {"g001", "g002"}}
+        ],
+        [
+          [
+             "0+cluster.ex3.simula.no.json",
+             "0+sysinfo-g001.ex3.simula.no.json",
+             "0+sysinfo-g002.ex3.simula.no.json",
+             "0+cluster.ex3.simula.no.json",
+             "0+sample-g001.ex3.simula.no.json"
+          ],
+         { "ex3.simula.no": {"g001", "g002"}}
+        ]
+    ]
+)
+async def test_app_with_sonar_examples(sonar_msg_files,
+                                     expected_clusters,
+                                     client,
+                                     test_db_v2__function_scope,
+                                     db_config,
+                                     test_data_dir,
+                                     mock_token,
+                                     monkeypatch):
+
+    db = test_db_v2__function_scope
+
+    def mock_get_database():
+        return db
+
+    monkeypatch.setattr(DBManager, "get_database", mock_get_database)
+
+    importer = DBJsonImporter(db=db)
+    has_sysinfo = False
+    for sonar_msg_file in sonar_msg_files:
+        json_filename = Path(test_data_dir) / "sonar" / sonar_msg_file
+        if "sysinfo" in sonar_msg_file:
+            has_sysinfo = True
+
+        with open(json_filename, "r") as f:
+            msg_data = json.load(f)
+            # ensure data for query meets the default timeframe
+            msg_data["data"]["attributes"]["time"] = utcnow().isoformat()
+            await importer.insert(copy.deepcopy(msg_data))
+
+    ### BEGIN Clear / disable cache
+    setattr(TTLCache, "ttl_cache_hit", 0)
+    def mock_TTLCache__getitem__(self, item):
+        raise KeyError(f"No item {item}")
+    monkeypatch.setattr(TTLCache, "__getitem__", mock_TTLCache__getitem__)
+
+    await FastAPICache.clear()
+    assert FastAPICache.get_backend()._store == {}, "Cache is empty"
+    ### END
+
+    await prefetch_data()
+
+    # Check node info - which should only be available when sysinfo is
+    # available
+    for cluster, nodes in expected_clusters.items():
+        for node in nodes:
+            try:
+                response = client.get(
+                        f"/api/v2/cluster/{cluster}/nodes/{node}/info",
+                        headers={"Authorization": f"Bearer {mock_token}"}
+                )
+                assert has_sysinfo
+            except fastapi.exceptions.HTTPException as e:
+                assert not has_sysinfo
+                assert "no system information" in e.detail
