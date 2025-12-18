@@ -617,7 +617,7 @@ class ClusterDB(Database):
         Retrieve the node configuration that is active at the given point in time
         if no time is given, the current time (as of 'now') is used
 
-        If only a subset of fields is required, provide the fields argument to improve performenc
+        If only a subset of fields is required, provide the fields argument to improve performance
         """
         nodelist = nodes
         if nodes is None:
@@ -651,21 +651,23 @@ class ClusterDB(Database):
 
             sysinfo_attr = []
             if fields is None:
-                sysinfo_attr.append(SysinfoAttributes)
-            else:
-                if type(fields) is not list:
-                    raise TypeError("ClusterDB.get_nodes_sysinfo_attributes:"
-                                    f"fields should be list, but was {type(fields)}")
-                selected_fields = set(fields)
-                # default fields
-                selected_fields.add("cluster")
-                selected_fields.add("node")
-                selected_fields.add("time")
+                # include by default all fields except for topo related fields
+                # for performance reasons they have to explicitly queried when needed
+                fields = [x.name for x in SysinfoAttributes.__table__.columns if not x.name.startswith("topo_")]
+            elif type(fields) is not list:
+                raise TypeError("ClusterDB.get_nodes_sysinfo_attributes:"
+                                f"fields should be list, but was {type(fields)}")
 
-                for field in selected_fields:
-                    if not hasattr(SysinfoAttributes, field):
-                        raise ValueError(f"ClusterDB.get_nodes_sysinfo: field {field=} does not exist for SysinfoAttributes")
-                    sysinfo_attr.append(getattr(SysinfoAttributes, field))
+            selected_fields = set(fields)
+            # default fields
+            selected_fields.add("cluster")
+            selected_fields.add("node")
+            selected_fields.add("time")
+
+            for field in selected_fields:
+                if not hasattr(SysinfoAttributes, field):
+                    raise ValueError(f"ClusterDB.get_nodes_sysinfo: field {field=} does not exist for SysinfoAttributes")
+                sysinfo_attr.append(getattr(SysinfoAttributes, field))
 
             query = select(
                         *sysinfo_attr

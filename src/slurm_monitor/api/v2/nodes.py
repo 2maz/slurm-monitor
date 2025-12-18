@@ -127,7 +127,7 @@ async def nodes_nodename_topology(
     """
     Get the topology information for a node (if available)
     """
-    node_config = await dbi.get_nodes_sysinfo(cluster, nodename)
+    node_config = await dbi.get_nodes_sysinfo(cluster, nodename, fields=["topo_svg"])
     encoded_data = node_config[nodename].get('topo_svg', None)
     if encoded_data:
         data = base64.b64decode(encoded_data).decode('utf-8')
