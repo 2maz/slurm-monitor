@@ -392,12 +392,75 @@ async def test_app_with_sonar_examples(sonar_msg_files,
     # available
     for cluster, nodes in expected_clusters.items():
         for node in nodes:
-            try:
+            response = client.get(
+                    f"/api/v2/cluster/{cluster}/nodes/{node}/info",
+                    headers={"Authorization": f"Bearer {mock_token}"}
+            )
+            value = json.loads(response.content.decode("UTF-8"))
+            if has_sysinfo:
+                assert node in value
+            else:
+                assert value == {}
+
+@pytest.mark.asyncio(loop_scope="function")
+@pytest.mark.parametrize("sonar_msg_files, expected_clusters, last_sysinfo_in_days, expected_nodeinfo",
+    [
+        [[ "0+sysinfo-ml1.hpc.uio.no.json", "0+sample-ml1.hpc.uio.no.json" ], {"mlx.hpc.uio.no": {"ml1"}}, 1, True ],
+        [[ "0+sysinfo-ml1.hpc.uio.no.json", "0+sample-ml1.hpc.uio.no.json" ], {"mlx.hpc.uio.no": {"ml1"}}, 13, True ],
+        [[ "0+sysinfo-ml1.hpc.uio.no.json", "0+sample-ml1.hpc.uio.no.json" ], {"mlx.hpc.uio.no": {"ml1"}}, 20, False ]
+    ]
+)
+async def test_node_sysinfo_interval(sonar_msg_files,
+                                     expected_clusters,
+                                     last_sysinfo_in_days,
+                                     expected_nodeinfo,
+                                     client,
+                                     test_db_v2__function_scope,
+                                     db_config,
+                                     test_data_dir,
+                                     mock_token,
+                                     monkeypatch):
+
+    db = test_db_v2__function_scope
+    def mock_get_database():
+        return db
+
+    monkeypatch.setattr(DBManager, "get_database", mock_get_database)
+    importer = DBJsonImporter(db=db)
+
+    for sonar_msg_file in sonar_msg_files:
+        json_filename = Path(test_data_dir) / "sonar" / sonar_msg_file
+        with open(json_filename, "r") as f:
+            msg_data = json.load(f)
+            # ensure data for query meets the default timeframe
+            if 'sysinfo' in sonar_msg_file:
+                msg_data["data"]["attributes"]["time"] = (utcnow() - dt.timedelta(days=last_sysinfo_in_days)).isoformat()
+            else:
+                msg_data["data"]["attributes"]["time"] = utcnow().isoformat()
+
+            await importer.insert(copy.deepcopy(msg_data))
+
+        ### BEGIN Clear / disable cache
+        setattr(TTLCache, "ttl_cache_hit", 0)
+        def mock_TTLCache__getitem__(self, item):
+            raise KeyError(f"No item {item}")
+        monkeypatch.setattr(TTLCache, "__getitem__", mock_TTLCache__getitem__)
+
+        await FastAPICache.clear()
+        assert FastAPICache.get_backend()._store == {}, "Cache is empty"
+        ### END
+
+        # Check node info - which should only be available when sysinfo is
+        # available
+        for cluster, nodes in expected_clusters.items():
+            for node in nodes:
                 response = client.get(
                         f"/api/v2/cluster/{cluster}/nodes/{node}/info",
                         headers={"Authorization": f"Bearer {mock_token}"}
                 )
-                assert has_sysinfo
-            except fastapi.exceptions.HTTPException as e:
-                assert not has_sysinfo
-                assert "no system information" in e.detail
+
+                data = json.loads(response.content.decode("UTF-8"))
+                if not expected_nodeinfo:
+                    assert data == {}
+                else:
+                    assert node in data
