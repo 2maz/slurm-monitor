@@ -82,6 +82,10 @@ class MessageSubscriber:
         self.host = host
         self.port = port
         self.cluster_name = cluster_name
+
+        if not cluster_name:
+            raise ValueError("MessageSubscriber.__init__: cluster_name required")
+
         if type(topics) is str:
             self.topics = [topics]
         else:
@@ -112,7 +116,7 @@ class MessageSubscriber:
         else:
             self.state = self.State.RUNNING
 
-        while topics:
+        while topics and not self.state == self.State.STOPPING:
             interval_start_time = dt.datetime.now(dt.timezone.utc)
 
             consumer._fetch_all_topic_metadata()
@@ -158,6 +162,10 @@ class MessageSubscriber:
                         else:
                             # Allow to update / merge existing information
                             await msg_handler.insert(json.loads(msg), update=True, ignore_integrity_errors=ignore_integrity_errors)
+
+                        if sonar.TopicType.infer(topic) == sonar.TopicType.job:
+                            logging.info("Auto update - aligning cluster information from jobs data")
+                            await msg_handler.autoupdate(cluster=self.cluster_name)
 
                         print(f"[{self.state.value}] {dt.datetime.now(dt.timezone.utc)} messages consumed: "
                               f"{idx} since {start_time}\r",

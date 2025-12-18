@@ -12,7 +12,9 @@ import json
 import jwt
 import copy
 import time
+import datetime as dt
 
+from slurm_monitor.utils import utcnow
 from slurm_monitor.v2 import app
 from slurm_monitor.db_operations import DBManager
 from slurm_monitor.utils.slurm import Slurm
@@ -161,7 +163,7 @@ async def test_ensure_response_from_all_endpoints(endpoint, client, mock_token):
                 "0+sample-g001.ex3.simula.no.json",
                 "0+sample-ml1.hpc.uio.no.json",
             ],
-            True,
+            False,
             False,
         ],
         [
@@ -197,14 +199,24 @@ async def test_ensure_response_with_partial_rows(endpoint,
                                                  test_db_v2__function_scope,
                                                  test_data_dir,
                                                  mock_token,
+                                                 monkeypatch
                                                 ):
     db = test_db_v2__function_scope
     importer = DBJsonImporter(db=db)
+
+    await FastAPICache.clear()
+    assert FastAPICache.get_backend()._store == {}, "Cache is empty"
+
+    # Disable caches
+    def mock_TTLCache__getitem__(self, item):
+        raise KeyError(f"No item {item}")
+    monkeypatch.setattr(TTLCache, "__getitem__", mock_TTLCache__getitem__)
 
     for sonar_msg_file in sonar_msg_files:
         json_filename = Path(test_data_dir) / "sonar" / sonar_msg_file
         with open(json_filename, "r") as f:
             msg_data = json.load(f)
+            msg_data["data"]["attributes"]["time"] = (utcnow() - dt.timedelta(hours=1)).isoformat()
             await importer.insert(copy.deepcopy(msg_data))
 
     route = parametrize_route(endpoint, cluster=cluster, node=node)
@@ -212,7 +224,7 @@ async def test_ensure_response_with_partial_rows(endpoint,
         response = client.get(f"{route}",
                               headers={"Authorization": f"Bearer {mock_token}"}
                    )
-        assert not expected_exception, "Exception exception for '{route}', but was not raised"
+        assert not expected_exception, f"Exception expected for '{route}', but was not raised"
 
         data = response.json()
         if has_sysinfo:

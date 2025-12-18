@@ -50,3 +50,15 @@ def test_parse_sacct_tres(txt: str, expected: dict[str, int]):
     assert tres == expected
 
     assert AllocTRES(**tres)
+
+
+@pytest.mark.parametrize("names,nodes",[
+    ["n001",["n001"]],
+    ["n001,gh001",["n001","gh001"]],
+    ["n[001-002].domain",["n001.domain","n002.domain"]],
+    ["n[001-003,056],gh001",["n001","n002","n003","n056","gh001"]],
+    ["n[001-003,056].ex3,gh001.ex3",["n001.ex3","n002.ex3","n003.ex3","n056.ex3","gh001.ex3"]],
+    ["n[001-003,056].ex3,gh001.ex3.simula.no",["n001.ex3","n002.ex3","n003.ex3","n056.ex3","gh001.ex3.simula.no"]]
+])
+def test_expand_node_names(names, nodes):
+    assert sorted(Slurm.expand_node_names(names)) == sorted(nodes)
