@@ -139,9 +139,12 @@ async def prefetch_data():
 
         # DO NOT use a dynamic argument such as time_in_s, since that will
         # prevent the caching to work
-        await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster, time_in_s=None, dbi=dbi)
-        await partitions_endpoint(token_payload=None, cluster=cluster, time_in_s=None, dbi=dbi)
-        await jobs_endpoint(token_payload=None, cluster=cluster, dbi=dbi)
+        try:
+            await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster, time_in_s=None, dbi=dbi)
+            await partitions_endpoint(token_payload=None, cluster=cluster, time_in_s=None, dbi=dbi)
+            await jobs_endpoint(token_payload=None, cluster=cluster, dbi=dbi)
+        except Exception:
+            logger.info("Prefetching failed - {e}")
 
     logger.info("Prefetching done")
 

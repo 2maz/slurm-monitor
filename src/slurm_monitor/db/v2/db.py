@@ -621,7 +621,7 @@ class ClusterDB(Database):
         """
         nodelist = nodes
         if nodes is None:
-            nodelist = await self.get_nodes(cluster=cluster)
+            nodelist = await self.get_nodes(cluster=cluster, ensure_sysinfo=False)
         elif type(nodes) is str:
             nodelist = [nodes]
 
@@ -735,8 +735,17 @@ class ClusterDB(Database):
         ):
         """
         Get the sysinfo information for all nodes
-        If only a subset of fields is required, provide the fields argument to improve performance
+
+        If only a subset of fields is required, provide the fields argument to improve performance.
+        Sysinfo is search for over the 2 past weeks (starting from time_in_s)
+
+        Activity related information, including related partitions, and resource allocation is only augmented
+        for the selected *interval_in_s*
         """
+
+        if time_in_s is None:
+            time_in_s = utcnow().timestamp()
+
         if fields is not None:
             # required in this function
             fields.append("cards")
@@ -752,9 +761,20 @@ class ClusterDB(Database):
         )
 
         nodes = [x.node for x in node_configs]
-
         if not nodes:
             return {}
+
+        # sysinfo_gpu information is part of sysinfo messages, thus align the looback interval
+        # with previous sysinfo query
+        max_lookback = min([x.time for x in node_configs])
+        lookback_interval_in_s = (time_in_s - max_lookback.timestamp())
+        nodes_gpu_cards = await self.get_sysinfo_gpu_card(
+            cluster=cluster,
+            node=nodes,
+            time_in_s=time_in_s,
+            interval_in_s=lookback_interval_in_s
+            )
+        nodes_gpu_cards = { x['uuid'] : x for x in nodes_gpu_cards }
 
         nodes_partitions = await self.get_nodes_partitions(cluster=cluster,
                 nodes=nodes,
@@ -767,14 +787,6 @@ class ClusterDB(Database):
                 time_in_s=time_in_s,
                 interval_in_s=interval_in_s
         )
-
-        nodes_gpu_cards = await self.get_sysinfo_gpu_card(
-            cluster=cluster,
-            node=nodes,
-            time_in_s=time_in_s,
-            interval_in_s=interval_in_s
-            )
-        nodes_gpu_cards = { x['uuid'] : x for x in nodes_gpu_cards }
 
         nodeinfo = {}
         time_start = utcnow()
