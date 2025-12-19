@@ -47,6 +47,8 @@ T = TypeVar("T")
 Xint = BigInteger
 DateTimeTZAware = DateTime(timezone=True)
 
+ExtraIndexPrefix : str = "ix_"
+
 
 # Ensure consistent time handling
 class EpochFn(GenericFunction):
@@ -320,7 +322,16 @@ class UUID(types.TypeDecorator):
 
 class Cluster(TableBase):
     __tablename__ = "cluster_attributes"
+    cluster = Column(String, primary_key=True, index=True)
+    slurm = Column(Boolean, default=True)
+    partitions = Column(ARRAY(String))
+    nodes = Column(ARRAY(String))
+
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
+
     __table_args__ = (
+        Index(f"{ExtraIndexPrefix}cluster_attributes__cluster_nodes_time","cluster", "nodes", time.desc()),
+        Index(f"{ExtraIndexPrefix}cluster_attributes__cluster_partitions_time", "cluster", "partitions", time.desc()),
         {
             'info': { 'sonar_spec': 'ClusterAttributes' },
             'timescaledb_hypertable': {
@@ -333,17 +344,6 @@ class Cluster(TableBase):
                 }
             }
         }
-    )
-    cluster = Column(String, primary_key=True, index=True)
-    slurm = Column(Boolean, default=True)
-    partitions = Column(ARRAY(String))
-    nodes = Column(ARRAY(String))
-
-    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
-
-    __table_args__ = (
-        Index("ix_cluster_attributes__cluster_nodes_time","cluster", "nodes", time.desc()),
-        Index("ix_cluster_attributes__cluster_partitions_time", "cluster", "partitions", time.desc())
     )
 
 class Node(TableBase):
@@ -425,6 +425,7 @@ class SysinfoAttributes(TableBase):
     cpu_model = Column(String)
 
     memory = Column(BigInteger, desc="primary memory", unit="kilobyte")
+
     topo_svg = Column(Text, default=None, nullable=True)
     topo_text = Column(Text, default=None, nullable=True)
 
@@ -524,7 +525,7 @@ class SysinfoGpuCardConfig(TableBase):
             'max_ce_clock',
             'max_memory_clock',
         ),
-        Index("ix_sysinfo_gpu_card_config__cluster_node","cluster", "node", time.desc()),
+        Index(f"{ExtraIndexPrefix}sysinfo_gpu_card_config__cluster_node","cluster", "node", time.desc()),
         ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
         {
             'info': { 'sonar_spec': 'SysinfoGpuCard', 'requires_tables': ['sysinfo_gpu_card'] },
@@ -649,9 +650,9 @@ class SampleProcessGpu(TableBase):
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
     __table_args__ = (
-        Index("ix_sample_process_gpu__cluster_node","cluster", "node", time.desc()),
-        Index("ix_sample_process_gpu__cluster_job_time","cluster", "job", time.desc()),
-        Index("ix_sample_process_gpu__uuid_time", "uuid", "time"),
+        Index(f"{ExtraIndexPrefix}sample_process_gpu__cluster_node","cluster", "node", time.desc()),
+        Index(f"{ExtraIndexPrefix}sample_process_gpu__cluster_job_time","cluster", "job", time.desc()),
+        Index(f"{ExtraIndexPrefix}sample_process_gpu__uuid_time", "uuid", "time"),
         ForeignKeyConstraint(["cluster", "node"], [Node.cluster, Node.node]),
         {
             'info': {'sonar_spec': 'SampleProcess.gpus'},
@@ -896,13 +897,13 @@ class SampleSlurmJob(TableBase):
     NONE_ASSIGNED: str = "None assigned"
 
     __tablename__ = "sample_slurm_job"
-    cluster = Column(String, index=True, primary_key=True)
+    cluster = Column(String, primary_key=True)
 
     # JobID
     # The number of the job or job step. It is in the form: job.jobstep.
     # Meanwhile here - we
-    job_id = Column(BigInteger, index=True, primary_key=True)  # ": 244843,
-    job_step = Column(String, index=True, primary_key=True)
+    job_id = Column(BigInteger, primary_key=True)  # ": 244843,
+    job_step = Column(String, primary_key=True)
     job_name = Column(String)
 #    job_state = Column(Enum(SlurmJobState))
     job_state = Column(String)
@@ -960,7 +961,9 @@ class SampleSlurmJob(TableBase):
             'suspend_time',
             'exit_code',
         ),
-        Index("ix_sample_slurm_job__cluster_nodes_time","cluster", "nodes", time.desc()),
+        Index(f"{ExtraIndexPrefix}sample_slurm_job__cluster_nodes_time","cluster", "nodes", time.desc()),
+        Index(f"{ExtraIndexPrefix}sample_slurm_job__cluster_job_id_job_step_time","cluster", "job_id", "job_step", time.desc()),
+        Index(f"{ExtraIndexPrefix}sample_slurm_job__cluster_partition_job_state_time", "cluster", "partition", "job_state", time.desc()),
         {
             'info': { 'sonar_spec': 'JobsAttributes.slurm_jobs' },
             'timescaledb_hypertable': {

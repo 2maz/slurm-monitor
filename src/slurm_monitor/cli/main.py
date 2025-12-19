@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 import sys
 import logging
+import traceback
 from logging import basicConfig, getLogger
 
 from slurm_monitor.cli.base import BaseParser
@@ -30,6 +31,7 @@ class MainParser(ArgumentParser):
         self.description = "slurm-monitor - components for monitoring (slurm) nodes"
         self.add_argument("--log-level", type=str, default="INFO", help="Logging level")
         self.add_argument("--version", "-i", action="store_true", help="Show version")
+        self.add_argument("--verbose", action="store_true", help="Show verbose information")
 
     def attach_subcommand_parser(
         self, subcommand: str, help: str, parser_klass: BaseParser
@@ -114,6 +116,8 @@ def run():
         try:
             getattr(args, "active_subparser").execute(args)
         except Exception as e:
+            if args.verbose:
+                traceback.print_tb(e.__traceback__)
             print(f"Error: {e}")
             sys.exit(-1)
     else:

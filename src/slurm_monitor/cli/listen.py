@@ -26,12 +26,6 @@ class ListenParser(BaseParser):
                         " after reached the upper bound, processing will be stopped for the topic"
         )
 
-        parser.add_argument("--verbose",
-                action="store_true",
-                default=False,
-                help="Print messages"
-        )
-
         parser.add_argument("--use-version",
                 type=str,
                 default="v2",
