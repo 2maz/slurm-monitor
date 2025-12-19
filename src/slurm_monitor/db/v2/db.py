@@ -516,13 +516,15 @@ class ClusterDB(Database):
             interval_in_s: int | None = 30*60,
             ) -> tuple[dict[str, AllocTRES], dt.datetime]:
         """
-        Get the nodes resource allocation
+        Get the nodes with known resource allocations
 
         By default using a time window back half an hour back
 
         The decorator @ttl_cache_async helps to avoid unnecessary regeneration of the most recent data for the given
         ttl period (90 seconds by default), so that subsequent calls within that timeframe
         can use the cached result.
+
+        return only those node that have resource allocations that are active for the given time window
         """
         if time_in_s is None:
             time_in_s = utcnow().timestamp()
@@ -539,7 +541,8 @@ class ClusterDB(Database):
         where_timeframe = (SampleSlurmJob.time <= fromtimestamp(time_in_s)) \
                 & (SampleSlurmJob.time >= fromtimestamp(time_in_s - interval_in_s))
 
-        query = select(
+        # find the last relevant slurm job update
+        timestamp_query = select(
                     func.max(SampleSlurmJob.time)
                 ).where(
                     (SampleSlurmJob.cluster == cluster) \
@@ -547,61 +550,70 @@ class ClusterDB(Database):
                     & where_timeframe
                 )
 
+        # using a query over all nodes to find active jobs
+        # for many nodes a single query per node is not efficient
         async with self.make_async_session() as session:
-            result = (await session.execute(query)).all()
+            result = (await session.execute(timestamp_query)).all()
             time_of_latest_update = result[0][0]
 
-        node_allocations = {}
-        latest_timestamp = None
-        for node in tqdm(sorted(nodes), total=len(nodes), desc="Get resource allocation"):
-            # expecting to have a job sample with a 5 min timeframe to identify
-            # an active allocation
-
             # identify running jobs as of slurm
-            query = select(
-                        distinct(SampleSlurmJob.job_id)
+            jobs_with_nodes_query = select(
+                        distinct(SampleSlurmJob.job_id),
+                        SampleSlurmJob.nodes
                     ).where(
                         (SampleSlurmJob.cluster == cluster) \
-                        & (SampleSlurmJob.nodes.any(node)) \
                         & (SampleSlurmJob.job_state == 'RUNNING') \
                         & (SampleSlurmJob.time == time_of_latest_update )
                         & where_timeframe
                     )
+            job_ids_to_nodes = {x[0]: x[1] for x in (await session.execute(jobs_with_nodes_query)).all()}
 
-            async with self.make_async_session() as session:
-                job_ids = [x[0] for x in (await session.execute(query)).all()]
+        active_jobs_with_nodes = {x[0]: x[2] for x in (await self.get_active_jobs_with_nodes(cluster=cluster,
+                start_time_in_s=time_in_s - 15*60,
+                end_time_in_s=time_in_s
+        ))}
 
+        jobs = []
+        for o_job_id, o_nodes in job_ids_to_nodes.items():
+            active_nodes = active_jobs_with_nodes.get(o_job_id, [])
+            if not set(o_nodes).isdisjoint(active_nodes):
+                jobs.append(o_job_id)
 
-            # identify running jobs by observable processes
-            # this is necessary to ensure we do not take into account 'zombies' that slurm keeps
-            # reporting as jobs
-            observable_jobs = [x[0] for x in (await self.get_active_jobs(cluster=cluster, node=node,
-                    start_time_in_s=time_in_s - 15*60,
-                    end_time_in_s=time_in_s
-            ))]
-            jobs = [x for x in job_ids if x in observable_jobs]
+        # identify running jobs by observable processes
+        # this is necessary to ensure we do not take into account 'zombies' that slurm keeps
+        # reporting as jobs
+        query_tres_alloc = select(
+                    SampleSlurmJobAcc.job_id,
+                    SampleSlurmJobAcc.AllocTRES,
+                    func.max(SampleSlurmJobAcc.time),
+                ).where(
+                    SampleSlurmJobAcc.job_id.in_(jobs) \
+                    & (SampleSlurmJobAcc.job_step == '') \
+                    & (SampleSlurmJobAcc.time == time_of_latest_update)
+                ).group_by(
+                    SampleSlurmJobAcc.job_id,
+                    SampleSlurmJobAcc.AllocTRES
+                )
 
-            query_tres_alloc = select(
-                        SampleSlurmJobAcc.job_id,
-                        SampleSlurmJobAcc.AllocTRES,
-                        func.max(SampleSlurmJobAcc.time),
-                    ).where(
-                        SampleSlurmJobAcc.job_id.in_(jobs) \
-                        & (SampleSlurmJobAcc.job_step == '') \
-                        & (SampleSlurmJobAcc.time == time_of_latest_update)
-                    ).group_by(
-                        SampleSlurmJobAcc.job_id,
-                        SampleSlurmJobAcc.AllocTRES
-                    )
+        async with self.make_async_session() as session:
+            job_to_allocation = { x[0]: x[1:] for x in (await session.execute(query_tres_alloc)).all() }
 
-            node_allocations[node] = AllocTRES()
-            async with self.make_async_session() as session:
-                results = (await session.execute(query_tres_alloc)).all()
-                for traceable_resource_allocation in results:
-                    if latest_timestamp is None or latest_timestamp < traceable_resource_allocation[2]:
-                        latest_timestamp = traceable_resource_allocation[2]
+        node_allocations = {}
+        latest_timestamp = None
+        for job_id in tqdm(jobs, total=len(jobs), desc="Get allocation from jobs"):
+            traceable_resource_allocation = job_to_allocation.get(job_id, None)
+            if not traceable_resource_allocation:
+                logger.warning("No allocation found for {job_id=}")
+                continue
 
-                    tres = AllocTRES(**Slurm.parse_sacct_tres(traceable_resource_allocation[1]))
+            tres = AllocTRES(**Slurm.parse_sacct_tres(traceable_resource_allocation[0]))
+            if latest_timestamp is None or latest_timestamp < traceable_resource_allocation[1]:
+                latest_timestamp = traceable_resource_allocation[1]
+
+            for node in job_ids_to_nodes[job_id]:
+                if node not in node_allocations:
+                    node_allocations[node] = tres
+                else:
                     node_allocations[node].add(tres)
 
         return node_allocations, latest_timestamp
@@ -617,7 +629,7 @@ class ClusterDB(Database):
         Retrieve the node configuration that is active at the given point in time
         if no time is given, the current time (as of 'now') is used
 
-        If only a subset of fields is required, provide the fields argument to improve performenc
+        If only a subset of fields is required, provide the fields argument to improve performance
         """
         nodelist = nodes
         if nodes is None:
@@ -651,21 +663,23 @@ class ClusterDB(Database):
 
             sysinfo_attr = []
             if fields is None:
-                sysinfo_attr.append(SysinfoAttributes)
-            else:
-                if type(fields) is not list:
-                    raise TypeError("ClusterDB.get_nodes_sysinfo_attributes:"
-                                    f"fields should be list, but was {type(fields)}")
-                selected_fields = set(fields)
-                # default fields
-                selected_fields.add("cluster")
-                selected_fields.add("node")
-                selected_fields.add("time")
+                # include by default all fields except for topo related fields
+                # for performance reasons they have to explicitly queried when needed
+                fields = [x.name for x in SysinfoAttributes.__table__.columns if not x.name.startswith("topo_")]
+            elif type(fields) is not list:
+                raise TypeError("ClusterDB.get_nodes_sysinfo_attributes:"
+                                f"fields should be list, but was {type(fields)}")
 
-                for field in selected_fields:
-                    if not hasattr(SysinfoAttributes, field):
-                        raise ValueError(f"ClusterDB.get_nodes_sysinfo: field {field=} does not exist for SysinfoAttributes")
-                    sysinfo_attr.append(getattr(SysinfoAttributes, field))
+            selected_fields = set(fields)
+            # default fields
+            selected_fields.add("cluster")
+            selected_fields.add("node")
+            selected_fields.add("time")
+
+            for field in selected_fields:
+                if not hasattr(SysinfoAttributes, field):
+                    raise ValueError(f"ClusterDB.get_nodes_sysinfo: field {field=} does not exist for SysinfoAttributes")
+                sysinfo_attr.append(getattr(SysinfoAttributes, field))
 
             query = select(
                         *sysinfo_attr
@@ -796,6 +810,8 @@ class ClusterDB(Database):
 
             if nodename in nodes_resource_allocation:
                 nodeinfo[nodename]['alloc_tres'] = nodes_resource_allocation[nodename]
+            else:
+                nodeinfo[nodename]['alloc_tres'] = AllocTRES()
 
             if nodename in nodes_partitions:
                 nodeinfo[nodename].update({'partitions': nodes_partitions[nodename]})
