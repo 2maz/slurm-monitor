@@ -227,3 +227,20 @@ async def query_jobs(
         limit=limit
         )
     }
+
+@api_router.get("/cluster/{cluster}/jobs/{job_id}/report",
+        summary="Get a report on stats for the current job",
+        tags=["job"],
+        response_model=JobResponse
+)
+async def job_report(
+    cluster: str,
+    job_id: int,
+    time_in_s: float | None = None
+    ):
+    dbi = db_ops.get_database()
+    return await dbi.get_job_report(
+            cluster=cluster,
+            job=job_id,
+            time_in_s=time_in_s
+        )

@@ -17,11 +17,13 @@ from slurm_monitor.utils.cache import ttl_cache_async
 from slurm_monitor.db.v2.queries import (
         PartitionsQuery
 )
+
 from slurm_monitor.api.v2.response_models import (
     AllocTRES,
     ErrorMessageResponse,
     GpusProcessTimeSeriesResponse,
     JobNodeSampleProcessGpuTimeseriesResponse,
+    JobReport,
     JobResponse,
     JobSpecificTimeseriesResponse,
     SampleGpuBaseResponse,
@@ -39,6 +41,7 @@ from slurm_monitor.db.v2.db_base import (
     INTERVAL_2WEEKS,  # noqa
 )
 
+from .db_base import DatabaseSettings # noqa
 from .db_tables import (
     Cluster,
     EpochFn,
@@ -482,7 +485,6 @@ class ClusterDB(Database):
         start = time.time()
         result = await query.execute_async()
         logger.info(f"get_partitions_base: took {time.time() - start} s")
-
         return result.to_dict(orient="records")
 
         #where = Partition.cluster == cluster
@@ -2126,6 +2128,83 @@ class ClusterDB(Database):
                 samples.append(new_sample)
 
             return samples
+
+    async def get_job_report(
+        self,
+        cluster: str,
+        job_id: int,
+        time_in_s: int | None = None,
+        interval_in_s: int = INTERVAL_2WEEKS
+    ) -> Awaitable[dict[str, dict[str, float]]]:
+        if time_in_s is None:
+            time_in_s = utcnow().timestamp()
+
+        job = await self.get_job(cluster=cluster,
+                job_id=job_id,
+                epoch=0,
+                start_time_in_s=time_in_s-interval_in_s,
+                end_time_in_s=time_in_s,
+                states=["RUNNING", "COMPLETED"]
+        )
+
+        report = JobReport()
+        async with self.make_async_session() as session:
+            attributes = ["resident_memory", "virtual_memory", 
+                          "cpu_util", 
+                          "num_threads",
+                          "data_read", "data_written", "data_cancelled"]
+
+            select_args = []
+            for attr in attributes:
+                field = getattr(SampleProcess, attr)
+                select_args.append(func.sum(field).label(f"sum_{attr}"))
+
+            subquery = select(
+                    *select_args
+                ).where(
+                    (SampleProcess.cluster == cluster),
+                    (SampleProcess.job == job.job_id),
+                    (SampleProcess.time >= job.start_time),
+                ).group_by(
+                    SampleProcess.time
+                ).subquery()
+
+            select_args = []
+            for attr in attributes:
+                field = getattr(SampleProcess, attr)
+                select_args.append(func.max(getattr(subquery.c, f"sum_{attr}")).label(f"max_{attr}"))
+                select_args.append(func.min(getattr(subquery.c, f"sum_{attr}")).label(f"min_{attr}"))
+                select_args.append(func.avg(getattr(subquery.c, f"sum_{attr}")).label(f"avg_{attr}"))
+                select_args.append(func.stddev(getattr(subquery.c, f"sum_{attr}")).label(f"stddev_{attr}"))
+
+            job_process_query = select(
+                *select_args
+            ).select_from(
+                subquery
+            )
+
+            job_process = (await session.execute(job_process_query)).all()
+
+            if job_process:
+                data = job_process[0]
+
+                idx = 0
+                for attribute in attributes:
+                    setattr(report, attribute, { 'max': data[idx], 'min': data[idx+1], 'mean': data[idx+2], 'stddev': data[idx+3] })
+                    idx += 4
+
+                report.requested_cpus = job.requested_cpus
+                report.requested_memory_per_node = job.requested_memory_per_node
+                if job.sacct:
+                    report.requested_cpus = job.sacct.AllocTRES.cpu
+                    report.requested_gpus = job.sacct.AllocTRES.gpu
+
+                report.nodes = job.nodes
+                report.used_gpu_uuids = job.used_gpu_uuids
+
+            report.generate()
+
+        return report
 #### END JOBS #####################################################################
     def is_known_node(self, *, cluster: str, node: str) -> bool:
         """
