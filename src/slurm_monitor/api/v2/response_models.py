@@ -498,17 +498,17 @@ class AllocTRES(BaseModel):
         self.billing += other.billing
 
 class JobReport(BaseModel):
-    cpu_avg: dict[str, float] = Field(description="The mean + stddev for cpu_avg", default={})
-    cpu_util: dict[str, float] = Field(description="The mean + stddev for cpu_util", default={})
+    cpu_avg: dict[str, int | float] = Field(description="The mean + stddev for cpu_avg", default={})
+    cpu_util: dict[str, int | float] = Field(description="The mean + stddev for cpu_util", default={})
 
-    resident_memory: dict[str, float] = Field(description="The mean + stddev for resident_memory in KiB", default={})
+    resident_memory: dict[str, int | float] = Field(description="The mean + stddev for resident_memory in KiB", default={})
     virtual_memory: dict[str, float] = Field(description="The mean + stddev for virtual_memory in KiB", default={})
 
-    num_threads: dict[str, float] = Field(description="The mean + stddev for number of threads", default={})
+    num_threads: dict[str, int | float] = Field(description="The mean + stddev for number of threads", default={})
 
-    data_read: dict[str, float] = Field(description="The mean + stddev", default={})
-    data_written: dict[str, float] = Field(description="The mean + stddev", default={})
-    data_cancelled: dict[str, float] = Field(description="The mean + stddev", default={})
+    data_read: dict[str, int | float] = Field(description="The mean + stddev", default={})
+    data_written: dict[str, int | float] = Field(description="The mean + stddev", default={})
+    data_cancelled: dict[str, int | float] = Field(description="The mean + stddev", default={})
 
     requested_cpus: int = Field(description="Requested cpus", default=0)
     requested_memory_per_node: int = Field(description="Requested memory per node in KiB", default=0)
