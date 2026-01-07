@@ -235,6 +235,7 @@ async def query_jobs(
         response_model=JobReport
 )
 async def job_report(
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
     cluster: str,
     job_id: int,
     time_in_s: float | None = None,
