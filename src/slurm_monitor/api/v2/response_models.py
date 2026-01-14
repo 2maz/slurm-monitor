@@ -180,6 +180,7 @@ class GPUCardResponse(TimestampedModel):
     model: str = Field(description="card dependent, manufacturer's model string")
     architecture: str = Field(description=
             "card-dependent, manufacturer's arch string, for NVIDIA this is 'Turing', 'Volta', etc.")
+    memory: int = Field(description="Memory of card in KiB")
 
     cluster: str = Field(description="Name of the cluster that this GPU currently belongs to")
     node: str = Field(description="Name of the node that this GPU belongs to")
