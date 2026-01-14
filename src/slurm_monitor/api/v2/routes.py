@@ -43,6 +43,7 @@ class TokenPayload(BaseSettings):
     sid: str #
     acr: int
 
+    auth_time: int | None = Field(default=None)
     allowed_origins: list[str] = Field(alias='allowed-origins', default=[])
     realm_access: Roles
     resource_access: Account

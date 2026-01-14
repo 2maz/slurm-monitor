@@ -54,6 +54,17 @@ async def partitions(
     """
     return await dbi.get_partitions(cluster, time_in_s)
 
+@api_router.get("/user",
+        summary="Currently logged in user",
+        response_model=TokenPayload
+)
+async def user(
+        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+        ):
+    """
+    Get status of partitions of a cluster (for a specific time point)
+    """
+    return token_payload
 
 
 #### Results sorted by jobs
