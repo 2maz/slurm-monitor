@@ -4,6 +4,10 @@ from sqlalchemy import inspect
 from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.app_settings import AppSettings
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 class ListenParser(BaseParser):
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
@@ -39,6 +43,27 @@ class ListenParser(BaseParser):
                      "present in the table schema. This means, message format and table schema need to be in sync, since no extra / new fields are allowed"
         )
 
+        parser.add_argument("--lookback",
+                nargs="+",
+                type=str,
+                default=None,
+                help="Define the lookback timeframe in hours, e.g., 1 or 0.1, for all and/or specific topics: "
+                      "'--lookback 0.5 cluster:1.5' will apply 0.5 to all topics, but cluster, "
+                      "which will use a lookback time of 1.5 hours"
+        )
+
+        parser.add_argument("--stats-output",
+                type=str,
+                default="slurm-monitor-listen.stats.json",
+                help="Output file for the listen stats"
+        )
+
+        parser.add_argument("--stats-interval",
+                type=int,
+                default=30,
+                help="Interval in seconds for generating stats output"
+        )
+
 
     def execute(self, args):
         super().execute(args)
@@ -62,14 +87,25 @@ class ListenParser(BaseParser):
                  database=database,
                  topic=args.topic)
         elif args.use_version == "v2":
-            from slurm_monitor.db.v2.message_subscriber import MessageSubscriber
+            from slurm_monitor.db.v2.message_subscriber import (
+                    MessageSubscriber
+            )
             from slurm_monitor.db.v2.db import ClusterDB
 
-            database = ClusterDB(db_settings=app_settings.database)
-            inspector = inspect(database.engine)
-            if not inspector.get_table_names():
-                raise RuntimeError("Listener is trying to connect to an uninitialized database."
-                                   f" Call 'slurm-monitor db --init --db-uri {app_settings.database.uri}' for the database first")
+            lookback_in_h = MessageSubscriber.extract_lookbacks(args.lookback)
+            print("Using lookbacks: ")
+            for x,y in lookback_in_h.items():
+                print(f"    {x.rjust(10)}: {str(y).rjust(4)}h")
+
+            database = None
+            if args.db_uri is not None:
+                database = ClusterDB(db_settings=app_settings.database)
+                inspector = inspect(database.engine)
+                if not inspector.get_table_names():
+                    raise RuntimeError("Listener is trying to connect to an uninitialized database."
+                                       f" Call 'slurm-monitor db --init --db-uri {app_settings.database.uri}' for the database first")
+            else:
+                logger.info("Running in listen mode")
 
             subscriber = MessageSubscriber(
                     host=args.host,
@@ -78,6 +114,9 @@ class ListenParser(BaseParser):
                     topics=args.topic,
                     cluster_name=args.cluster_name,
                     verbose=args.verbose,
-                    strict_mode=args.use_strict_mode
+                    strict_mode=args.use_strict_mode,
+                    lookback_in_h=lookback_in_h,
+                    stats_output=args.stats_output,
+                    stats_interval_in_s=args.stats_interval
                 )
             subscriber.run()

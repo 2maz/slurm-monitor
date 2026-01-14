@@ -1,5 +1,5 @@
-import logging
 import datetime as dt
+import logging
 import sqlalchemy
 import traceback as tb
 
@@ -38,14 +38,41 @@ class Importer:
         self.last_msg_per_node = {}
         self.verbose = False
 
-    def insert(message: sonar.Message, update: bool):
-        raise NotImplementedError("Importer: insert not implemented")
+    async def insert(self, message: sonar.Message, update: bool, ignore_integrity_errors: bool):
+        msg = self.to_message(message)
+        attributes = msg.data.attributes
+
+        if 'node' in attributes:
+            node = attributes['node']
+            time = dt.datetime.fromisoformat(attributes["time"])
+            self.update_last_msg(node, time)
 
     def update_last_msg(self, node: str, time: dt.datetime):
         self.last_msg_per_node[node] = time
 
     async def autoupdate(self, cluster: str):
         pass
+
+    @classmethod
+    def to_message(cls, message: dict[str, any]) -> sonar.Message:
+        if "meta" not in message:
+            raise ValueError(f"Missing 'meta' in {message=}")
+
+        meta = sonar.Meta(**message['meta'])
+
+        data = None
+        if "data" not in message and "errors" not in message:
+            raise ValueError(f"Either 'data' or 'errors' must be present in {message=}")
+
+        if 'data' in message:
+            data = sonar.Data(**message['data'])
+
+
+        errors = None
+        if 'errors' in message:
+            errors = [ErrorMessage(**x) for x in message['errors']]
+
+        return sonar.Message(meta=meta, data=data, errors=errors)
 
 class DBJsonImporter(Importer):
     db: ClusterDB
@@ -87,27 +114,6 @@ class DBJsonImporter(Importer):
                                           architecture='',
                                           memory=0
                                           )] + rows
-
-    @classmethod
-    def to_message(cls, message: dict[str, any]) -> sonar.Message:
-        if "meta" not in message:
-            raise ValueError(f"Missing 'meta' in {message=}")
-
-        meta = sonar.Meta(**message['meta'])
-
-        data = None
-        if "data" not in message and "errors" not in message:
-            raise ValueError(f"Either 'data' or 'errors' must be present in {message=}")
-
-        if 'data' in message:
-            data = sonar.Data(**message['data'])
-
-
-        errors = None
-        if 'errors' in message:
-            errors = [ErrorMessage(**x) for x in message['errors']]
-
-        return sonar.Message(meta=meta, data=data, errors=errors)
 
     def parse(self, message: dict[str, any]):
         """

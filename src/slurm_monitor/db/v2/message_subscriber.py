@@ -6,13 +6,17 @@ import logging
 import datetime as dt
 from kafka import KafkaConsumer, TopicPartition
 import json
+from pathlib import Path
 import re
 import time
 import traceback as tb
 
 from slurm_monitor.utils import utcnow
 import slurm_monitor.db.v2.sonar as sonar
-from slurm_monitor.db.v2.importer import DBJsonImporter
+from slurm_monitor.db.v2.importer import (
+    Importer,
+    DBJsonImporter
+)
 from slurm_monitor.db.v2.db_tables import TableBase
 from slurm_monitor.db.v2.db import (
     ClusterDB
@@ -27,7 +31,7 @@ KAFKA_CONSUMER_DEFAULTS = {
 }
 
 LOOKBACK_IN_H_DEFAULT = 36
-LOOKBACK_IN_H_DEFAULTS = {
+LOOKBACK_IN_H_DEFAULTS : dict[str, float] = {
     sonar.TopicType.cluster: LOOKBACK_IN_H_DEFAULT,
     sonar.TopicType.sample: 1,
     sonar.TopicType.job: 1,
@@ -57,7 +61,7 @@ class MessageSubscriber:
     verbose: bool
     strict_mode: bool
 
-    lookback_in_h: dict[str, int]
+    lookback_in_h: dict[str, float]
     kafka_consumer_options: dict[str, any]
 
     state: MessageSubscriber.State
@@ -76,12 +80,17 @@ class MessageSubscriber:
             retry_timeout_in_s: int = 5,
             verbose: bool = False,
             strict_mode: bool = False,
-            lookback_in_h: dict[str, int] = LOOKBACK_IN_H_DEFAULTS,
-            kafka_consumer_options: dict[str, any] = KAFKA_CONSUMER_DEFAULTS
+            lookback_in_h: dict[str, float] = LOOKBACK_IN_H_DEFAULTS,
+            kafka_consumer_options: dict[str, any] = KAFKA_CONSUMER_DEFAULTS,
+            stats_output: Path | str | None = None,
+            stats_interval_in_s: int = 30
     ):
         self.host = host
         self.port = port
         self.cluster_name = cluster_name
+
+        self.stats_output = stats_output
+        self.stats_interval_in_s = stats_interval_in_s
 
         if not cluster_name:
             raise ValueError("MessageSubscriber.__init__: cluster_name required")
@@ -99,16 +108,55 @@ class MessageSubscriber:
 
         self.state = self.State.UNKNOWN
 
+    @classmethod
+    def extract_lookback(cls, lookback: str) -> tuple[str, float]:
+        """
+            return tuple of topic name and hours
+        """
+        m = re.match(r"[0-9]+(\.[0-9]+)?", lookback)
+        if m:
+            return None, float(lookback)
+
+        m = re.match(r"^([^:]+):([0-9]+(\.[0-9]+)?)$", lookback)
+        if m:
+            return m.groups()[0], float(m.groups()[1])
+
+        raise ValueError(f"Invalid pattern: {lookback} - could not extract lookback")
+
+
+    @classmethod
+    def extract_lookbacks(cls, lookbacks: list[str]) -> dict[str, float]:
+        lookbacks_in_h : dict[sonar.TopicType, float] = LOOKBACK_IN_H_DEFAULTS.copy()
+
+        if not lookbacks:
+            return lookbacks_in_h
+
+        for lookback in lookbacks:
+            topic_name, lookback_in_h = cls.extract_lookback(lookback)
+            if topic_name:
+                topic = getattr(sonar.TopicType, topic_name)
+                lookbacks_in_h[topic] = lookback_in_h
+            else:
+                # setting all the defaults
+                for x in lookbacks_in_h:
+                    lookbacks_in_h[x] = lookback_in_h
+
+        return lookbacks_in_h
+
+
     async def consume(self,
                 topics: list[str],
                 consumer: KafkaConsumer,
-                msg_handler: DBJsonImporter,
+                msg_handler: Importer,
                 startup_offsets: dict[str, int] = {},
                 topic_lb: dict[str, int] = {},
                 topic_ub: dict[str,int] = {}
             ):
 
         start_time = dt.datetime.now(dt.timezone.utc)
+
+        if msg_handler is None:
+            raise ValueError("MessageHandler must be given")
 
         ignore_integrity_errors = False
         if startup_offsets:
@@ -127,70 +175,95 @@ class MessageSubscriber:
 
             for idx, consumer_record in enumerate(consumer, 1):
                 try:
-                    if msg_handler:
-                        topic = consumer_record.topic
-                        if topic in topics:
-                            if topic in startup_offsets:
-                                so = startup_offsets[topic]
-                                if so and consumer_record.offset >= so:
-                                    del startup_offsets[topic]
+                    topic = consumer_record.topic
+                    if topic in topics:
+                        if topic in startup_offsets:
+                            so = startup_offsets[topic]
+                            if so and consumer_record.offset >= so:
+                                del startup_offsets[topic]
 
-                                if not startup_offsets:
-                                    print(f"Startup completed: historic message lookup finished (after {(utcnow() - start_time).total_seconds()}")
-                                    self.state = self.State.RUNNING
-                                    ignore_integrity_errors = False
+                        if topic in topic_ub:
+                            ub = topic_ub[topic]
+                            if ub and consumer_record.offset >= ub:
+                                print(f"MessageSubscriber.consume: {topic.ljust(25)} -- upper bound reached: {ub}, pausing: {topic}")
+                                consumer.pause(TopicPartition(topic, 0))
+                                topics.remove(topic)
+                                if not topics:
+                                    print("MessageSubscriber.consume: no topics left to listen on. Stopping ...")
+                                    self.state = self.State.STOPPING
+                                    return
 
-                            if topic in topic_ub:
-                                ub = topic_ub[topic]
-                                if ub and consumer_record.offset >= ub:
-                                    print(f"MessageSubscriber.consume: {topic.ljust(25)} -- upper bound reached: {ub}, pausing: {topic}")
-                                    consumer.pause(TopicPartition(topic, 0))
-                                    topics.remove(topic)
-                                    if not topics:
-                                        print("MessageSubscriber.consume: no topics left to listen on. Stopping ...")
-                                        self.state = self.State.STOPPING
-                                        return
+                    if self.state == self.State.INITIALIZING and not startup_offsets:
+                        print(f"Startup completed: historic message lookup finished (after {(utcnow() - start_time).total_seconds():.2}s)")
+                        self.state = self.State.RUNNING
+                        ignore_integrity_errors = False
 
-                        msg = consumer_record.value.decode("UTF-8")
-                        if self.verbose:
-                            print(msg)
+                    msg = consumer_record.value.decode("UTF-8")
+                    if self.verbose:
+                        print(msg)
 
-                        # If a sample arrives there should be no duplicates in the database - an exception is the initialization
-                        # where historic records are retrieved
-                        if sonar.TopicType.infer(topic) == sonar.TopicType.sample:
-                            await msg_handler.insert(json.loads(msg), update=False, ignore_integrity_errors=ignore_integrity_errors)
-                        else:
-                            # Allow to update / merge existing information
-                            await msg_handler.insert(json.loads(msg), update=True, ignore_integrity_errors=ignore_integrity_errors)
-
-                        if sonar.TopicType.infer(topic) == sonar.TopicType.job:
-                            logging.info("Auto update - aligning cluster information from jobs data")
-                            await msg_handler.autoupdate(cluster=self.cluster_name)
-
-                        print(f"[{self.state.value}] {dt.datetime.now(dt.timezone.utc)} messages consumed: "
-                              f"{idx} since {start_time}\r",
-                              flush=True,
-                              end=''
-                        )
+                    # If a sample arrives there should be no duplicates in the database - an exception is the initialization
+                    # where historic records are retrieved
+                    if sonar.TopicType.infer(topic) == sonar.TopicType.sample:
+                        await msg_handler.insert(json.loads(msg), update=False, ignore_integrity_errors=ignore_integrity_errors)
                     else:
-                        print(msg.value.decode("UTF-8"))
+                        # Allow to update / merge existing information
+                        await msg_handler.insert(json.loads(msg), update=True, ignore_integrity_errors=ignore_integrity_errors)
 
-                    if (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds() > 60:
+                    if sonar.TopicType.infer(topic) == sonar.TopicType.job:
+                        logging.info("Auto update - aligning cluster information from jobs data")
+                        await msg_handler.autoupdate(cluster=self.cluster_name)
+
+                    print(f"[{self.state.value}] {dt.datetime.now(dt.timezone.utc)} messages consumed: "
+                          f"{idx} since {start_time}\r",
+                          flush=True,
+                          end=''
+                    )
+
+                    if (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds() > self.stats_interval_in_s:
                         interval_start_time = dt.datetime.now(dt.timezone.utc)
                         max_delay = (interval_start_time - min(msg_handler.last_msg_per_node.values())).total_seconds()
                         print(f"\n\nLast known messages - {interval_start_time} - {max_delay=} s")
                         for node_num, node in enumerate(sorted(msg_handler.last_msg_per_node.keys())):
                             print(f"{node_num:03} {node.ljust(20)} {msg_handler.last_msg_per_node[node]}")
 
-                        print(json.dumps(consumer.metrics(), indent=4))
+                        metrics = consumer.metrics()
+                        listen_status = {
+                                         'positions': { },
+                                         'stats_interval_in_s': self.stats_interval_in_s,
+                                         'interval_start_time': interval_start_time,
+                                         'max_delay': max_delay
+                                        }
+
                         consumer._fetch_all_topic_metadata()
                         for tp in consumer.assignment():
                             current_pos = consumer.position(tp)
                             highwater = consumer.highwater(tp)
                             print(f"Partition: {tp.topic.ljust(25)} -- {current_pos} / {highwater}")
+
+                            listen_status['positions'][tp.topic] = { 'current': current_pos, 'highwater': highwater }
+
+                            # Include startup cleanup for topics that have received no updates
+                            if tp.topic in startup_offsets:
+                                so = startup_offsets[tp.topic]
+                                if so and current_pos >= so:
+                                    del startup_offsets[tp.topic]
+
+                        metrics['listen'] = listen_status
+                        stats = json.dumps(metrics, indent=4, default=str)
+                        print(stats)
+
+                        if self.stats_output:
+                            stats_output = Path(self.stats_output)
+                            stats_output.parent.mkdir(parents=True, exist_ok=True)
+
+                            with open(stats_output, "w") as f:
+                                f.write(stats)
+
                 except Exception as e:
                     if self.verbose:
                         tb.print_tb(e.__traceback__)
+
                     logger.warning(f"Message processing failed: {e}")
 
     @classmethod
@@ -229,11 +302,11 @@ class MessageSubscriber:
         if self.strict_mode:
             TableBase.__extra_values__ = 'forbid'
 
-        msg_handler = None
+        msg_handler = Importer()
         if self.database:
             msg_handler = DBJsonImporter(db=self.database)
         else:
-            print("MessageSubscriber: no database specified. Will only run in plain listen mode")
+            print("MessageSubscriber: no database specified. Will only print messages to console")
 
         topic_lb = {}
         topic_ub = {}
@@ -281,7 +354,7 @@ class MessageSubscriber:
 
                         # go back in history to search for topic messages
                         topic_type = sonar.TopicType.infer(topic=topic)
-                        timelimit = utcnow() - dt.timedelta(hours=self.lookback_in_h.get(topic_type, LOOKBACK_IN_H_DEFAULT))
+                        timelimit = utcnow() - dt.timedelta(seconds=int(self.lookback_in_h.get(topic_type, LOOKBACK_IN_H_DEFAULT)*3600))
                         logger.info(f"{topic=}: search offset for {timelimit=}")
                         offset_and_timestamp = consumer.offsets_for_times({ tp: int(timelimit.timestamp()*1000) })[tp]
                         if not offset_and_timestamp:
