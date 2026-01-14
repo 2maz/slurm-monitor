@@ -6,8 +6,8 @@ This package provides mainly three components for monitoring GPU and CPU resourc
 1. a listener that collects monitoring data a writes it to a database (sqlite or timeseriesdb)
 1. a REST Api to make the data accessible, so that it can, for instance, be used with a [web frontend](https://github.com/2maz/slurm-monitor-frontend)
 
-If being an admin and requiring a detailled generic monitoring to be available with [Performance Co-Pilot](pcp.io), this library is being used as
-quick approach to include recent GPU devices into the monitoring.
+If being an admin and requiring a detailed generic monitoring is available with [Performance Co-Pilot](pcp.io).
+slurm-monitor in combination with sonar is being used as approach to include recent GPU devices into the monitoring.
 GPU data is being collected through vendor's smi tools, although pynvml and pyrsmi can be used as well.
 
 This library currently include monitoring data by quering the following:
@@ -19,7 +19,7 @@ This library currently include monitoring data by quering the following:
 
 ## Usage
 
-The current setup uses kafka and (optionally) timescaledb.
+The current setup uses kafka and (optionally) timescaledb and collects data with [sonar](https://github.com/NordicHPC/sonar).
 To run kafka (and timescaledb) you can use the following docker compose file as a starting point, i.e., to be customized for your needs and your environment:
 
 Create an .env file with the hostname where the kafka instance will run, this will be used for advertising the endpoint so do not use localhost here, e.g.,
@@ -169,7 +169,7 @@ SLURM_MONITOR_OAUTH_REALM="slurm-monitor-realm"
 
 slurm-monitor relies on [sonar](https://github.com/NordicHPC/sonar) as a probe on the individual nodes.
 As such it should be set up so that it communicates with the kafka broker that the above described listener will attach to.
-Instruction for installation of sonar are found in the sonar repository - in addition to an example kafka configuratoin.
+Instruction for installation of sonar are found in the sonar repository - in addition to an example kafka configuration.
 
 
 ## Validation
@@ -204,10 +204,18 @@ To identify required changes of the database use:
 slurm-monitor db --diff
 ```
 
-The command connects by default to the database configured in the .env, otherwise provide a database uri, for instance:
+The command connects by default to the database configured in the .env, otherwise you can provide a database uri, for instance:
 ```
 slurm-monitor db --diff --db-uri timescaledb://my_db_user:my_db_user_password@db_hostname:10000/db_name
 ```
+
+When you are confident about the changes, apply them with with:
+```
+slurm-monitor db --apply-changes --db-uri timescaledb://my_db_user:my_db_user_password@db_hostname:10000/db_name
+```
+
+Note, that removal of fields needs to be done manually.
+
 
 ## Testing
 For testing one can run tox.
@@ -218,7 +226,7 @@ For testing one can run tox.
 
 # License
 
-Copyright (c) 2024-2025 Thomas Roehr, Simula Research Laboratory
+Copyright (c) 2024-2026 Thomas Roehr, Simula Research Laboratory
 
 This project is licensed under the terms of the [New BSD License](https://opensource.org/license/BSD-3-clause).
 You are free to use, modify, and distribute this work, subject to the
