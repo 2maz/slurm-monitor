@@ -35,7 +35,13 @@ async def lifespan(app: FastAPI):
     Define lifespan of application, as described in:
     https://fastapi.tiangolo.com/advanced/events/#lifespan
     """
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(
+        format='[{asctime}][{levelname:^8s}] {name}: {message}',
+        style='{',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        level=logging.INFO,
+    )
+
     logger.setLevel(logging.DEBUG)  # output of exception handlers above
     logger.info("Setting up cache ...")
     FastAPICache.init(

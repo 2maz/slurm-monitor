@@ -20,6 +20,12 @@ from slurm_monitor import __version__
 import slurm_monitor.timescaledb.dialect #noqa
 import slurm_monitor.timescaledb.functions #noqa
 
+logging.basicConfig(
+    format='[{asctime}][{levelname:^8s}] {name}: {message}',
+    style='{',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
 logger = getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -45,13 +51,7 @@ class MainParser(ArgumentParser):
         parser_klass(parser=subparser)
 
 def run():
-    basicConfig(
-        format='%(asctime)s %(levelname)-8s %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-
     main_parser = MainParser()
-
     main_parser.attach_subcommand_parser(
         subcommand="auto-deploy",
         help="Watch status messages and auto-deploy nodes if needed",
@@ -112,6 +112,9 @@ def run():
         print(__version__)
         sys.exit(0)
 
+    for l in [logging.getLogger(x) for x in logging.root.manager.loggerDict]:
+        l.setLevel(logging.getLevelName(args.log_level))
+
     if hasattr(args, "active_subparser"):
         try:
             getattr(args, "active_subparser").execute(args)
@@ -122,9 +125,6 @@ def run():
             sys.exit(-1)
     else:
         main_parser.print_help()
-
-    for logger in [logging.getLogger(x) for x in logging.root.manager.loggerDict]:
-        logger.setLevel(logging.getLevelName(args.log_level))
 
 if __name__ == "__main__":
     run()
