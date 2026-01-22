@@ -1,24 +1,8 @@
 import pytest
 from slurm_monitor.db.v2.validation import Specification
-from slurm_monitor.db.v2.db_tables import (
-    Cluster,
-    Partition,
-    NodeState,
-    SampleProcess,
-    SampleProcessGpu,
-    SampleSlurmJob,
-    SampleSlurmJobAcc,
-    SysinfoAttributes,
-    SysinfoGpuCard,
-    SysinfoGpuCardConfig,
-)
 
-from slurm_monitor.db.v2.importer import DBJsonImporter
-from slurm_monitor.utils.command import Command
 from slurm_monitor.utils import utcnow
-import time
 from pathlib import Path
-import json
 
 @pytest.fixture
 def test_data_dir():

@@ -18,7 +18,7 @@ class ListenParser(BaseParser):
 
         parser.add_argument("--cluster-name",
                 type=str,
-                help="Cluster to for which the topics shall be extracted"
+                help="Cluster for which the topics shall be extracted"
         )
 
         parser.add_argument("--topic",
@@ -54,8 +54,8 @@ class ListenParser(BaseParser):
 
         parser.add_argument("--stats-output",
                 type=str,
-                default="slurm-monitor-listen.stats.json",
-                help="Output file for the listen stats"
+                default=None,
+                help="Output file for the listen stats - default: slurm-monitor-listen.<cluster-name>.stats.json",
         )
 
         parser.add_argument("--stats-interval",
@@ -107,6 +107,12 @@ class ListenParser(BaseParser):
             else:
                 logger.info("Running in listen mode")
 
+            stats_output = args.stats_output
+            if stats_output is None:
+                stats_output = "slurm-monitor-listen.stats.json"
+                if args.cluster_name:
+                    stats_output = f"slurm-monitor-listen.{args.cluster_name}.stats.json"
+
             subscriber = MessageSubscriber(
                     host=args.host,
                     port=args.port,
@@ -116,7 +122,7 @@ class ListenParser(BaseParser):
                     verbose=args.verbose,
                     strict_mode=args.use_strict_mode,
                     lookback_in_h=lookback_in_h,
-                    stats_output=args.stats_output,
+                    stats_output=stats_output,
                     stats_interval_in_s=args.stats_interval
                 )
             subscriber.run()

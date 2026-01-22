@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 import sys
 import logging
 import traceback
-from logging import basicConfig, getLogger
+from logging import getLogger
 
 from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.cli.db import DBParser
@@ -112,8 +112,8 @@ def run():
         print(__version__)
         sys.exit(0)
 
-    for l in [logging.getLogger(x) for x in logging.root.manager.loggerDict]:
-        l.setLevel(logging.getLevelName(args.log_level))
+    for current_logger in [logging.getLogger(x) for x in logging.root.manager.loggerDict]:
+        current_logger.setLevel(logging.getLevelName(args.log_level))
 
     if hasattr(args, "active_subparser"):
         try:

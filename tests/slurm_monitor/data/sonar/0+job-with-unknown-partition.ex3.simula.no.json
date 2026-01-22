@@ -1,0 +1,405 @@
+{
+  "meta": {
+    "producer": "sonar",
+    "version": "0.16.0-rc7"
+  },
+  "data": {
+    "type": "job",
+    "attributes": {
+      "time": "2025-12-17T14:26:55+01:00",
+      "cluster": "ex3.simula.no",
+      "slurm_jobs": [
+        {
+          "job_id": 924799,
+          "job_name": "l2ra",
+          "job_state": "PENDING",
+          "user_name": "user-1",
+          "submit_time": "2025-12-16T19:32:43+01:00",
+          "time_limit": 10000,
+          "partition": "unknown-partition-0",
+          "nodes": [
+            "None allocated"
+          ],
+          "priority": 4294331330,
+          "allocated_resources": "billing=2,cpu=2,gres/gpu=1,node=1",
+          "requested_cpus": 2,
+          "requested_memory_per_node": 1024,
+          "requested_node_count": 1,
+          "start_time": "",
+          "end_time": "",
+          "sacct": {
+            "AllocTRES": "billing=2,cpu=2,gres/gpu=1,node=1",
+            "ElapsedRaw": 0,
+            "SystemCPU": 0,
+            "UserCPU": 0
+          }
+        },
+        {
+          "job_id": 934799,
+          "job_name": "l2ra",
+          "job_state": "COMPLETED",
+          "user_name": "user-1",
+          "submit_time": "2025-12-16T19:32:43+01:00",
+          "time_limit": 172802,
+          "partition": "unknown-partition-0",
+          "nodes": [
+            "g001"
+          ],
+          "priority": 4294331330,
+          "allocated_resources": "billing=2,cpu=2,gres/gpu=1,node=1",
+          "requested_cpus": 2,
+          "requested_memory_per_node": 1024,
+          "requested_node_count": 1,
+          "start_time": "2025-12-16T19:32:44+01:00",
+          "end_time": "2025-12-17T13:46:41+01:00",
+          "sacct": {
+            "AllocTRES": "billing=2,cpu=2,gres/gpu=1,node=1",
+            "ElapsedRaw": 65637,
+            "SystemCPU": 180,
+            "UserCPU": 59375
+          }
+        },
+        {
+          "job_id": 934799,
+          "job_step": "batch",
+          "job_name": "batch",
+          "job_state": "COMPLETED",
+          "submit_time": "2025-12-16T19:32:44+01:00",
+          "nodes": [
+            "g001"
+          ],
+          "distribution": "Unknown",
+          "allocated_resources": "cpu=2,gres/gpu=1,mem=0,node=1",
+          "requested_cpus": 2,
+          "requested_node_count": 1,
+          "start_time": "2025-12-16T19:32:44+01:00",
+          "end_time": "2025-12-17T13:46:41+01:00",
+          "sacct": {
+            "MinCPU": 59574,
+            "AllocTRES": "cpu=2,gres/gpu=1,mem=0,node=1",
+            "AveCPU": 59574,
+            "AveRSS": 1033080,
+            "AveVMSize": 11974052,
+            "ElapsedRaw": 65637,
+            "SystemCPU": 180,
+            "UserCPU": 59375,
+            "MaxRSS": 1033080,
+            "MaxVMSize": 11974052
+          }
+        },
+        {
+          "job_id": 934801,
+          "job_name": "l2ra",
+          "job_state": "COMPLETED",
+          "user_name": "user-1",
+          "submit_time": "2025-12-16T19:32:43+01:00",
+          "time_limit": 172802,
+          "partition": "dgx2q",
+          "nodes": [
+            "g001"
+          ],
+          "priority": 4294331328,
+          "allocated_resources": "billing=2,cpu=2,gres/gpu=1,node=1",
+          "requested_cpus": 2,
+          "requested_memory_per_node": 1024,
+          "requested_node_count": 1,
+          "start_time": "2025-12-16T19:32:44+01:00",
+          "end_time": "2025-12-17T13:44:49+01:00",
+          "sacct": {
+            "AllocTRES": "billing=2,cpu=2,gres/gpu=1,node=1",
+            "ElapsedRaw": 65525,
+            "SystemCPU": 180,
+            "UserCPU": 59266
+          }
+        },
+        {
+          "job_id": 934801,
+          "job_step": "batch",
+          "job_name": "batch",
+          "job_state": "COMPLETED",
+          "submit_time": "2025-12-16T19:32:44+01:00",
+          "nodes": [
+            "g001"
+          ],
+          "distribution": "Unknown",
+          "allocated_resources": "cpu=2,gres/gpu=1,mem=0,node=1",
+          "requested_cpus": 2,
+          "requested_node_count": 1,
+          "start_time": "2025-12-16T19:32:44+01:00",
+          "end_time": "2025-12-17T13:44:49+01:00",
+          "sacct": {
+            "MinCPU": 59480,
+            "AllocTRES": "cpu=2,gres/gpu=1,mem=0,node=1",
+            "AveCPU": 59480,
+            "AveRSS": 1033008,
+            "AveVMSize": 11986044,
+            "ElapsedRaw": 65525,
+            "SystemCPU": 180,
+            "UserCPU": 59266,
+            "MaxRSS": 1033008,
+            "MaxVMSize": 11986044
+          }
+        },
+        {
+          "job_id": 934802,
+          "job_name": "l2ra",
+          "job_state": "COMPLETED",
+          "user_name": "user-1",
+          "submit_time": "2025-12-16T19:32:43+01:00",
+          "time_limit": 172802,
+          "partition": "dgx2q",
+          "nodes": [
+            "g001"
+          ],
+          "priority": 4294331327,
+          "allocated_resources": "billing=2,cpu=2,gres/gpu=1,node=1",
+          "requested_cpus": 2,
+          "requested_memory_per_node": 1024,
+          "requested_node_count": 1,
+          "start_time": "2025-12-16T19:32:44+01:00",
+          "end_time": "2025-12-17T14:14:28+01:00",
+          "sacct": {
+            "AllocTRES": "billing=2,cpu=2,gres/gpu=1,node=1",
+            "ElapsedRaw": 67304,
+            "SystemCPU": 180,
+            "UserCPU": 60612
+          }
+        },
+        {
+          "job_id": 934802,
+          "job_step": "batch",
+          "job_name": "batch",
+          "job_state": "COMPLETED",
+          "submit_time": "2025-12-16T19:32:44+01:00",
+          "nodes": [
+            "g001"
+          ],
+          "distribution": "Unknown",
+          "allocated_resources": "cpu=2,gres/gpu=1,mem=0,node=1",
+          "requested_cpus": 2,
+          "requested_node_count": 1,
+          "start_time": "2025-12-16T19:32:44+01:00",
+          "end_time": "2025-12-17T14:14:28+01:00",
+          "sacct": {
+            "MinCPU": 60810,
+            "AllocTRES": "cpu=2,gres/gpu=1,mem=0,node=1",
+            "AveCPU": 60810,
+            "AveRSS": 1061156,
+            "AveVMSize": 11965140,
+            "ElapsedRaw": 67304,
+            "SystemCPU": 180,
+            "UserCPU": 60612,
+            "MaxRSS": 1061156,
+            "MaxVMSize": 11965140
+          }
+        },
+        {
+          "job_id": 934803,
+          "job_name": "l2ra",
+          "job_state": "COMPLETED",
+          "user_name": "user-1",
+          "submit_time": "2025-12-16T19:32:43+01:00",
+          "time_limit": 172802,
+          "partition": "dgx2q",
+          "nodes": [
+            "g001"
+          ],
+          "priority": 4294331326,
+          "allocated_resources": "billing=2,cpu=2,gres/gpu=1,node=1",
+          "requested_cpus": 2,
+          "requested_memory_per_node": 1024,
+          "requested_node_count": 1,
+          "start_time": "2025-12-16T19:32:44+01:00",
+          "end_time": "2025-12-17T14:13:34+01:00",
+          "sacct": {
+            "AllocTRES": "billing=2,cpu=2,gres/gpu=1,node=1",
+            "ElapsedRaw": 67250,
+            "SystemCPU": 180,
+            "UserCPU": 60153
+          }
+        },
+        {
+          "job_id": 934803,
+          "job_step": "batch",
+          "job_name": "batch",
+          "job_state": "COMPLETED",
+          "submit_time": "2025-12-16T19:32:44+01:00",
+          "nodes": [
+            "g001"
+          ],
+          "distribution": "Unknown",
+          "allocated_resources": "cpu=2,gres/gpu=1,mem=0,node=1",
+          "requested_cpus": 2,
+          "requested_node_count": 1,
+          "start_time": "2025-12-16T19:32:44+01:00",
+          "end_time": "2025-12-17T14:13:34+01:00",
+          "sacct": {
+            "MinCPU": 60354,
+            "AllocTRES": "cpu=2,gres/gpu=1,mem=0,node=1",
+            "AveCPU": 60354,
+            "AveRSS": 1103688,
+            "AveVMSize": 12112772,
+            "ElapsedRaw": 67250,
+            "SystemCPU": 180,
+            "UserCPU": 60153,
+            "MaxRSS": 1103688,
+            "MaxVMSize": 12112772
+          }
+        },
+        {
+          "job_id": 934805,
+          "job_name": "l2ra",
+          "job_state": "COMPLETED",
+          "user_name": "user-1",
+          "submit_time": "2025-12-16T19:32:43+01:00",
+          "time_limit": 172802,
+          "partition": "dgx2q",
+          "nodes": [
+            "g001"
+          ],
+          "priority": 4294331324,
+          "allocated_resources": "billing=2,cpu=2,gres/gpu=1,node=1",
+          "requested_cpus": 2,
+          "requested_memory_per_node": 1024,
+          "requested_node_count": 1,
+          "start_time": "2025-12-16T20:04:11+01:00",
+          "end_time": "2025-12-17T14:08:50+01:00",
+          "sacct": {
+            "AllocTRES": "billing=2,cpu=2,gres/gpu=1,node=1",
+            "ElapsedRaw": 65079,
+            "SystemCPU": 240,
+            "UserCPU": 60126
+          }
+        },
+        {
+          "job_id": 934805,
+          "job_step": "batch",
+          "job_name": "batch",
+          "job_state": "COMPLETED",
+          "submit_time": "2025-12-16T20:04:11+01:00",
+          "nodes": [
+            "g001"
+          ],
+          "distribution": "Unknown",
+          "allocated_resources": "cpu=2,gres/gpu=1,mem=0,node=1",
+          "requested_cpus": 2,
+          "requested_node_count": 1,
+          "start_time": "2025-12-16T20:04:11+01:00",
+          "end_time": "2025-12-17T14:08:50+01:00",
+          "sacct": {
+            "MinCPU": 60369,
+            "AllocTRES": "cpu=2,gres/gpu=1,mem=0,node=1",
+            "AveCPU": 60369,
+            "AveRSS": 1154392,
+            "AveVMSize": 11986192,
+            "ElapsedRaw": 65079,
+            "SystemCPU": 240,
+            "UserCPU": 60126,
+            "MaxRSS": 1154392,
+            "MaxVMSize": 11986192
+          }
+        },
+        {
+          "job_id": 934986,
+          "job_name": "conacq",
+          "job_state": "FAILED",
+          "user_name": "user-4",
+          "account": "user-4",
+          "submit_time": "2025-12-17T11:00:50+01:00",
+          "time_limit": 604802,
+          "partition": "mi100q",
+          "nodes": [
+            "n004"
+          ],
+          "priority": 4294331159,
+          "allocated_resources": "billing=2,cpu=2,node=1",
+          "requested_cpus": 2,
+          "requested_memory_per_node": 1024,
+          "requested_node_count": 1,
+          "start_time": "2025-12-17T11:00:50+01:00",
+          "end_time": "2025-12-17T13:59:37+01:00",
+          "exit_code": 1,
+          "sacct": {
+            "AllocTRES": "billing=2,cpu=2,node=1",
+            "ElapsedRaw": 10727,
+            "UserCPU": 10704
+          }
+        },
+        {
+          "job_id": 934986,
+          "job_step": "batch",
+          "job_name": "batch",
+          "job_state": "FAILED",
+          "account": "user-4",
+          "submit_time": "2025-12-17T11:00:50+01:00",
+          "nodes": [
+            "n004"
+          ],
+          "distribution": "Unknown",
+          "allocated_resources": "cpu=2,mem=0,node=1",
+          "requested_cpus": 2,
+          "requested_node_count": 1,
+          "start_time": "2025-12-17T11:00:50+01:00",
+          "end_time": "2025-12-17T13:59:37+01:00",
+          "exit_code": 1,
+          "sacct": {
+            "MinCPU": 10693,
+            "AllocTRES": "cpu=2,mem=0,node=1",
+            "AveCPU": 10693,
+            "AveRSS": 285444,
+            "AveVMSize": 8859856,
+            "ElapsedRaw": 10727,
+            "UserCPU": 10704,
+            "MaxRSS": 285444,
+            "MaxVMSize": 8859856
+          }
+        },
+        {
+          "job_id": 935008,
+          "job_name": "demi_gpuTest",
+          "job_state": "CANCELLED by 7205",
+          "user_name": "user-2",
+          "submit_time": "2025-12-17T11:49:41+01:00",
+          "time_limit": 7202,
+          "partition": "hgx2q",
+          "nodes": [
+            "None assigned"
+          ],
+          "priority": 4294331139,
+          "requested_cpus": 8,
+          "requested_memory_per_node": 1024,
+          "requested_node_count": 1,
+          "start_time": "2025-12-17T13:07:46+01:00",
+          "end_time": "2025-12-17T13:07:46+01:00"
+        },
+        {
+          "job_id": 935018,
+          "job_name": "biv_pipeline",
+          "job_state": "COMPLETED",
+          "array_job_id": 935016,
+          "array_task_id": 1,
+          "user_name": "user-3",
+          "submit_time": "2025-12-17T12:42:47+01:00",
+          "time_limit": 43202,
+          "partition": "habanaq",
+          "nodes": [
+            "h001"
+          ],
+          "priority": 4294331131,
+          "allocated_resources": "billing=16,cpu=16,node=1",
+          "requested_cpus": 16,
+          "requested_memory_per_node": 1024,
+          "requested_node_count": 1,
+          "start_time": "2025-12-17T12:42:47+01:00",
+          "end_time": "2025-12-17T13:35:38+01:00",
+          "sacct": {
+            "AllocTRES": "billing=16,cpu=16,node=1",
+            "ElapsedRaw": 3171,
+            "SystemCPU": 1800,
+            "UserCPU": 48164
+          }
+        }
+      ]
+    }
+  }
+}
