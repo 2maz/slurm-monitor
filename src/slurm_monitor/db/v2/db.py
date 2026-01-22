@@ -2224,9 +2224,12 @@ class ClusterDB(Database):
 #### Consistency checking / handling partial information
     async def sync_cluster_and_nodes_with_jobs(self, *, cluster: str,
                                          time_in_s: int | None = None,
-                                         interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S) -> bool:
+                                         interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S) -> dict[str, list]:
         """
         Check job samples and align observed cluster information with the existing ones in the database
+
+        Returns:
+        dict[str, list]: Dictionary containing the 'partitions' and 'nodes' that need to be added
         """
         if not time_in_s:
             time_in_s = utcnow().timestamp()
@@ -2268,15 +2271,22 @@ class ClusterDB(Database):
             if known_partitions.issuperset(observed_partitions):
                 logger.info(f"Cluster {cluster} information on partitions and information inferred from jobs is consistent")
             else:
-                to_add['partitions'] = observed_partitions.difference(known_partitions)
                 logger.warning(f"Cluster {cluster} information on partitions is incomplete -- {observed_partitions=} currently {known_partitions=}")
+                to_add['partitions'] = list(set(observed_partitions).difference(known_partitions))
 
             known_nodes = set(cluster_attributes.nodes)
             if known_nodes.issuperset(observed_nodes):
                 logger.info(f"Cluster {cluster} information on nodes and information inferred from jobs is consistent")
             else:
-                to_add['nodes'] = observed_nodes.difference(known_nodes)
+                to_add['nodes'] = list(set(observed_nodes).difference(known_nodes))
                 logger.warning(f"Cluster {cluster} information on nodes is incomplete -- {observed_nodes=} currently {known_nodes=}")
+
+            cluster_attributes = Cluster.create(cluster=cluster,
+                           partitions=list(known_partitions.union(observed_partitions)),
+                           nodes=list(known_nodes.union(observed_nodes)),
+                           time=utcnow()
+                )
+            self.insert(cluster_attributes)
         else:
             logger.info(f"Cluster {cluster} - job samples indicate the existance of (this unseen) cluster. Inferring information: "
                         f"{cluster=} {observed_nodes=} {observed_partitions=} and adding cluster information to db")

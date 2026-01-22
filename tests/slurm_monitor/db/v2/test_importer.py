@@ -264,7 +264,8 @@ async def test_DBJsonImporter_sonar_examples(sonar_msg_files,
 @pytest.mark.asyncio(loop_scope="function")
 @pytest.mark.parametrize("sonar_msg_files, expected_clusters",
     [
-        [ ["0+job-srl-login3.ex3.simula.no.json"], {"ex3.simula.no": {"nodes": ['h001', 'n004', 'g001'], "partitions": ['dgx2q', 'habanaq', 'hgx2q', 'mi100q'] }}]
+        [ ["0+job-srl-login3.ex3.simula.no.json"], {"ex3.simula.no": {"nodes": ['h001', 'n004', 'g001'], "partitions": ['dgx2q', 'habanaq', 'hgx2q', 'mi100q'] }}],
+        [ ["0+cluster.ex3.simula.no.json", "0+job-with-unknown-partition.ex3.simula.no.json"], {"ex3.simula.no": {"nodes": ['g001', 'g002', 'h001', 'n004'], "partitions": ['unknown-partition-0', 'dgx2q', 'habanaq', 'hgx2q', 'mi100q'] }}]
     ]
 )
 async def test_DBJsonImporter_autoupdate(sonar_msg_files,
@@ -286,7 +287,7 @@ async def test_DBJsonImporter_autoupdate(sonar_msg_files,
         await importer.autoupdate(cluster=cluster_name)
 
         with db.make_session() as session:
-            results = session.execute(sqlalchemy.text(f"SELECT cluster, nodes, partitions from cluster_attributes where cluster = '{cluster_name}'")).all()
+            results = session.execute(sqlalchemy.text(f"SELECT cluster, nodes, partitions from cluster_attributes where cluster = '{cluster_name}' ORDER BY time DESC")).all()
             assert results
             cluster, nodes, partitions = results[0]
             expected_nodes = expected_clusters[cluster_name]['nodes']
