@@ -1,5 +1,4 @@
 import datetime as dt
-import pytz
 
 def utcnow() -> dt.datetime:
     return dt.datetime.now(tz=dt.timezone.utc)
@@ -12,7 +11,7 @@ def ensure_utc(date: dt.datetime) -> dt.datetime:
     Prepare plain time in utc, but with tzinfo being set
     """
     if date.tzinfo is not None:
-        return date.astimezone(pytz.utc).replace(tzinfo=None)
+        return date.astimezone(dt.timezone.utc).replace(tzinfo=None)
     return date
 
 
