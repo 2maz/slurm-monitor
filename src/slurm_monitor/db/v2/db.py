@@ -2149,8 +2149,8 @@ class ClusterDB(Database):
 
         report = JobReport()
         async with self.make_async_session() as session:
-            attributes = ["resident_memory", "virtual_memory", 
-                          "cpu_util", 
+            attributes = ["resident_memory", "virtual_memory",
+                          "cpu_util",
                           "num_threads",
                           "data_read", "data_written", "data_cancelled"]
 
