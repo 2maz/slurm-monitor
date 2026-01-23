@@ -22,6 +22,7 @@ from slurm_monitor.api.v2.response_models import (
     NodeGpuTimeseriesResponse,
     NodeGpuJobSampleProcessGpuTimeseriesResponse,
     NodeSampleProcessGpuAccResponse,
+    NodeDiskTimeseriesResponse,
     SampleProcessAccResponse,
 )
 
@@ -326,6 +327,49 @@ async def nodes_sample_gpu(
                     resolution_in_s=resolution_in_s,
                 ),
                 name=f"nodes_sample_gpu-{node}"
+            )
+        return { node : (await tasks[node]) for node in nodes}
+    except Exception as e:
+        raise HTTPException(status_code=500,
+                detail=str(e))
+
+@api_router.get("/cluster/{cluster}/nodes/{nodename}/diskstats/timeseries",
+        summary="Get **node**-specific timeseries data of DiskStat samples",
+        tags=["node"],
+        response_model=NodeDiskTimeseriesResponse,
+        )
+@api_router.get("/cluster/{cluster}/nodes/diskstats/timeseries",
+        summary="Get timeseries data of GPU samples for all nodes in a given cluster",
+        tags=["cluster"],
+        response_model=NodeDiskTimeseriesResponse,
+        )
+async def nodes_sample_disk(
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    cluster: str,
+    nodename: str | None = None,
+    start_time_in_s: float | None = None,
+    end_time_in_s: float | None = None,
+    resolution_in_s: int | None = None,
+    dbi: ClusterDB = Depends(DBManager.get_database)
+):
+    try:
+        start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s,
+                resolution_in_s=resolution_in_s
+        )
+
+        nodes = await dbi.get_nodes(cluster=cluster, time_in_s=start_time_in_s) if nodename is None else [nodename]
+        tasks = {}
+        for node in nodes:
+            tasks[node] = asyncio.create_task(dbi.get_node_sample_disk_timeseries(
+                    cluster=cluster,
+                    node=node,
+                    start_time_in_s=start_time_in_s,
+                    end_time_in_s=end_time_in_s,
+                    resolution_in_s=resolution_in_s,
+                ),
+                name=f"nodes_sample_disk-{node}"
             )
         return { node : (await tasks[node]) for node in nodes}
     except Exception as e:
