@@ -767,6 +767,10 @@ class SampleProcess(TableBase):
                       sample data for two processes."""
                )
 
+    in_container = Column(Boolean,
+                          desc="True if deemed part of a container.",
+                          nullable=True)
+
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
     __table_args__ = (
@@ -794,6 +798,8 @@ class SampleSystem(TableBase):
 
     cluster = Column(String, primary_key=True)
     node = Column(String, primary_key=True)
+
+    boot = Column(DateTimeTZAware, default=None, nullable=True)
 
     cpus = Column(ARRAY(BigInteger),
                   desc="The state of individual cores"
@@ -835,6 +841,42 @@ class SampleSystem(TableBase):
                 'chunk_time_interval': '24 hours',
                 'compression': {
                     'segmentby': 'cluster, node',
+                    'orderby': 'time',
+                    'interval': '7 days'
+                }
+            }
+        }
+    )
+
+class SampleDisk(TableBase):
+    __tablename__ = "sample_disk"
+
+    cluster = Column(String, primary_key=True)
+    node = Column(String, primary_key=True)
+
+    name = Column(String, primary_key=True,
+                  desc="Disk's local name. This must never be empty (and unique per node)")
+
+    major = Column(BigInteger,
+                   desc="Disk's local major device number")
+
+    minor = Column(BigInteger,
+                   desc="Disk's local minor device number")
+
+    stats = Column(ARRAY(BigInteger),
+                   desc="Disk stats values in the order present in /proc/diskstats")
+
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(["cluster", "node"], [Node.cluster, Node.node]),
+        {
+            'info': { 'sonar_spec': 'SampleSystem.disks' },
+            'timescaledb_hypertable': {
+                'time_column_name': 'time',
+                'chunk_time_interval': '24 hours',
+                'compression': {
+                    'segmentby': 'cluster, node, name',
                     'orderby': 'time',
                     'interval': '7 days'
                 }
