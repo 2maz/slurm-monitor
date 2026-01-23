@@ -213,6 +213,8 @@ class DBManager:
                     typename = f"{item_type}[]"
                 elif dialect_type == "string":
                     typename = str(column.type)
+                elif dialect_type == "datetime":
+                    typename = db.engine.dialect.type_compiler.process(column.type)
                 else:
                     typename = dialect_type
 
