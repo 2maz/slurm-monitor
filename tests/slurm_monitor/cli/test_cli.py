@@ -97,7 +97,7 @@ async def test_db_apply_changes(script_runner, test_db_v2, db_config, timescaled
 
     result = script_runner.run(['slurm-monitor', 'db', "--db-uri", str(timescaledb), "--apply-changes"])
     assert result.returncode == 0
-    assert re.search(r"added tables: \['" + tablename +"'\]", result.stdout) is not None
+    assert re.search(r"added tables: \['" + tablename + r"'\]", result.stdout) is not None
 
     new_status = DBManager.get_status(timescaledb)
     assert tablename in new_status

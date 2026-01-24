@@ -154,7 +154,7 @@ def test_comments_from_spec(spec_table, db_schema_table, column, test_db_v2, db_
     assert spec_doc == in_db_description
 
 
-@pytest.mark.asyncio(loop_scope="function")
+@pytest.mark.asyncio(loop_scope="module")
 async def test_get_node_sample_disk_timeseries(test_db_v2, db_config):
     cluster_name = db_config.cluster_names[0]
     node_name = f"{cluster_name}-node-0"
