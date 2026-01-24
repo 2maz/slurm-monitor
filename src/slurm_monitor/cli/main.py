@@ -113,7 +113,8 @@ def run():
         sys.exit(0)
 
     for current_logger in [logging.getLogger(x) for x in logging.root.manager.loggerDict]:
-        current_logger.setLevel(logging.getLevelName(args.log_level))
+        if current_logger.name.startswith("slurm_monitor"):
+            current_logger.setLevel(logging.getLevelName(args.log_level))
 
     if hasattr(args, "active_subparser"):
         try:
