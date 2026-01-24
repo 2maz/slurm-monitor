@@ -1814,12 +1814,7 @@ class ClusterDB(Database):
 
         response = []
         for diskname in disknames:
-            query = select(
-                        SampleDisk.major,
-                        SampleDisk.minor,
-                        SampleDisk.stats,
-                        SampleDisk.time
-                   ).where(
+            query = select(SampleDisk).where(
                         (SampleDisk.cluster == cluster),
                         (SampleDisk.node == node),
                         (SampleDisk.name == diskname),
@@ -1831,12 +1826,12 @@ class ClusterDB(Database):
 
             async with self.make_async_session() as session:
                 result = (await session.execute(query)).all()
-                data = [ SampleDiskResponse(stats=x[2], time=x[3]) for x in result ]
+                data = [ SampleDiskResponse(**dict(x[0])) for x in result ]
 
             response.append(SampleDiskTimeseriesResponse(
                     name=diskname,
-                    major=result[0][0],
-                    minor=result[0][1],
+                    major=result[0][0].major,
+                    minor=result[0][0].minor,
                     data=data
                 )
             )

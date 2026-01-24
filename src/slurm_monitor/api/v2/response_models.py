@@ -296,7 +296,27 @@ class SampleProcessAccResponse(TimestampedModel):
     processes_avg: float = Field(description="Average number of processes running for this accumulated response")
 
 class SampleDiskResponse(TimestampedModel):
-    stats: list[int] = Field(description="Disk stats values in the order present in /proc/diskstats")
+    reads_completed:             int = Field(description="Number of completed reads")
+    reads_merged:                int = Field(description="Number of reads merged (adjacent reads might be merged)")
+    sectors_read:                int = Field(description="Number of sector read")
+    ms_spent_reading:            int = Field(description="Milliseconds spent reading")
+
+    writes_completed:            int = Field(description="Number of writes completed")
+    writes_merged:               int = Field(description="Number of merged writes")
+    sectors_written:             int = Field(description="Number of sectors being written")
+    ms_spent_writing:            int = Field(description="Milliseconds spent writing")
+
+    ios_currently_in_progress:   int = Field(description="Number of I/Os in progress")
+    ms_spent_doing_ios:          int = Field(description="Milliseconds on doing I/Os")
+    weighted_ms_spent_doing_ios: int = Field(description="Weighted milliseconds spend on doing I/Os")
+
+    discards_completed:          int = Field(description="Number of completed discards")
+    discards_merged:             int = Field(description="Number of sectors discarded")
+    sectors_discarded:           int = Field(description="Number of section that have been discarded")
+    ms_spent_discarding:         int = Field(description="Milliseconds spent dicarding")
+
+    flush_requests_completed:    int = Field(description="Number of completed flush requests")
+    ms_spent_flushing:           int = Field(description="Milliseconds spent flushing")
 
 class SampleDiskTimeseriesResponse(BaseModel):
     """
