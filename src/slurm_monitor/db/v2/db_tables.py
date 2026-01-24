@@ -1037,7 +1037,7 @@ class SampleSlurmJob(TableBase):
     partition = Column(String)
     reservation = Column(String)
 
-    nodes = Column(ARRAY(String))
+    nodes = Column(ARRAY(String), nullable=True) # null for PENDING jobs for instance
     priority = Column(Xint)
     distribution = Column(String)
 
