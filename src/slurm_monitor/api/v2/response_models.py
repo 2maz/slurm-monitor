@@ -10,6 +10,8 @@ from pydantic import (
 )
 from typing import TypeVar, Generic
 
+from slurm_monitor.db.v2.db_tables import SampleDisk
+
 UUID = str
 
 # Here we defined the response model for the REST API
@@ -296,37 +298,6 @@ class SampleProcessAccResponse(TimestampedModel):
 class SampleDiskResponse(TimestampedModel):
     stats: list[int] = Field(description="Disk stats values in the order present in /proc/diskstats")
 
-    def field_name_index() -> dict[str, int]:
-        """
-        Field index (index starting at 1) by name according to https://www.kernel.org/doc/html/latest/admin-guide/iostats.html
-        """
-        {
-            "reads_completed": 1,
-            "reads_merged": 2,
-            "sectors_read": 3,
-            "milliseconds_spent_reading": 4,
-            "writes_completed": 5,
-            "writes_merged": 6,
-            "sectors_written": 7,
-            "milliseconds_spent_writing": 8,
-            "ios_currently_in_progress": 9,
-            "milliseconds_spent_doing ios": 10,
-            "weighted_milliseconds_spent_doing_ios": 11,
-            "discards_completed": 12,
-            "discards_merged": 13,
-            "sectors_discarded": 14,
-            "milliseconds_spent_discarding": 15,
-            "flush_requests_completed": 16,
-            "milliseconds_spent_flushing": 17
-        }
-
-    def stat_by_name(self, name):
-        if name in self.field_name_index():
-            return self.stats[self.field_name_index() - 1]
-
-        raise ValueError(f"SampleDisk.stat_by_name: no stat '{name}' known")
-
-
 class SampleDiskTimeseriesResponse(BaseModel):
     """
     provide the timeseries of samples
@@ -335,6 +306,7 @@ class SampleDiskTimeseriesResponse(BaseModel):
     major: int = Field(description="Major device number")
     minor: int = Field(description="Minor device number")
 
+    field_names: list[str] = Field(default=list(SampleDisk.diskstats().keys()), description="diskstat fieldnames")
     data: list[SampleDiskResponse] = Field(description="Timeseries of SampleDisk for this disk")
 
 

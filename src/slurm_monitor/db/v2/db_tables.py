@@ -851,6 +851,41 @@ class SampleSystem(TableBase):
 class SampleDisk(TableBase):
     __tablename__ = "sample_disk"
 
+    @classmethod
+    def diskstats(cls) -> dict[str, int]:
+        """
+        Field name to index map (index starting at 1) by name according to https://www.kernel.org/doc/html/latest/admin-guide/iostats.html
+        """
+        return {
+            "reads_completed": 1,
+            "reads_merged": 2,
+            "sectors_read": 3,
+            "ms_spent_reading": 4,
+            "writes_completed": 5,
+            "writes_merged": 6,
+            "sectors_written": 7,
+            "ms_spent_writing": 8,
+            "ios_currently_in_progress": 9,
+            "ms_spent_doing_ios": 10,
+            "weighted_ms_spent_doing_ios": 11,
+            "discards_completed": 12,
+            "discards_merged": 13,
+            "sectors_discarded": 14,
+            "ms_spent_discarding": 15,
+            "flush_requests_completed": 16,
+            "ms_spent_flushing": 17
+        }
+
+    @classmethod
+    def create(cls, **kwargs):
+        if "stats" in kwargs:
+            stats = kwargs['stats']
+            for field, idx in cls.diskstats().items():
+                kwargs[field] = stats[idx-1]
+            del kwargs['stats']
+
+        return super().create(**kwargs)
+
     cluster = Column(String, primary_key=True)
     node = Column(String, primary_key=True)
 
@@ -863,8 +898,40 @@ class SampleDisk(TableBase):
     minor = Column(BigInteger,
                    desc="Disk's local minor device number")
 
-    stats = Column(ARRAY(BigInteger),
-                   desc="Disk stats values in the order present in /proc/diskstats")
+    # Field from /proc/diskstats
+    reads_completed = Column(BigInteger)
+
+    reads_merged = Column(BigInteger)
+
+    sectors_read = Column(BigInteger)
+
+    ms_spent_reading = Column(BigInteger)
+
+    writes_completed = Column(BigInteger)
+
+    writes_merged = Column(BigInteger)
+
+    sectors_written = Column(BigInteger)
+
+    ms_spent_writing = Column(BigInteger)
+
+    ios_currently_in_progress = Column(BigInteger)
+
+    ms_spent_doing_ios = Column(BigInteger)
+
+    weighted_ms_spent_doing_ios = Column(BigInteger)
+
+    discards_completed = Column(BigInteger)
+
+    discards_merged = Column(BigInteger)
+
+    sectors_discarded = Column(BigInteger)
+
+    ms_spent_discarding = Column(BigInteger)
+
+    flush_requests_completed = Column(BigInteger)
+
+    ms_spent_flushing = Column(BigInteger)
 
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 

@@ -165,7 +165,7 @@ def create_test_db(
 
             for minor in range(0, config.number_of_disks):
                 disk_name = f"disk-{major}-{minor}"
-                dbi.insert(SampleDisk(
+                dbi.insert(SampleDisk.create(
                         cluster=cluster_name,
                         node=n,
                         name=disk_name,
