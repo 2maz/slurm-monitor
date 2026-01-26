@@ -224,10 +224,16 @@ class MessageSubscriber:
 
                     if (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds() > self.stats_interval_in_s:
                         interval_start_time = dt.datetime.now(dt.timezone.utc)
-                        max_delay = (interval_start_time - min(msg_handler.last_msg_per_node.values())).total_seconds()
-                        print(f"\n\nLast known messages - {interval_start_time} - {max_delay=} s")
-                        for node_num, node in enumerate(sorted(msg_handler.last_msg_per_node.keys())):
-                            print(f"{node_num:03} {node.ljust(20)} {msg_handler.last_msg_per_node[node]}")
+
+                        msg_timestamps = msg_handler.last_msg_per_node.values()
+                        max_delay = 0
+                        if msg_timestamps:
+                            max_delay = (interval_start_time - min(msg_handler.last_msg_per_node.values())).total_seconds()
+                            print(f"\n\nLast known messages - {interval_start_time} - {max_delay=} s")
+                            for node_num, node in enumerate(sorted(msg_handler.last_msg_per_node.keys())):
+                                print(f"{node_num:03} {node.ljust(20)} {msg_handler.last_msg_per_node[node]}")
+                        else:
+                            print(f"\n\nNo messages received - {interval_start_time} s")
 
                         metrics = consumer.metrics()
                         listen_status = {
