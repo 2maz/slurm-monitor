@@ -154,6 +154,23 @@ def test_comments_from_spec(spec_table, db_schema_table, column, test_db_v2, db_
 
 
 
+@pytest.mark.asyncio(loop_scope="module")
+async def test_get_latest_topics_timestamp(test_db_v2, db_config):
+    topics = await test_db_v2.get_latest_topics_timestamp("cluster-0")
+
+    for x in ["cluster", "job", "sample", "sysinfo"]:
+        assert x in topics
+        assert type(topics[x]) is dt.datetime
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_suggest_lookback(test_db_v2, db_config):
+    topics = await test_db_v2.suggest_lookback("cluster-0")
+
+    for x in ["cluster", "job", "sample", "sysinfo"]:
+        assert x in topics
+        assert type(topics[x]) is float
+        assert type(topics[x] > 0)
+
 #def test_db_visualize(timescaledb):
 #
 #    #from sqlalchemy_data_model_visualizer import generate_data_model_diagram

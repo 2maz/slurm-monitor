@@ -18,7 +18,8 @@ class ListenParser(BaseParser):
 
         parser.add_argument("--cluster-name",
                 type=str,
-                help="Cluster for which the topics shall be extracted"
+                help="Cluster for which the topics shall be extracted",
+                required=True
         )
 
         parser.add_argument("--topic",
@@ -93,9 +94,6 @@ class ListenParser(BaseParser):
             from slurm_monitor.db.v2.db import ClusterDB
 
             lookback_in_h = MessageSubscriber.extract_lookbacks(args.lookback)
-            print("Using lookbacks: ")
-            for x,y in lookback_in_h.items():
-                print(f"    {x.rjust(10)}: {str(y).rjust(4)}h")
 
             database = None
             if args.db_uri is not None:
@@ -104,8 +102,17 @@ class ListenParser(BaseParser):
                 if not inspector.get_table_names():
                     raise RuntimeError("Listener is trying to connect to an uninitialized database."
                                        f" Call 'slurm-monitor db --init --db-uri {app_settings.database.uri}' for the database first")
+
+                suggested_lookback = database.suggest_lookback(args.cluster_name)
+                logger.info("Adapting lookback time based on db information")
+                for topic, suggested in suggested_lookback.items():
+                    lookback_in_h[topic] = min(lookback_in_h[topic], suggested)
             else:
                 logger.info("Running in listen mode")
+
+            print("Using lookbacks: ")
+            for x,y in lookback_in_h.items():
+                print(f"    {x.rjust(10)}: {str(y).rjust(4)}h")
 
             stats_output = args.stats_output
             if stats_output is None:

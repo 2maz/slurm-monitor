@@ -40,6 +40,7 @@ from slurm_monitor.db.v2.db_base import (
     INTERVAL_1WEEK,  # noqa
     INTERVAL_2WEEKS,  # noqa
 )
+import slurm_monitor.db.v2.sonar as sonar
 
 from .db_base import DatabaseSettings # noqa
 from .db_tables import (
@@ -2300,3 +2301,36 @@ class ClusterDB(Database):
             to_add = {'partitions': observed_partitions, 'nodes': observed_nodes }
 
         return to_add
+
+    def get_latest_topics_timestamp(self, cluster: str) -> dict[str, dt.datetime]:
+        """
+        Get last timestamp in the database that is relatable to an incoming sonar topic
+        """
+        topics_timestamp = {}
+        topics_table = {
+                        sonar.TopicType.cluster: Cluster,
+                        sonar.TopicType.sample: SampleProcess,
+                        sonar.TopicType.sysinfo: SysinfoAttributes,
+                        sonar.TopicType.job: SampleSlurmJob
+                       }
+
+        with self.make_session() as session:
+            for topic, table in topics_table.items():
+                query = select(table.time).where(table.cluster == cluster).order_by(table.time.desc()).limit(1)
+                result = session.execute(query).all()
+                if result:
+                    topics_timestamp[topic] = result[0][0]
+
+        return topics_timestamp
+
+    def suggest_lookback(self, cluster: str) -> dict[str, float]:
+        """
+        Recommended looback for all sonar topics
+        """
+        topics_timestamp = self.get_latest_topics_timestamp(cluster)
+        lookbacks = {}
+        now = utcnow()
+        for topic, timestamp in topics_timestamp.items():
+            lookbacks[topic] = round((now - timestamp).total_seconds() / 3600.0,2)
+
+        return lookbacks

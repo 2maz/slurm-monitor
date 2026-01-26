@@ -25,7 +25,8 @@ from slurm_monitor.db.v2.db import (
 logger = logging.getLogger(__name__)
 
 KAFKA_CONSUMER_DEFAULTS = {
-    'max_poll_records': 1000,
+    'max_poll_records': 5000,
+    'max_poll_interval_ms': '300000',
     'fetch_max_bytes': 200*1024**2,
     'max_partition_fetch_bytes': 200*1024**2
 }
@@ -214,8 +215,9 @@ class MessageSubscriber:
                         logging.info("Auto update - aligning cluster information from jobs data")
                         await msg_handler.autoupdate(cluster=self.cluster_name)
 
-                    print(f"[{self.state.value}] {dt.datetime.now(dt.timezone.utc)} messages consumed: "
-                          f"{idx} since {start_time}\r",
+                    now = utcnow()
+                    seconds_from_now = (now.timestamp() - consumer_record.timestamp/1000.0)
+                    print(f"[{self.state.value}][{now.isoformat(timespec='milliseconds')}] last processed: topic={topic} offset={consumer_record.offset} latency: {seconds_from_now:.2f}s       \r",
                           flush=True,
                           end=''
                     )
