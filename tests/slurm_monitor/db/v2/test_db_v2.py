@@ -4,6 +4,8 @@ from slurm_monitor.db.v2.validation import Specification
 from slurm_monitor.utils import utcnow
 from pathlib import Path
 
+import datetime as dt
+
 @pytest.fixture
 def test_data_dir():
     return Path(__file__).parent.parent.parent.parent.resolve() / "data" / "db" / "v2"
@@ -156,7 +158,7 @@ def test_comments_from_spec(spec_table, db_schema_table, column, test_db_v2, db_
 
 @pytest.mark.asyncio(loop_scope="module")
 async def test_get_latest_topics_timestamp(test_db_v2, db_config):
-    topics = await test_db_v2.get_latest_topics_timestamp("cluster-0")
+    topics = test_db_v2.get_latest_topics_timestamp("cluster-0")
 
     for x in ["cluster", "job", "sample", "sysinfo"]:
         assert x in topics
@@ -164,7 +166,7 @@ async def test_get_latest_topics_timestamp(test_db_v2, db_config):
 
 @pytest.mark.asyncio(loop_scope="module")
 async def test_suggest_lookback(test_db_v2, db_config):
-    topics = await test_db_v2.suggest_lookback("cluster-0")
+    topics = test_db_v2.suggest_lookback("cluster-0")
 
     for x in ["cluster", "job", "sample", "sysinfo"]:
         assert x in topics
