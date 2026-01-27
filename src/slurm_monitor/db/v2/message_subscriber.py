@@ -25,7 +25,8 @@ from slurm_monitor.db.v2.db import (
 logger = logging.getLogger(__name__)
 
 KAFKA_CONSUMER_DEFAULTS = {
-    'max_poll_records': 1000,
+    'max_poll_records': 5000,
+    'max_poll_interval_ms': '300000',
     'fetch_max_bytes': 200*1024**2,
     'max_partition_fetch_bytes': 200*1024**2
 }
@@ -214,18 +215,25 @@ class MessageSubscriber:
                         logging.info("Auto update - aligning cluster information from jobs data")
                         await msg_handler.autoupdate(cluster=self.cluster_name)
 
-                    print(f"[{self.state.value}] {dt.datetime.now(dt.timezone.utc)} messages consumed: "
-                          f"{idx} since {start_time}\r",
+                    now = utcnow()
+                    seconds_from_now = (now.timestamp() - consumer_record.timestamp/1000.0)
+                    print(f"[{self.state.value}][{now.isoformat(timespec='milliseconds')}] last processed: topic={topic} offset={consumer_record.offset} latency: {seconds_from_now:.2f}s       \r",
                           flush=True,
                           end=''
                     )
 
                     if (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds() > self.stats_interval_in_s:
                         interval_start_time = dt.datetime.now(dt.timezone.utc)
-                        max_delay = (interval_start_time - min(msg_handler.last_msg_per_node.values())).total_seconds()
-                        print(f"\n\nLast known messages - {interval_start_time} - {max_delay=} s")
-                        for node_num, node in enumerate(sorted(msg_handler.last_msg_per_node.keys())):
-                            print(f"{node_num:03} {node.ljust(20)} {msg_handler.last_msg_per_node[node]}")
+
+                        msg_timestamps = msg_handler.last_msg_per_node.values()
+                        max_delay = 0
+                        if msg_timestamps:
+                            max_delay = (interval_start_time - min(msg_handler.last_msg_per_node.values())).total_seconds()
+                            print(f"\n\nLast known messages - {interval_start_time} - {max_delay=} s")
+                            for node_num, node in enumerate(sorted(msg_handler.last_msg_per_node.keys())):
+                                print(f"{node_num:03} {node.ljust(20)} {msg_handler.last_msg_per_node[node]}")
+                        else:
+                            print(f"\n\nNo messages received - {interval_start_time} s")
 
                         metrics = consumer.metrics()
                         listen_status = {
