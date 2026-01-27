@@ -1,10 +1,10 @@
 import pytest
-from slurm_monitor.db.v2.validation import Specification
-
-from slurm_monitor.utils import utcnow
+import datetime as dt
 from pathlib import Path
 
 import datetime as dt
+from slurm_monitor.db.v2.validation import Specification
+from slurm_monitor.utils import utcnow
 
 @pytest.fixture
 def test_data_dir():
@@ -154,7 +154,20 @@ def test_comments_from_spec(spec_table, db_schema_table, column, test_db_v2, db_
     assert spec_doc == in_db_description
 
 
-
+@pytest.mark.asyncio(loop_scope="module")
+async def test_get_node_sample_disk_timeseries(test_db_v2, db_config):
+    cluster_name = db_config.cluster_names[0]
+    node_name = f"{cluster_name}-node-0"
+    end_time_in_s = utcnow().timestamp()
+    start_time_in_s = (utcnow() - dt.timedelta(hours=12)).timestamp()
+    timeseries = await test_db_v2.get_node_sample_disk_timeseries(
+            cluster=cluster_name,
+            node=node_name,
+            start_time_in_s=start_time_in_s,
+            end_time_in_s=end_time_in_s,
+            resolution_in_s=60
+    )
+    assert [x.name for x in timeseries] == ['disk-100-0', 'disk-100-1']
 
 @pytest.mark.asyncio(loop_scope="module")
 async def test_get_latest_topics_timestamp(test_db_v2, db_config):

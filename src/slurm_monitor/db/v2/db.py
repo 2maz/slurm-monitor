@@ -26,6 +26,8 @@ from slurm_monitor.api.v2.response_models import (
     JobReport,
     JobResponse,
     JobSpecificTimeseriesResponse,
+    SampleDiskResponse,
+    SampleDiskTimeseriesResponse,
     SampleGpuBaseResponse,
     SampleGpuTimeseriesResponse,
     SampleProcessAccResponse,
@@ -50,6 +52,7 @@ from .db_tables import (
     Node,
     NodeState,
     Partition,
+    SampleDisk,
     SampleGpu,
     SampleProcess,
     SampleProcessGpu,
@@ -70,6 +73,7 @@ class ClusterDB(Database):
     NodeState = NodeState
     Partition = Partition
 
+    SampleDisk = SampleDisk
     SampleGpu = SampleGpu
     SampleProcess = SampleProcess
     SampleProcessGpu = SampleProcessGpu
@@ -1777,6 +1781,62 @@ class ClusterDB(Database):
 
 ##### END SAMPLE PROCESS (CPU) ######################################################
 
+##### BEGIN SAMPLE (DISK) ###########################################################
+    async def get_node_sample_disk_timeseries(
+            self,
+            cluster: str,
+            node: str,
+            start_time_in_s: int,
+            end_time_in_s: int,
+            resolution_in_s: int
+            ) -> list[SampleDiskTimeseriesResponse]:
+        """
+        Get SampleDisk timeseries for a given timeframe.
+
+        This is node specific data
+
+        For all disks on node:
+        return:
+            [ { name: string, major: int, minor: int, data: Array[SampleDisk] } ]
+        """
+        query = select(
+                    SampleDisk.name.distinct()
+               ).where(
+                    (SampleDisk.cluster == cluster),
+                    (SampleDisk.node == node),
+                    (SampleDisk.time >= fromtimestamp(start_time_in_s)),
+                    (SampleDisk.time <= fromtimestamp(end_time_in_s))
+               )
+
+        async with self.make_async_session() as session:
+            result = (await session.execute(query)).all()
+            disknames = [x[0] for x in result]
+
+        response = []
+        for diskname in disknames:
+            query = select(SampleDisk).where(
+                        (SampleDisk.cluster == cluster),
+                        (SampleDisk.node == node),
+                        (SampleDisk.name == diskname),
+                        (SampleDisk.time >= fromtimestamp(start_time_in_s)),
+                        (SampleDisk.time <= fromtimestamp(end_time_in_s)),
+                   ).order_by(
+                        SampleDisk.time.desc()
+                   )
+
+            async with self.make_async_session() as session:
+                result = (await session.execute(query)).all()
+                data = [ SampleDiskResponse(**dict(x[0])) for x in result ]
+
+            response.append(SampleDiskTimeseriesResponse(
+                    name=diskname,
+                    major=result[0][0].major,
+                    minor=result[0][0].minor,
+                    data=data
+                )
+            )
+        return response
+##### END SAMPLE (DISK) ###########################################################
 
 #### BEGIN JOBS #####################################################################
     async def get_active_jobs(self,
@@ -2240,8 +2300,8 @@ class ClusterDB(Database):
                             func.array_agg(SampleSlurmJob.nodes.distinct())
                           ).where(
                               (SampleSlurmJob.cluster == cluster) &
+                              (SampleSlurmJob.nodes.is_not(None)) &
                               (SampleSlurmJob.time >= fromtimestamp(time_in_s - interval_in_s)) &
-
                               (SampleSlurmJob.time <= fromtimestamp(time_in_s))
                           )
         async with self.make_async_session() as session:

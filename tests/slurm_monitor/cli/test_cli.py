@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 
 import pytest
 
+
 import slurm_monitor.cli.main as cli_main
 from slurm_monitor.cli.db import DBParser
 from slurm_monitor.cli.probe import ProbeParser
@@ -15,7 +16,9 @@ from slurm_monitor.cli.spec import SpecParser
 from slurm_monitor.cli.data_import import ImportParser
 from slurm_monitor.cli.test import TestParser
 
+from slurm_monitor.db_operations import DBManager
 from slurm_monitor.utils.command import Command
+from slurm_monitor.db.v2.db_tables import SampleDisk
 
 @pytest.fixture
 def subparsers():
@@ -83,3 +86,18 @@ def test_db_parser(script_runner, timescaledb):
     assert len(unique_clusters) == 1
 
     assert list(unique_clusters)[0] == cluster
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_db_apply_changes(script_runner, test_db_v2, db_config, timescaledb):
+    SampleDisk.__table__.drop(test_db_v2.engine)
+    tablename = SampleDisk.__tablename__
+
+    initial_status = DBManager.get_status(timescaledb)
+    assert tablename not in initial_status
+
+    result = script_runner.run(['slurm-monitor', 'db', "--db-uri", str(timescaledb), "--apply-changes"])
+    assert result.returncode == 0
+    assert re.search(r"added tables: \['" + tablename + r"'\]", result.stdout) is not None
+
+    new_status = DBManager.get_status(timescaledb)
+    assert tablename in new_status

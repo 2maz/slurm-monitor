@@ -8,6 +8,7 @@ from slurm_monitor.db.v2.db_tables import (
         Partition,
         Node,
         NodeState,
+        SampleDisk,
         SampleGpu,
         SampleProcess,
         SampleProcessGpu,
@@ -35,6 +36,7 @@ class TestDBConfig(BaseModel):
     number_of_clusters: int = 2
     number_of_partitions: int = 2
     number_of_nodes: int = 2
+    number_of_disks: int = 2
     number_of_cpus: int = 2
     number_of_gpus: int = 2
     number_of_jobs: int = 4
@@ -157,6 +159,22 @@ def create_test_db(
                     time=time
                 )
             )
+
+            major = 100
+            stats = [x*100 for x in range(17)]
+
+            for minor in range(0, config.number_of_disks):
+                disk_name = f"disk-{major}-{minor}"
+                dbi.insert(SampleDisk.create(
+                        cluster=cluster_name,
+                        node=n,
+                        name=disk_name,
+                        major=major,
+                        minor=minor,
+                        stats=stats,
+                        time=utcnow()
+                    )
+                )
 
             cards = []
             for gpu in range(0, config.number_of_gpus):

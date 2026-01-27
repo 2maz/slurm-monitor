@@ -11,6 +11,7 @@ from slurm_monitor.db.v2.db_tables import (
     Node,
     NodeState,
     Partition,
+    SampleDisk,
     SampleGpu,
     SampleProcess,
     SampleProcessGpu,
@@ -213,6 +214,7 @@ class DBJsonImporter(Importer):
 
         self.update_last_msg(node=node, time=time)
 
+        disk_samples = []
         gpu_samples = []
         sample_system = None
 
@@ -220,6 +222,19 @@ class DBJsonImporter(Importer):
 
         active_gpus = set()
         if system:
+            if "disks" in system:
+                disks = system["disks"]
+                del system["disks"]
+
+                for disk in disks:
+                    disk_sample = SampleDisk.create(
+                        cluster=cluster,
+                        node=node,
+                        **disk,
+                        time=time
+                    )
+                    disk_samples.append(disk_sample)
+
             if "gpus" in system:
                 gpus = system["gpus"]
                 del system["gpus"]
@@ -285,7 +300,7 @@ class DBJsonImporter(Importer):
 
                    **process)
                 )
-        rows = self.ensure_node(cluster=cluster, node=node, rows=[gpu_samples, gpu_card_process_stati, process_stati, sample_system])
+        rows = self.ensure_node(cluster=cluster, node=node, rows=[disk_samples, gpu_samples, gpu_card_process_stati, process_stati, sample_system])
         for uuid in active_gpus:
             rows = self.ensure_gpu(cluster=cluster, node=node, uuid=uuid, rows=rows)
 

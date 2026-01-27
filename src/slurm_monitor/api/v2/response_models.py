@@ -10,6 +10,8 @@ from pydantic import (
 )
 from typing import TypeVar, Generic
 
+from slurm_monitor.db.v2.db_tables import SampleDisk
+
 UUID = str
 
 # Here we defined the response model for the REST API
@@ -279,6 +281,8 @@ class SampleProcessResponse(TimestampedModel):
         two processes. {doc_sample_process}"""
     )
 
+    in_container: bool = Field(description="True if process is deemed part of a container", default=False)
+
 class SampleProcessAccResponse(TimestampedModel):
     memory_resident: float = Field(description="Current resident memory usage in KiB")
     memory_virtual: float = Field(description="Current virtual memory usage in KiB")
@@ -290,6 +294,48 @@ class SampleProcessAccResponse(TimestampedModel):
 
     # computed field
     processes_avg: float = Field(description="Average number of processes running for this accumulated response")
+
+class SampleDiskResponse(TimestampedModel):
+    reads_completed:             int = Field(description="Number of completed reads")
+    reads_merged:                int = Field(description="Number of reads merged (adjacent reads might be merged)")
+    sectors_read:                int = Field(description="Number of sector read")
+    ms_spent_reading:            int = Field(description="Milliseconds spent reading")
+
+    writes_completed:            int = Field(description="Number of writes completed")
+    writes_merged:               int = Field(description="Number of merged writes")
+    sectors_written:             int = Field(description="Number of sectors being written")
+    ms_spent_writing:            int = Field(description="Milliseconds spent writing")
+
+    ios_currently_in_progress:   int = Field(description="Number of I/Os in progress")
+    ms_spent_doing_ios:          int = Field(description="Milliseconds on doing I/Os")
+    weighted_ms_spent_doing_ios: int = Field(description="Weighted milliseconds spend on doing I/Os")
+
+    discards_completed:          int = Field(description="Number of completed discards")
+    discards_merged:             int = Field(description="Number of sectors discarded")
+    sectors_discarded:           int = Field(description="Number of section that have been discarded")
+    ms_spent_discarding:         int = Field(description="Milliseconds spent dicarding")
+
+    flush_requests_completed:    int = Field(description="Number of completed flush requests")
+    ms_spent_flushing:           int = Field(description="Milliseconds spent flushing")
+
+class SampleDiskTimeseriesResponse(BaseModel):
+    """
+    provide the timeseries of samples
+    """
+    name: str = Field(description="Name of the disk")
+    major: int = Field(description="Major device number")
+    minor: int = Field(description="Minor device number")
+
+    field_names: list[str] = Field(default=list(SampleDisk.diskstats().keys()), description="diskstat fieldnames")
+    data: list[SampleDiskResponse] = Field(description="Timeseries of SampleDisk for this disk")
+
+
+class NodeDiskTimeseriesResponse(RootModel):
+    """
+        List of timeseries data per node
+    """
+    root: dict[str, list[SampleDiskTimeseriesResponse]]
+
 
 class NodeInfoResponse(TimestampedModel):
     cluster: str = Field(description="Name of the cluster")
