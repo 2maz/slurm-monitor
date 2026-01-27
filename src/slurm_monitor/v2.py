@@ -22,6 +22,7 @@ from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.db_operations import DBManager
 from slurm_monitor.api.v2.router import app as api_v2_app
 from slurm_monitor.utils.api import find_endpoint_by_name
+from slurm_monitor.utils.api import createFastAPI
 
 import logging
 from logging import getLogger
@@ -90,11 +91,10 @@ tags_metadata = [
     },
 ]
 
-app = FastAPI(
-    title="slurm-monitor", description="slurm monitor", version="0.2", lifespan=lifespan,
-    openapi_tags=tags_metadata
-)
-
+app = createFastAPI(
+        lifespan=lifespan,
+        openapi_tags=tags_metadata,
+      )
 
 app.add_middleware(
     CORSMiddleware,
