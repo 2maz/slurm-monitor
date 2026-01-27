@@ -167,6 +167,7 @@ async def test_get_node_sample_disk_timeseries(test_db_v2, db_config):
             end_time_in_s=end_time_in_s,
             resolution_in_s=60
     )
+    assert [x.name for x in timeseries] == ['disk-100-0', 'disk-100-1']
 
 @pytest.mark.asyncio(loop_scope="module")
 async def test_get_latest_topics_timestamp(test_db_v2, db_config):
