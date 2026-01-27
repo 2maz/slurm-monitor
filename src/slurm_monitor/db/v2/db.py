@@ -2300,7 +2300,7 @@ class ClusterDB(Database):
                             func.array_agg(SampleSlurmJob.nodes.distinct())
                           ).where(
                               (SampleSlurmJob.cluster == cluster) &
-                              (SampleSlurmJob.nodes != None) &
+                              (SampleSlurmJob.nodes.is_not(None)) &
                               (SampleSlurmJob.time >= fromtimestamp(time_in_s - interval_in_s)) &
                               (SampleSlurmJob.time <= fromtimestamp(time_in_s))
                           )
