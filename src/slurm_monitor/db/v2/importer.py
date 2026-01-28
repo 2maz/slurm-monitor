@@ -270,6 +270,9 @@ class DBJsonImporter(Importer):
             epoch = job.get('epoch', 0)
 
             for process in job["processes"]:
+                if 'pid' not in process:
+                    process['pid'] = 0
+
                 pid = process['pid']
 
                 if "gpus" in process:
