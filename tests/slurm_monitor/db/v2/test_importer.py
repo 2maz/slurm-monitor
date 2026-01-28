@@ -210,7 +210,8 @@ async def test_DBJsonImporter_non_slurm(sonar_msg, test_db_v2):
              "0+sample-g001.ex3.simula.no.json"
           ],
          { "ex3.simula.no": {"g001", "g002"}}
-        ]
+        ],
+        [[ "3+sample.fox.educloud.no.json" ], {"fox.educloud.no": {"c1-10.fox"}} ],
     ]
 )
 async def test_DBJsonImporter_sonar_examples(sonar_msg_files,
