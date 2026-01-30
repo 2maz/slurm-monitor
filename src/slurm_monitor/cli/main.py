@@ -16,14 +16,19 @@ from slurm_monitor.cli.data_import import ImportParser
 from slurm_monitor.cli.test import TestParser
 
 from slurm_monitor import __version__
+from slurm_monitor.config import (
+    SLURM_MONITOR_LOG_FORMAT,
+    SLURM_MONITOR_LOG_STYLE,
+    SLURM_MONITOR_LOG_DATE_FORMAT
+)
 
 import slurm_monitor.timescaledb.dialect #noqa
 import slurm_monitor.timescaledb.functions #noqa
 
 logging.basicConfig(
-    format='[{asctime}][{levelname:^8s}] {name}: {message}',
-    style='{',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format=SLURM_MONITOR_LOG_FORMAT,
+    style=SLURM_MONITOR_LOG_STYLE,
+    datefmt=SLURM_MONITOR_LOG_DATE_FORMAT,
 )
 
 logger = getLogger(__name__)

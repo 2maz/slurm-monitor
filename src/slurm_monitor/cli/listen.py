@@ -65,6 +65,12 @@ class ListenParser(BaseParser):
                 help="Interval in seconds for generating stats output"
         )
 
+        parser.add_argument("--log-output",
+                type=str,
+                default=None,
+                help="Output file for the log - default: slurm-monitor-listen.<cluster-name>.log",
+        )
+
 
     def execute(self, args):
         super().execute(args)
@@ -120,6 +126,12 @@ class ListenParser(BaseParser):
                 if args.cluster_name:
                     stats_output = f"slurm-monitor-listen.{args.cluster_name}.stats.json"
 
+            log_output = args.log_output
+            if log_output is None:
+                log_output = "slurm-monitor-listen.log"
+                if args.cluster_name:
+                    log_output = f"slurm-monitor-listen.{args.cluster_name}.log"
+
             subscriber = MessageSubscriber(
                     host=args.host,
                     port=args.port,
@@ -130,6 +142,8 @@ class ListenParser(BaseParser):
                     strict_mode=args.use_strict_mode,
                     lookback_in_h=lookback_in_h,
                     stats_output=stats_output,
-                    stats_interval_in_s=args.stats_interval
+                    stats_interval_in_s=args.stats_interval,
+                    log_output=log_output,
+                    log_level=args.log_level
                 )
             subscriber.run()
