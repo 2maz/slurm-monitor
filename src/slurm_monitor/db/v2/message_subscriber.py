@@ -123,14 +123,15 @@ class MessageSubscriber:
 
                 self._screen.addstr(0, 0, f"{'-'*screenwidth}")
                 self._screen.addstr(1, 0, ">> Status: slurm-monitor listen")
-                self._screen.addstr(2, 0, f"{'-'*screenwidth}")
+                self._screen.addstr(2, 0, "   q to quit | l to change log level")
+                self._screen.addstr(3, 0, f"{'-'*screenwidth}")
 
-                self._screen.addstr(4, 0, self.highlight, curses.A_BOLD)
+                self._screen.addstr(5, 0, self.highlight, curses.A_BOLD)
 
                 # Messages
-                y_offset = 6
+                y_offset = 7
                 self._screen.addstr(y_offset,   0, f"{'-'*screenwidth}")
-                self._screen.addstr(y_offset+1, 0, "| Messages")
+                self._screen.addstr(y_offset+1, 0, f"| Messages (log level: {logging.getLevelName(logger.handlers[0].level)})")
                 self._screen.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
 
                 idx = 0
@@ -192,9 +193,18 @@ class MessageSubscriber:
 
                         group_sizes.append(len(values))
 
-                if self._screen.getch() == ord('q'):
+                key = self._screen.getch()
+                if key == ord('q'):
                     self.parent.state = MessageSubscriber.State.STOPPING
                     self._screen.addstr(0,0, "Received user's request to stop ... ]")
+                elif key == ord('l'):
+                    for handler in logger.handlers:
+                        current_level = handler.level
+                        if current_level == logging.CRITICAL:
+                            handler.setLevel(logging.getLevelName(logging.NOTSET))
+                        else:
+                            # see https://docs.python.org/3/library/logging.html#loggin.NOTSET
+                            handler.setLevel(logging.getLevelName(current_level+10))
 
                 self._screen.refresh()
             except Exception as e:
