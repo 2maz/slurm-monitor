@@ -1821,7 +1821,7 @@ class ClusterDB(Database):
                         (SampleDisk.time >= fromtimestamp(start_time_in_s)),
                         (SampleDisk.time <= fromtimestamp(end_time_in_s)),
                    ).order_by(
-                        SampleDisk.time.desc()
+                        SampleDisk.time.asc()
                    )
 
             async with self.make_async_session() as session:
