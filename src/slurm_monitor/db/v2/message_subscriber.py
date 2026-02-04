@@ -12,8 +12,9 @@ from kafka import KafkaConsumer, TopicPartition
 import json
 from pathlib import Path
 import re
+import sys
 import time
-from typing import Iterable
+from typing import Iterable, Callable
 import traceback as tb
 
 from slurm_monitor.utils import utcnow
@@ -92,6 +93,9 @@ class MessageSubscriber:
         next_stats_update: int
         highlight: str
 
+        current_tab: str
+        tabs: dict[str, Callable]
+
         max_msg_delay: int
         msg_timestamps: dict[str, dt.datetime]
 
@@ -106,8 +110,29 @@ class MessageSubscriber:
             self.next_stats_update = -1
             self.msg_timestamps = {}
 
+            self.current_tab_index = 0
+            self.tabs = [
+                "messages",
+                "statistics"
+            ]
+
         def put_nowait(self, record: logging.LogRecord):
             self.messages.append(record.message)
+
+        def addstr(self, y, x, text, attr = None):
+            screenheight, screenwidth = self._screen.getmaxyx()
+            if y > screenheight:
+                return
+
+            writeable_x = screenwidth - x -1
+            if writeable_x < 1:
+                return
+
+            if attr:
+                self._screen.addstr(y, x, text[:writeable_x], attr)
+            else:
+                self._screen.addstr(y, x, text[:writeable_x])
+
 
         def print(self):
             try:
@@ -119,84 +144,25 @@ class MessageSubscriber:
                     self._screen.nodelay(True)
 
                 self._screen.erase()
-                screenwidth = 120
 
-                self._screen.addstr(0, 0, f"{'-'*screenwidth}")
-                self._screen.addstr(1, 0, ">> Status: slurm-monitor listen")
-                self._screen.addstr(2, 0, "   q to quit | l to change log level")
-                self._screen.addstr(3, 0, f"{'-'*screenwidth}")
+                # header
+                screenheight, screenwidth = self._screen.getmaxyx()
 
-                self._screen.addstr(5, 0, self.highlight, curses.A_BOLD)
+                self.addstr(0, 0, f"{'-'*screenwidth}")
+                self.addstr(1, 0, ">> Status: slurm-monitor listen")
+                self.addstr(2, 0, "   q to quit | l to change log level | t to change tabs (" + ','.join(self.tabs) + ")")
+                self.addstr(3, 0, f"{'-'*screenwidth}")
 
-                # Messages
-                y_offset = 7
-                self._screen.addstr(y_offset,   0, f"{'-'*screenwidth}")
-                self._screen.addstr(y_offset+1, 0, f"| Messages (log level: {logging.getLevelName(logger.handlers[0].level)})")
-                self._screen.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
+                self.addstr(5, 0, self.highlight, curses.A_BOLD)
 
-                idx = 0
-                y_offset += 4
-                for idx, msg in enumerate(list(self.messages)[-20:]):
-                    self._screen.addstr(idx + y_offset, 0, msg)
-
-                # Nodes
-                y_offset += idx + 4
-                # sort by time, then by name
-                timesorted_messages = sorted([(k,v) for k,v in self.msg_timestamps.items()],key=itemgetter(1,0))
-                self._screen.addstr(y_offset,   0, f"{'-'*screenwidth}")
-                self._screen.addstr(y_offset+1, 0, "| Nodes")
-                self._screen.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
-
-                y_offset += 3
-                self._screen.addstr(y_offset, 0, "Recently seen first", curses.A_BOLD)
-                for idx, msg in enumerate(reversed(timesorted_messages[-15:])):
-                    self._screen.addstr(y_offset + idx + 1, 0, f"{msg[1]} {msg[0]}")
-                self._screen.addstr(y_offset + idx + 2, 0, "    ...")
-
-                self._screen.addstr(y_offset, 40, "Oldest seen first", curses.A_BOLD)
-                for idx, msg in enumerate(timesorted_messages[:15]):
-                    self._screen.addstr(y_offset + idx + 1, 40, f"{msg[1]} {msg[0]}")
-                self._screen.addstr(y_offset + idx + 2, 40, "    ...")
-
-
-                # Statistics
-                y_offset += 19
-                self._screen.addstr(y_offset,   0, f"{'-'*screenwidth}")
-                self._screen.addstr(y_offset+1, 0, f"| Statistics (update in: {self.next_stats_update:.2f} s)")
-                self._screen.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
-
-                if self.stats:
-                    group_header_y = y_offset + 3
-                    group_sizes = []
-                    columns = 3
-
-                    column_width = 40 # characters
-                    for group_idx, (group_name, values) in enumerate(self.stats.items()):
-                        group_header_x = (group_idx % columns)*column_width
-
-                        # when to reset the group_header_y, so to progress to the next 'row' of groups
-                        if group_sizes and group_idx % columns == 0:
-                            group_header_y += max(group_sizes) + 4
-                            group_sizes = []
-
-                        # Group Header
-                        self._screen.addstr(group_header_y, group_header_x, group_name, curses.A_BOLD)
-                        # Properties
-                        for field_idx, (field_name, field_value) in enumerate(values.items()):
-                            if type(field_value) is float:
-                                field_value = f"{field_value:.5f}"
-
-                            try:
-                                self._screen.addstr(group_header_y + 2 + field_idx, group_header_x, f"{field_name}: {field_value}", curses.A_DIM)
-                            except curses.error:
-                                pass
-
-                        group_sizes.append(len(values))
+                tab_name = self.tabs[self.current_tab_index]
+                if hasattr(self, f"tab_{tab_name}"):
+                    getattr(self, f"tab_{tab_name}")(y_offset=7, screenwidth=screenwidth)
 
                 key = self._screen.getch()
                 if key == ord('q'):
                     self.parent.state = MessageSubscriber.State.STOPPING
-                    self._screen.addstr(0,0, "Received user's request to stop ... ]")
+                    self.addstr(0,0, "Received user's request to stop ... ]")
                 elif key == ord('l'):
                     for handler in logger.handlers:
                         current_level = handler.level
@@ -205,11 +171,85 @@ class MessageSubscriber:
                         else:
                             # see https://docs.python.org/3/library/logging.html#loggin.NOTSET
                             handler.setLevel(logging.getLevelName(current_level+10))
+                elif key == ord('t'):
+                    self.current_tab_index += 1
+                    if self.current_tab_index >= len(self.tabs):
+                        self.current_tab_index = 0
 
                 self._screen.refresh()
             except Exception as e:
-                print("Screen update failed: {e}")
-                tb.print_tb(e.__traceback__)
+                logger.error(f"Screen update failed: {e}")
+                print(f"Screen update failed: {e}")
+                sys.exit(0)
+
+
+        def tab_messages(self, y_offset: int, screenwidth: int):
+                # Messages
+                self.addstr(y_offset,   0, f"{'-'*screenwidth}")
+                self.addstr(y_offset+1, 0, f"| Messages (log level: {logging.getLevelName(logger.handlers[0].level)})")
+                self.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
+
+                idx = 0
+                y_offset += 4
+                for idx, msg in enumerate(list(self.messages)[-20:]):
+                    self.addstr(idx + y_offset, 0, msg)
+
+                # Nodes
+                y_offset += idx + 4
+                # sort by time, then by name
+                timesorted_messages = sorted([(k,v) for k,v in self.msg_timestamps.items()],key=itemgetter(1,0))
+                self.addstr(y_offset,   0, f"{'-'*screenwidth}")
+                self.addstr(y_offset+1, 0, "| Nodes")
+                self.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
+
+                y_offset += 3
+                self.addstr(y_offset, 0, "Recently seen first", curses.A_BOLD)
+                for idx, msg in enumerate(reversed(timesorted_messages[-15:])):
+                    self.addstr(y_offset + idx + 1, 0, f"{msg[1]} {msg[0]}")
+                self.addstr(y_offset + idx + 2, 0, "    ...")
+
+                self.addstr(y_offset, 40, "Oldest seen first", curses.A_BOLD)
+                for idx, msg in enumerate(timesorted_messages[:15]):
+                    self.addstr(y_offset + idx + 1, 40, f"{msg[1]} {msg[0]}")
+                self.addstr(y_offset + idx + 2, 40, "    ...")
+
+                return y_offset
+
+        def tab_statistics(self, y_offset: int, screenwidth: int):
+            # Statistics
+            self.addstr(y_offset,   0, f"{'-'*screenwidth}")
+            self.addstr(y_offset+1, 0, f"| Statistics (update in: {self.next_stats_update:.2f} s)")
+            self.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
+
+            if self.stats:
+                group_header_y = y_offset + 3
+                group_sizes = []
+                columns = 3
+
+                column_width = 40 # characters
+                for group_idx, (group_name, values) in enumerate(self.stats.items()):
+                    group_header_x = (group_idx % columns)*column_width
+
+                    # when to reset the group_header_y, so to progress to the next 'row' of groups
+                    if group_sizes and group_idx % columns == 0:
+                        group_header_y += max(group_sizes) + 4
+                        group_sizes = []
+
+                    # Group Header
+                    self.addstr(group_header_y, group_header_x, group_name, curses.A_BOLD)
+                    # Properties
+                    for field_idx, (field_name, field_value) in enumerate(values.items()):
+                        if type(field_value) is float:
+                            field_value = f"{field_value:.5f}"
+
+                        try:
+                            y_offset = group_header_y + 2 + field_idx
+                            self.addstr(y_offset, group_header_x, f"{field_name}: {field_value}", curses.A_DIM)
+                        except curses.error:
+                            pass
+
+                    group_sizes.append(len(values))
+                return y_offset
 
         def close(self):
             if self._screen:
