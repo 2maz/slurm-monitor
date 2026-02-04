@@ -302,6 +302,9 @@ class MessageSubscriber:
         self.output = MessageSubscriber.Output(parent=self)
 
         # setup the logging
+        root_logger = logging.getLogger()
+        root_logger.handlers.clear()
+
         formatter = logging.Formatter(
             fmt=SLURM_MONITOR_LOG_FORMAT,
             datefmt=SLURM_MONITOR_LOG_DATE_FORMAT,
@@ -312,12 +315,14 @@ class MessageSubscriber:
         queue_handler.setLevel(logging.getLevelName(log_level))
         queue_handler.setFormatter(formatter)
         logger.addHandler(queue_handler)
+        root_logger.addHandler(queue_handler)
 
         if self.log_output:
             file_handler = TimedRotatingFileHandler(self.log_output, when='d', interval=3)
             file_handler.setLevel(logging.getLevelName(log_level))
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
+            root_logger.addHandler(file_handler)
 
 
     @classmethod
@@ -377,6 +382,8 @@ class MessageSubscriber:
 
         while topics and not self.state == self.State.STOPPING:
             interval_start_time = dt.datetime.now(dt.timezone.utc)
+
+            self.output.print()
 
             consumer._fetch_all_topic_metadata()
             if not consumer.assignment():
