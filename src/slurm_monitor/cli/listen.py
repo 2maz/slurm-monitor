@@ -1,16 +1,28 @@
 from argparse import ArgumentParser
 from sqlalchemy import inspect
+import zmq
 
 from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.app_settings import AppSettings
+from slurm_monitor.db.v2.message_subscriber import MessageSubscriber, TerminalDisplay
 
 import logging
 
 logger = logging.getLogger(__name__)
 
+SLURM_MONITOR_LISTEN_UI_PORT = 9095
+
 class ListenParser(BaseParser):
+    socket: zmq.Socket
+
+    ui_host: str | None
+    ui_port: int | None
+
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
+
+        context = zmq.Context()
+        self.socket = context.socket(zmq.PUSH)
 
         parser.add_argument("--host", type=str, default=None, required=True)
         parser.add_argument("--db-uri", type=str, default=None, help="sqlite:////tmp/sqlite.db or timescaledb://slurmuser:test@localhost:7000/ex3cluster")
@@ -71,6 +83,18 @@ class ListenParser(BaseParser):
                 help="Output file for the log - default: slurm-monitor-listen.<cluster-name>.log",
         )
 
+        parser.add_argument("--ui-host",
+                            type=str,
+                            default="localhost",
+                            help="Set the ui host")
+
+        parser.add_argument("--ui-port",
+                            type=int,
+                            default=SLURM_MONITOR_LISTEN_UI_PORT,
+                            help=f"Set the ui port, default is {SLURM_MONITOR_LISTEN_UI_PORT}")
+
+    def publish_status(self, output: MessageSubscriber.Output):
+        self.socket.send_json(dict(output), default=str)
 
     def execute(self, args):
         super().execute(args)
@@ -94,9 +118,6 @@ class ListenParser(BaseParser):
                  database=database,
                  topic=args.topic)
         elif args.use_version == "v2":
-            from slurm_monitor.db.v2.message_subscriber import (
-                    MessageSubscriber
-            )
             from slurm_monitor.db.v2.db import ClusterDB
 
             lookback_in_h = MessageSubscriber.extract_lookbacks(args.lookback)
@@ -132,6 +153,9 @@ class ListenParser(BaseParser):
                 if args.cluster_name:
                     log_output = f"slurm-monitor-listen.{args.cluster_name}.log"
 
+            if args.ui_host and args.ui_port:
+                self.socket.connect(f"tcp://{args.ui_host}:{args.ui_port}")
+
             subscriber = MessageSubscriber(
                     host=args.host,
                     port=args.port,
@@ -144,6 +168,48 @@ class ListenParser(BaseParser):
                     stats_output=stats_output,
                     stats_interval_in_s=args.stats_interval,
                     log_output=log_output,
-                    log_level=args.log_level
+                    log_level=args.log_level,
+                    output_fn=self.publish_status
                 )
             subscriber.run()
+
+class ListenUiParser(BaseParser):
+    socket: zmq.Socket
+
+    ui_host: str | None
+    ui_port: int | None
+
+    def __init__(self, parser: ArgumentParser):
+        super().__init__(parser=parser)
+
+        context = zmq.Context()
+        self.socket = context.socket(zmq.PULL)
+
+        parser.add_argument("--cluster-name",
+                nargs="+",
+                type=str,
+                help="Cluster(s) for which the topics shall be extracted",
+        )
+
+        parser.add_argument("--ui-host",
+                            type=str,
+                            default="localhost",
+                            help="Set the ui host")
+
+        parser.add_argument("--ui-port",
+                            type=int,
+                            default=SLURM_MONITOR_LISTEN_UI_PORT,
+                            help=f"Set the ui port, default is {SLURM_MONITOR_LISTEN_UI_PORT}")
+
+    def execute(self, args):
+        super().execute(args)
+
+        if args.ui_host and args.ui_port:
+            self.socket.bind(f"tcp://*:{args.ui_port}")
+
+        def update():
+            message = self.socket.recv_json()
+            return MessageSubscriber.Output.from_dict(message)
+
+        display = TerminalDisplay(update_fn=update)
+        display.run()
