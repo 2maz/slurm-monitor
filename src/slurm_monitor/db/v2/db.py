@@ -2009,7 +2009,59 @@ class ClusterDB(Database):
             min_duration_in_s: float | None = None,
             max_duration_in_s: float | None = None,
             states: list[str] | None = None,
-            limit: int = 100
+            limit: int = 100,
+            page: int | None = None,
+            page_size: int | None = None,
+        ):
+
+        cluster_attributes = await self.get_cluster(cluster=cluster)
+        if not cluster_attributes:
+            raise ValueError("Failed to retrieve cluster information for '{cluster}'")
+
+        if cluster_attributes.slurm:
+            return await self.query_slurm_jobs(
+                    cluster=cluster,
+                    user=user,
+                    user_id=user_id,
+                    job_id=job_id,
+                    partition=partition,
+                    nodelist=nodelist,
+                    start_before_in_s=start_before_in_s,
+                    start_after_in_s=start_after_in_s,
+                    end_before_in_s=end_before_in_s,
+                    end_after_in_s=end_after_in_s,
+                    submit_before_in_s=submit_before_in_s,
+                    submit_after_in_s=submit_after_in_s,
+                    min_duration_in_s=min_duration_in_s,
+                    max_duration_in_s=max_duration_in_s,
+                    states=states,
+                    limit=limit,
+                    page=page,
+                    page_size=page_size
+                )
+
+        raise RuntimeError("Query support for non-slurm cluster '{cluster}' is not available")
+
+
+    async def query_slurm_jobs(self,
+            cluster: str,
+            user: str | None = None,
+            user_id: int | None = None,
+            job_id: int | None = None,
+            partition: str | None = None,
+            nodelist: list[str] | None = None,
+            start_before_in_s: float | None = None,
+            start_after_in_s: float | None = None,
+            end_before_in_s: float | None = None,
+            end_after_in_s: float | None = None,
+            submit_before_in_s: float | None = None,
+            submit_after_in_s: float | None = None,
+            min_duration_in_s: float | None = None,
+            max_duration_in_s: float | None = None,
+            states: list[str] | None = None,
+            limit: int = 100,
+            page: int | None = None,
+            page_size: int | None = None,
         ):
 
         where = sqlalchemy.sql.true()
@@ -2061,27 +2113,36 @@ class ClusterDB(Database):
         if states:
             where &= (SampleSlurmJob.job_state.in_(states))
 
-        where &= (SampleSlurmJob.user_name != '')
+        if not user or user != '':
+            where &= (SampleSlurmJob.user_name != '')
+
         subquery = select(
                     SampleSlurmJob.job_id.label('job_id'),
                     func.max(SampleSlurmJob.time).label('last_timestamp')
                 ).where(
-                    where &
-                    (SampleSlurmJob.user_name != '')
+                    where
                 ).group_by(
                     SampleSlurmJob.job_id
-                ).order_by(None).subquery()
+                ).order_by(None)
+
+        # pagination request, so using offset
+        if page_size and page:
+            limit = page_size
+            subquery = subquery.offset(page_size * page)
+
+        subquery = subquery.limit(limit).subquery()
 
         query = select(
                     SampleSlurmJob
                 ).where(
-                    (SampleSlurmJob.user_name != '') &
-                    (SampleSlurmJob.job_id == subquery.c.job_id) &
+                    (SampleSlurmJob.user_name != ''),
+                    (SampleSlurmJob.job_id == subquery.c.job_id),
                     (SampleSlurmJob.time == subquery.c.last_timestamp)
                 )
 
         async with self.make_async_session() as session:
-            return [dict(x[0]) for x in (await session.execute(query)).all()]
+            rows = (await session.execute(query)).all()
+            return [dict(x[0]) for x in rows]
 
 
     async def get_slurm_jobs(
@@ -2092,6 +2153,10 @@ class ClusterDB(Database):
             states: list[str] | None = None,
             start_time_in_s: int | None = None,
             end_time_in_s: int | None = None,
+            # cursor for splitting query response into chunks
+            from_job_id: int | None = None,
+            order_by: str | None = None,
+            limit: int | None = None,
         ):
         """
         Get the SLURM job status for all jobs in a cluster (on the queue or recently completed)
@@ -2115,6 +2180,9 @@ class ClusterDB(Database):
         if nodelist:
             where &= (SampleSlurmJob.nodes.overlap(nodelist))
 
+        if from_job_id:
+            where &= (SampleSlurmJob.job_id <= from_job_id)
+
         # make sure we get process sample for jobs, otherwise they might
         # be reported, but not running (a SLURM bug)
         observable_jobs = [x[0] for x in (await self.get_active_jobs(cluster=cluster,
@@ -2123,7 +2191,7 @@ class ClusterDB(Database):
         ))]
 
         # identify the latest job sample
-        subquery = select(
+        jobs_subquery = select(
                 SampleSlurmJob.job_id,
                 SampleSlurmJob.job_step,
                 func.max(SampleSlurmJob.time).label("max_time")
@@ -2133,7 +2201,14 @@ class ClusterDB(Database):
             ).group_by(
                 SampleSlurmJob.job_id,
                 SampleSlurmJob.job_step
-            ).subquery()
+            )
+
+        if order_by:
+            jobs_subquery.order_by(order_by)
+        if limit:
+            jobs_subquery.limit(limit)
+
+        jobs_subquery = jobs_subquery.subquery()
 
         gpus_subquery = select(
                     SampleProcessGpu.cluster,
@@ -2153,18 +2228,18 @@ class ClusterDB(Database):
                     SampleSlurmJob,
                     SampleSlurmJobAcc,
                     gpus_subquery.c.used_gpu_uuids
-                ).join(subquery,#
+                ).join(jobs_subquery,
                     (SampleSlurmJob.cluster == cluster) &
-                    (subquery.c.job_id == SampleSlurmJob.job_id) &
-                    (subquery.c.job_step == SampleSlurmJob.job_step) &
-                    (subquery.c.max_time == SampleSlurmJob.time) &
+                    (jobs_subquery.c.job_id == SampleSlurmJob.job_id) &
+                    (jobs_subquery.c.job_step == SampleSlurmJob.job_step) &
+                    (jobs_subquery.c.max_time == SampleSlurmJob.time) &
                     (fromtimestamp(start_time_in_s) <= SampleSlurmJob.time) &
                     (fromtimestamp(end_time_in_s) >= SampleSlurmJob.time)
                 ).join(SampleSlurmJobAcc,
                     (SampleSlurmJobAcc.cluster == cluster) &
-                    (subquery.c.job_id == SampleSlurmJobAcc.job_id) &
-                    (subquery.c.job_step == SampleSlurmJobAcc.job_step) &
-                    (subquery.c.max_time == SampleSlurmJobAcc.time) &
+                    (jobs_subquery.c.job_id == SampleSlurmJobAcc.job_id) &
+                    (jobs_subquery.c.job_step == SampleSlurmJobAcc.job_step) &
+                    (jobs_subquery.c.max_time == SampleSlurmJobAcc.time) &
                     (fromtimestamp(start_time_in_s) <= SampleSlurmJobAcc.time) &
                     (fromtimestamp(end_time_in_s) >= SampleSlurmJobAcc.time),
                     isouter=True

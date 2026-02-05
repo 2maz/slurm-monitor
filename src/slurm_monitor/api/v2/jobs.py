@@ -207,10 +207,16 @@ async def query_jobs(
     submit_after_in_s: float | None = None,
     min_duration_in_s: float | None = None,
     max_duration_in_s: float | None = None,
-    states: str = "",
+    states: str | None = None,
     limit: int = 100,
+    page: int | None = None,
+    page_size: int | None = None,
     dbi: ClusterDB = Depends(DBManager.get_database)
 ):
+    job_states = None
+    if states:
+        job_states = states.split(",")
+
     return {"jobs": await dbi.query_jobs(
         cluster=cluster,
         user=user,
@@ -224,8 +230,10 @@ async def query_jobs(
         submit_after_in_s=submit_after_in_s,
         min_duration_in_s=min_duration_in_s,
         max_duration_in_s=max_duration_in_s,
-        states=states.split(","),
-        limit=limit
+        states=job_states,
+        limit=limit,
+        page_size=page_size,
+        page=page
         )
     }
 
