@@ -2,12 +2,9 @@ from fastapi import Depends
 from fastapi_cache.decorator import cache
 import fastapi_pagination
 from fastapi_pagination import Params, Page
-# avoid warning on not using sqlalchemy.ext.paginate
-# we query directly to cache the full query response on the db layer
-from fastapi_pagination.utils import disable_installed_extensions_check # noqa
 
-
-from typing import Annotated
+from pydantic import Field
+from typing import Annotated, Generic, TypeVar, Sequence
 
 from slurm_monitor.utils import utcnow
 from slurm_monitor.db_operations import DBManager
@@ -26,6 +23,20 @@ from slurm_monitor.api.v2.response_models import (
     SystemProcessTimeseriesResponse,
     JobNodeSampleProcessGpuTimeseriesResponse,
 )
+
+# avoid warning on not using sqlalchemy.ext.paginate
+# we query directly to cache the full query response on the db layer
+fastapi_pagination.utils.disable_installed_extensions_check()
+
+T = TypeVar("T")
+def create_custom_page(items_alias: str):
+    class CustomPage(Page[T], Generic[T]):
+        items: Sequence[T] = Field(alias=items_alias)
+        model_config = { 'populate_by_name': True }
+
+    return CustomPage
+
+JobsPage = create_custom_page("jobs")
 
 @api_router.get("/cluster/{cluster}/jobs/process/timeseries",
         summary="Get all jobs process timeseries-data (cpu/memory/gpu) on a given cluster",
@@ -241,7 +252,7 @@ async def query_jobs(
 @api_router.get("/cluster/{cluster}/query/jobs/pages",
         summary="Provides a generic job query interface",
         tags=["cluster"],
-        response_model=Page[JobResponse]
+        response_model=JobsPage[JobResponse]
         )
 async def query_jobs_pages(
     token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
@@ -285,6 +296,7 @@ async def query_jobs_pages(
         limit=limit,
         timestamp=timestamp
         )
+
     return fastapi_pagination.paginate(jobs, params=Params(page=page, size=page_size))
 
 
