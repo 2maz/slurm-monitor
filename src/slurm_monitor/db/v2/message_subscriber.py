@@ -147,7 +147,7 @@ class TerminalDisplay:
             self.addstr(2, 0, "   q to quit | l to change log level | t to change tabs (" + ','.join(self.tabs) + ")")
             self.addstr(3, 0, "   c to change the cluster")
             self.addstr(4, 0, " "*screenwidth)
-            self.addstr(5, 0, f"    Listener attached to {len(self.clusters)} listeners (last seen):")
+            self.addstr(5, 0, f"    UI attached to {len(self.clusters)} listeners (last seen):")
             y_offset = 6
 
             for idx, (cluster, output) in enumerate(self.clusters.items(), start=y_offset):
@@ -222,15 +222,18 @@ class TerminalDisplay:
             self.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
 
             y_offset += 3
+            column_x = max(min(screenwidth / 2, 40), 100)
             self.addstr(y_offset, 0, "Recently seen first", curses.A_BOLD)
             for idx, msg in enumerate(reversed(timesorted_messages[-15:])):
-                self.addstr(y_offset + idx + 1, 0, f"{msg[1]} {msg[0]}")
+                row = f"{msg[1]} {msg[0]}"
+                self.addstr(y_offset + idx + 1, 0, row[:column_x-1])
             self.addstr(y_offset + idx + 2, 0, "    ...")
 
-            self.addstr(y_offset, 40, "Oldest seen first", curses.A_BOLD)
+            self.addstr(y_offset, column_x, "Oldest seen first", curses.A_BOLD)
             for idx, msg in enumerate(timesorted_messages[:15]):
-                self.addstr(y_offset + idx + 1, 40, f"{msg[1]} {msg[0]}")
-            self.addstr(y_offset + idx + 2, 40, "    ...")
+                row = f"{msg[1]} {msg[0]}"
+                self.addstr(y_offset + idx + 1, column_x, row[:column_x-1])
+            self.addstr(y_offset + idx + 2, column_x, "    ...")
 
             return y_offset
 
