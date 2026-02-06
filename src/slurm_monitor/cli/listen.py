@@ -10,7 +10,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-SLURM_MONITOR_LISTEN_UI_PORT = 9095
+SLURM_MONITOR_LISTEN_PORT = 9099
+SLURM_MONITOR_LISTEN_UI_PORT = 25052
 
 class ListenParser(BaseParser):
     socket: zmq.Socket
@@ -26,7 +27,7 @@ class ListenParser(BaseParser):
 
         parser.add_argument("--host", type=str, default=None, required=True)
         parser.add_argument("--db-uri", type=str, default=None, help="sqlite:////tmp/sqlite.db or timescaledb://slurmuser:test@localhost:7000/ex3cluster")
-        parser.add_argument("--port", type=int, default=9099)
+        parser.add_argument("--port", type=int, default=SLURM_MONITOR_LISTEN_PORT)
 
         parser.add_argument("--cluster-name",
                 type=str,
@@ -193,7 +194,7 @@ class ListenUiParser(BaseParser):
 
         parser.add_argument("--ui-host",
                             type=str,
-                            default="localhost",
+                            default="*",
                             help="Set the ui host")
 
         parser.add_argument("--ui-port",
@@ -205,11 +206,14 @@ class ListenUiParser(BaseParser):
         super().execute(args)
 
         if args.ui_host and args.ui_port:
-            self.socket.bind(f"tcp://*:{args.ui_port}")
+            self.socket.bind(f"tcp://{args.ui_host}:{args.ui_port}")
 
         def update():
-            message = self.socket.recv_json()
-            return MessageSubscriber.Output.from_dict(message)
+            try:
+                message = self.socket.recv_json(flags=zmq.NOBLOCK)
+                return MessageSubscriber.Output.from_dict(message)
+            except zmq.error.ZMQError:
+                return None
 
         display = TerminalDisplay(update_fn=update)
         display.run()

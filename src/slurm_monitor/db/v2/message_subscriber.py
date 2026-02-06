@@ -17,6 +17,7 @@ import sys
 import time
 from typing import Iterable, Callable
 import traceback as tb
+import threading
 
 from slurm_monitor.utils import utcnow
 import slurm_monitor.db.v2.sonar as sonar
@@ -67,10 +68,11 @@ class TopicBound:
         self.upper_bound = upper_bound
 
 class TerminalDisplay:
-    update_fn: Callable[MessageSubscriber.Output]
     stop: bool
-
     clusters: dict[str, MessageSubscriber.Output]
+
+    update_fn: Callable[MessageSubscriber.Output]
+    update_thread: threading.Thread
 
     def __init__(self, update_fn: Callable[MessageSubscriber.Output]):
         self._screen = None
@@ -87,15 +89,26 @@ class TerminalDisplay:
         self.update_fn = update_fn
         self.stop = False
 
+        self.update_thread = threading.Thread(target=self.update)
+
+    def update(self):
+        while not self.stop:
+            output = self.update_fn()
+            if not output:
+                time.sleep(0.1)
+            else:
+                self.clusters[output.cluster] = output
 
     def run(self):
+        self.update_thread.start()
         try:
             while not self.stop:
-                output = self.update_fn()
-                self.clusters[output.cluster] = output
                 self.show()
+                time.sleep(0.1)
         finally:
+            self.stop = True
             self.close()
+            self.update_thread.join()
 
     def addstr(self, y, x, text, attr = None):
         screenheight, screenwidth = self._screen.getmaxyx()
@@ -122,45 +135,53 @@ class TerminalDisplay:
 
             self._screen.erase()
 
-            current_cluster = list(self.clusters.keys())[self.current_cluster_index]
-            output = self.clusters[current_cluster]
+            current_cluster = None
+            if self.clusters:
+                current_cluster = list(self.clusters.keys())[self.current_cluster_index]
 
             # header
             screenheight, screenwidth = self._screen.getmaxyx()
 
             self.addstr(0, 0, f"{'-'*screenwidth}")
-            self.addstr(1, 0, f">> Status: slurm-monitor listen --cluster {output.cluster}")
+            self.addstr(1, 0, f">> Status: slurm-monitor listen --cluster-name {current_cluster}")
             self.addstr(2, 0, "   q to quit | l to change log level | t to change tabs (" + ','.join(self.tabs) + ")")
-            self.addstr(3, 0, " "*screenwidth)
-            self.addstr(4, 0, "    Listener attached for the following clusters (last seen):")
-            for idx, (cluster, output) in enumerate(self.clusters.items()):
+            self.addstr(3, 0, "   c to change the cluster")
+            self.addstr(4, 0, " "*screenwidth)
+            self.addstr(5, 0, f"    Listener attached to {len(self.clusters)} listeners (last seen):")
+            y_offset = 6
+
+            for idx, (cluster, output) in enumerate(self.clusters.items(), start=y_offset):
                 if output.highlight:
-                    self.addstr(5+idx, 0, f"        {cluster.ljust(25)}: {output.highlight.time}")
+                    self.addstr(idx, 0, f"        {cluster.ljust(25)}: {output.highlight.time}")
+                else:
+                    self.addstr(idx, 0, f"        {cluster.ljust(25)}: 'unknown'")
 
-            y_offset = 7+idx
-            self.addstr(y_offset, 0, f"{'-'*screenwidth}")
-
-            y_offset +=2
-            self.addstr(y_offset, 0, f"Cluster {output.cluster}", curses.A_BOLD)
-            y_offset+=1
-            if output.highlight:
-                self.addstr(y_offset,0, output.highlight.to_str(), curses.A_BOLD)
-            else:
-                self.addstr(y_offset, 0, "    waiting for messages    ", curses.A_BOLD)
+                y_offset = idx
 
             y_offset += 1
-            tab_name = self.tabs[self.current_tab_index]
-            if hasattr(self, f"tab_{tab_name}"):
-                getattr(self, f"tab_{tab_name}")(output=output, y_offset=y_offset, screenwidth=screenwidth)
+            self.addstr(y_offset, 0, f"{'-'*screenwidth}")
+
+            if current_cluster:
+                output = self.clusters[current_cluster]
+                y_offset +=2
+                self.addstr(y_offset, 0, f"Cluster {output.cluster}", curses.A_BOLD)
+                y_offset+=1
+                if output.highlight:
+                    self.addstr(y_offset,0, output.highlight.to_str(), curses.A_BOLD)
+                else:
+                    self.addstr(y_offset, 0, "    waiting for messages    ", curses.A_BOLD)
+
+                y_offset += 1
+                tab_name = self.tabs[self.current_tab_index]
+                if hasattr(self, f"tab_{tab_name}"):
+                    getattr(self, f"tab_{tab_name}")(output=output, y_offset=y_offset, screenwidth=screenwidth)
 
             key = self._screen.getch()
             if key == ord('q'):
                 self.stop = True
                 self.addstr(0,0, "Received user's request to stop ... ]")
             elif key == ord('c'):
-                self.current_cluster_index += 1
-                if self.current_cluster_index >= len(self.clusters):
-                    self.current_cluster_index = 0
+                self.current_cluster_index = (self.current_cluster_index + 1) % len(self.clusters)
             elif key == ord('l'):
                 for handler in logger.handlers:
                     current_level = handler.level
@@ -170,9 +191,7 @@ class TerminalDisplay:
                         # see https://docs.python.org/3/library/logging.html#loggin.NOTSET
                         handler.setLevel(logging.getLevelName(current_level+10))
             elif key == ord('t'):
-                self.current_tab_index += 1
-                if self.current_tab_index >= len(self.tabs):
-                    self.current_tab_index = 0
+                self.current_tab_index = (self.current_tab_index + 1) % len(self.tabs)
 
             self._screen.refresh()
         except Exception as e:
