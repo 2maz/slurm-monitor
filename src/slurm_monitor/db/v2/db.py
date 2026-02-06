@@ -1993,6 +1993,7 @@ class ClusterDB(Database):
             else:
                 return None
 
+    @ttl_cache_async(ttl=600, maxsize=1024)
     async def query_jobs(self,
             cluster: str,
             user: str | None = None,
@@ -2010,10 +2011,10 @@ class ClusterDB(Database):
             max_duration_in_s: float | None = None,
             states: list[str] | None = None,
             limit: int = 100,
-            page: int | None = None,
-            page_size: int | None = None,
+            timestamp: int | None = None,
         ):
 
+        # timestamp is only used to identify the query
         cluster_attributes = await self.get_cluster(cluster=cluster)
         if not cluster_attributes:
             raise ValueError("Failed to retrieve cluster information for '{cluster}'")
@@ -2036,14 +2037,11 @@ class ClusterDB(Database):
                     max_duration_in_s=max_duration_in_s,
                     states=states,
                     limit=limit,
-                    page=page,
-                    page_size=page_size
                 )
 
         raise RuntimeError("Query support for non-slurm cluster '{cluster}' is not available")
 
-
-    async def query_slurm_jobs(self,
+    def create_query_slurm_jobs(self,
             cluster: str,
             user: str | None = None,
             user_id: int | None = None,
@@ -2060,8 +2058,6 @@ class ClusterDB(Database):
             max_duration_in_s: float | None = None,
             states: list[str] | None = None,
             limit: int = 100,
-            page: int | None = None,
-            page_size: int | None = None,
         ):
 
         where = sqlalchemy.sql.true()
@@ -2123,14 +2119,11 @@ class ClusterDB(Database):
                     where
                 ).group_by(
                     SampleSlurmJob.job_id
-                ).order_by(None)
-
-        # pagination request, so using offset
-        if page_size and page:
-            limit = page_size
-            subquery = subquery.offset(page_size * page)
-
-        subquery = subquery.limit(limit).subquery()
+                ).order_by(
+                    None
+                ).limit(
+                    limit
+                ).subquery()
 
         query = select(
                     SampleSlurmJob
@@ -2139,6 +2132,45 @@ class ClusterDB(Database):
                     (SampleSlurmJob.job_id == subquery.c.job_id),
                     (SampleSlurmJob.time == subquery.c.last_timestamp)
                 )
+        return query
+
+    async def query_slurm_jobs(self,
+            cluster: str,
+            user: str | None = None,
+            user_id: int | None = None,
+            job_id: int | None = None,
+            partition: str | None = None,
+            nodelist: list[str] | None = None,
+            start_before_in_s: float | None = None,
+            start_after_in_s: float | None = None,
+            end_before_in_s: float | None = None,
+            end_after_in_s: float | None = None,
+            submit_before_in_s: float | None = None,
+            submit_after_in_s: float | None = None,
+            min_duration_in_s: float | None = None,
+            max_duration_in_s: float | None = None,
+            states: list[str] | None = None,
+            limit: int = 100,
+        ):
+
+        query = self.create_query_slurm_jobs(
+            cluster=cluster,
+            user=user,
+            user_id=user_id,
+            job_id=job_id,
+            partition=partition,
+            nodelist=nodelist,
+            start_before_in_s=start_before_in_s,
+            start_after_in_s=start_after_in_s,
+            end_before_in_s=end_before_in_s,
+            end_after_in_s=end_after_in_s,
+            submit_before_in_s=submit_before_in_s,
+            submit_after_in_s=submit_after_in_s,
+            min_duration_in_s=min_duration_in_s,
+            max_duration_in_s=max_duration_in_s,
+            states=states,
+            limit=limit
+        )
 
         async with self.make_async_session() as session:
             rows = (await session.execute(query)).all()

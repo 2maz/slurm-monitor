@@ -112,7 +112,7 @@ class JobResponse(TimestampedModel):
 
     partition: str = Field(description="Name of the partition this job is associated with")
     reservation: str
-    nodes: list[str] = Field(description="List of nodes that are requested by this job")
+    nodes: list[str] | None = Field(default=None, description="List of nodes that are requested by this job")
     reservation: str
     priority: int
     distribution: str

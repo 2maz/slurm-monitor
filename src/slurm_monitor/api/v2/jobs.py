@@ -1,8 +1,13 @@
-
 from fastapi import Depends
 from fastapi_cache.decorator import cache
-from typing import Annotated
+import fastapi_pagination
+from fastapi_pagination import Params, Page
+# avoid warning on not using sqlalchemy.ext.paginate
+# we query directly to cache the full query response on the db layer
+from fastapi_pagination.utils import disable_installed_extensions_check # noqa
 
+
+from typing import Annotated
 
 from slurm_monitor.utils import utcnow
 from slurm_monitor.db_operations import DBManager
@@ -209,8 +214,6 @@ async def query_jobs(
     max_duration_in_s: float | None = None,
     states: str | None = None,
     limit: int = 100,
-    page: int | None = None,
-    page_size: int | None = None,
     dbi: ClusterDB = Depends(DBManager.get_database)
 ):
     job_states = None
@@ -232,10 +235,58 @@ async def query_jobs(
         max_duration_in_s=max_duration_in_s,
         states=job_states,
         limit=limit,
-        page_size=page_size,
-        page=page
         )
     }
+
+@api_router.get("/cluster/{cluster}/query/jobs/pages",
+        summary="Provides a generic job query interface",
+        tags=["cluster"],
+        response_model=Page[JobResponse]
+        )
+async def query_jobs_pages(
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    cluster: str,
+    user: str | None = None,
+    user_id: int | None = None,
+    job_id: int | None = None,
+    start_before_in_s: float | None = None,
+    start_after_in_s: float | None = None,
+    end_before_in_s: float | None = None,
+    end_after_in_s: float | None = None,
+    submit_before_in_s: float | None = None,
+    submit_after_in_s: float | None = None,
+    min_duration_in_s: float | None = None,
+    max_duration_in_s: float | None = None,
+    states: str | None = None,
+    timestamp: int = int(utcnow().timestamp()),
+    limit: int = 100,
+    page: int = 1 ,
+    page_size: int = 50,
+    dbi: ClusterDB = Depends(DBManager.get_database)
+):
+    job_states = None
+    if states:
+        job_states = states.split(",")
+
+    jobs = await dbi.query_jobs(
+        cluster=cluster,
+        user=user,
+        user_id=user_id,
+        job_id=job_id,
+        start_before_in_s=start_before_in_s,
+        start_after_in_s=start_after_in_s,
+        end_before_in_s=end_before_in_s,
+        end_after_in_s=end_after_in_s,
+        submit_before_in_s=submit_before_in_s,
+        submit_after_in_s=submit_after_in_s,
+        min_duration_in_s=min_duration_in_s,
+        max_duration_in_s=max_duration_in_s,
+        states=job_states,
+        limit=limit,
+        timestamp=timestamp
+        )
+    return fastapi_pagination.paginate(jobs, params=Params(page=page, size=page_size))
+
 
 @api_router.get("/cluster/{cluster}/jobs/{job_id}/report",
         summary="Get a report on stats for the current job",
