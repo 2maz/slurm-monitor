@@ -71,10 +71,12 @@ class TerminalDisplay:
     stop: bool
     clusters: dict[str, MessageSubscriber.Output]
 
-    update_fn: Callable[MessageSubscriber.Output]
-    update_thread: threading.Thread
+    rx_fn: Callable[MessageSubscriber.Output]
+    rx_thread: threading.Thread
 
-    def __init__(self, update_fn: Callable[MessageSubscriber.Output]):
+    tx_fn: Callable[[str, MessageSubscriber.Control]]
+
+    def __init__(self, rx_fn: Callable[MessageSubscriber.Output], tx_fn: Callable[[str,MessageSubscriber.Control]]):
         self._screen = None
 
         self.current_cluster_index = 0
@@ -86,21 +88,23 @@ class TerminalDisplay:
             "statistics"
         ]
 
-        self.update_fn = update_fn
+        self.rx_fn = rx_fn
+        self.tx_fn = tx_fn
+
         self.stop = False
 
-        self.update_thread = threading.Thread(target=self.update)
+        self.rx_thread = threading.Thread(target=self.receive)
 
-    def update(self):
+    def receive(self):
         while not self.stop:
-            output = self.update_fn()
+            output = self.rx_fn()
             if not output:
                 time.sleep(0.1)
             else:
                 self.clusters[output.cluster] = output
 
     def run(self):
-        self.update_thread.start()
+        self.rx_thread.start()
         try:
             while not self.stop:
                 self.show()
@@ -108,7 +112,7 @@ class TerminalDisplay:
         finally:
             self.stop = True
             self.close()
-            self.update_thread.join()
+            self.rx_thread.join()
 
     def addstr(self, y, x, text, attr = None):
         screenheight, screenwidth = self._screen.getmaxyx()
@@ -183,13 +187,16 @@ class TerminalDisplay:
             elif key == ord('c'):
                 self.current_cluster_index = (self.current_cluster_index + 1) % len(self.clusters)
             elif key == ord('l'):
-                for handler in logger.handlers:
-                    current_level = handler.level
-                    if current_level == logging.CRITICAL:
-                        handler.setLevel(logging.getLevelName(logging.NOTSET))
-                    else:
-                        # see https://docs.python.org/3/library/logging.html#loggin.NOTSET
-                        handler.setLevel(logging.getLevelName(current_level+10))
+                log_level = output.log_level
+                if log_level == logging.CRITICAL:
+                    log_level = logging.NOTSET
+                else:
+                    # see https://docs.python.org/3/library/logging.html#loggin.NOTSET
+                    log_level += 10
+
+                if self.tx_fn:
+                    control = MessageSubscriber.Control(log_level=log_level)
+                    self.tx_fn(current_cluster, control)
             elif key == ord('t'):
                 self.current_tab_index = (self.current_tab_index + 1) % len(self.tabs)
 
@@ -204,7 +211,7 @@ class TerminalDisplay:
     def tab_messages(self, output: MessageSubscriber.Output, y_offset: int, screenwidth: int):
             # Messages
             self.addstr(y_offset,   0, f"{'-'*screenwidth}")
-            self.addstr(y_offset+1, 0, "| Messages") # (log level: {logging.getLevelName(logger.handlers[0].level)})")
+            self.addstr(y_offset+1, 0, f"| Messages (listener log level: {logging.getLevelName(output.log_level)})")
             self.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
 
             idx = 0
@@ -313,12 +320,17 @@ class MessageSubscriber:
         def to_str(self):
             return f"[{self.state}][{self.time}] last processed: topic={self.last_processed_topic} offset={self.consumer_record_offset} latency: {self.latency_in_s:.2f}s"
 
+    class Control(BaseModel):
+        log_level: int = 0
+
     class Output:
         cluster: str
         messages: Iterable[str]
         stats: dict[str, any]
         next_stats_update: int
         highlight: str
+
+        log_level: int
 
         current_tab: str
         tabs: dict[str, Callable]
@@ -335,6 +347,8 @@ class MessageSubscriber:
             self.next_stats_update = -1
             self.msg_timestamps = {}
 
+            self.log_level = logger.level
+
         @classmethod
         def from_dict(self, data: dict[str, any]):
             output = MessageSubscriber.Output()
@@ -345,6 +359,7 @@ class MessageSubscriber:
                 output.highlight = MessageSubscriber.Highlight(**data['highlight'])
             output.next_stats_update = data['next_stats_update']
             output.msg_timestamps = data['msg_timestamps']
+            output.log_level = data['log_level']
 
             return output
 
@@ -356,6 +371,7 @@ class MessageSubscriber:
                 yield "highlight", self.highlight.model_dump()
             yield "next_stats_update", self.next_stats_update
             yield "msg_timestamps", self.msg_timestamps
+            yield "log_level", self.log_level
 
         def put_nowait(self, record: logging.LogRecord):
             self.messages.append(record.message)
@@ -466,6 +482,17 @@ class MessageSubscriber:
 
         return lookbacks_in_h
 
+    def receive_and_notify(self):
+        if self.output_fn:
+            self.output.log_level = logger.handlers[0].level
+            command = self.output_fn(self.output)
+            if command:
+                log_level = logging.getLevelName(command.log_level)
+                logger.info(f"Changing log level to: {log_level}")
+                for handler in logger.handlers:
+                    handler.setLevel(log_level)
+
+
     async def consume(self,
                 topics: list[str],
                 consumer: KafkaConsumer,
@@ -489,9 +516,7 @@ class MessageSubscriber:
         while topics and not self.state == self.State.STOPPING:
             interval_start_time = dt.datetime.now(dt.timezone.utc)
 
-            if self.output_fn:
-                self.output_fn(self.output)
-
+            self.receive_and_notify()
             consumer._fetch_all_topic_metadata()
             if not consumer.assignment():
                 # Wait for partitions to become available
@@ -596,9 +621,7 @@ class MessageSubscriber:
 
                         self.output.stats = metrics
 
-                    if self.output_fn:
-                        self.output_fn(self.output)
-
+                    self.receive_and_notify()
                 except Exception as e:
                     if self.verbose:
                         tb.print_tb(e.__traceback__)

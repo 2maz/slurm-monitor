@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+import json
 from sqlalchemy import inspect
 import zmq
 
@@ -23,7 +24,7 @@ class ListenParser(BaseParser):
         super().__init__(parser=parser)
 
         context = zmq.Context()
-        self.socket = context.socket(zmq.PUSH)
+        self.socket = context.socket(zmq.DEALER)
 
         parser.add_argument("--host", type=str, default=None, required=True)
         parser.add_argument("--db-uri", type=str, default=None, help="sqlite:////tmp/sqlite.db or timescaledb://slurmuser:test@localhost:7000/ex3cluster")
@@ -94,8 +95,17 @@ class ListenParser(BaseParser):
                             default=SLURM_MONITOR_LISTEN_UI_PORT,
                             help=f"Set the ui port, default is {SLURM_MONITOR_LISTEN_UI_PORT}")
 
-    def publish_status(self, output: MessageSubscriber.Output):
+    def publish_status(self, output: MessageSubscriber.Output) -> MessageSubscriber.Control:
+        """
+        zmq Dealer/Router pattern in use: this is the 'Dealer' publishing / and receiving instructions
+        """
         self.socket.send_json(dict(output), default=str)
+        try:
+            empty, json_bytes = self.socket.recv_multipart(zmq.NOBLOCK)
+            control = json.loads(json_bytes.decode("UTF-8"))
+            return MessageSubscriber.Control(**control)
+        except zmq.error.ZMQError:
+            return None
 
     def execute(self, args):
         super().execute(args)
@@ -155,6 +165,7 @@ class ListenParser(BaseParser):
                     log_output = f"slurm-monitor-listen.{args.cluster_name}.log"
 
             if args.ui_host and args.ui_port:
+                self.socket.setsockopt_string(zmq.IDENTITY, args.cluster_name)
                 self.socket.connect(f"tcp://{args.ui_host}:{args.ui_port}")
 
             subscriber = MessageSubscriber(
@@ -170,7 +181,7 @@ class ListenParser(BaseParser):
                     stats_interval_in_s=args.stats_interval,
                     log_output=log_output,
                     log_level=args.log_level,
-                    output_fn=self.publish_status
+                    output_fn=self.publish_status,
                 )
             subscriber.run()
 
@@ -184,7 +195,7 @@ class ListenUiParser(BaseParser):
         super().__init__(parser=parser)
 
         context = zmq.Context()
-        self.socket = context.socket(zmq.PULL)
+        self.socket = context.socket(zmq.ROUTER)
 
         parser.add_argument("--cluster-name",
                 nargs="+",
@@ -209,11 +220,19 @@ class ListenUiParser(BaseParser):
             self.socket.bind(f"tcp://{args.ui_host}:{args.ui_port}")
 
         def update():
+            """
+            zmq DEALER / ROUTER pattern: receiving a multipart message from dealer here
+            """
             try:
-                message = self.socket.recv_json(flags=zmq.NOBLOCK)
+                dealer_id, json_content = self.socket.recv_multipart()
+                message = json.loads(json_content)
                 return MessageSubscriber.Output.from_dict(message)
             except zmq.error.ZMQError:
                 return None
 
-        display = TerminalDisplay(update_fn=update)
+        def send(dealer_id: str, control: MessageSubscriber.Control):
+            json_bytes = json.dumps(control.model_dump()).encode("UTF-8")
+            self.socket.send_multipart([dealer_id.encode("UTF-8"), b"", json_bytes])
+
+        display = TerminalDisplay(rx_fn=update, tx_fn=send)
         display.run()
