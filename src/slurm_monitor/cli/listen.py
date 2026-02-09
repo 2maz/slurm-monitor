@@ -224,7 +224,7 @@ class ListenUiParser(BaseParser):
             zmq DEALER / ROUTER pattern: receiving a multipart message from dealer here
             """
             try:
-                dealer_id, json_content = self.socket.recv_multipart()
+                dealer_id, json_content = self.socket.recv_multipart(zmq.NOBLOCK)
                 message = json.loads(json_content)
                 return MessageSubscriber.Output.from_dict(message)
             except zmq.error.ZMQError:
