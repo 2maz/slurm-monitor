@@ -189,9 +189,9 @@ class TerminalDisplay:
             elif key == ord('l'):
                 log_level = output.log_level
                 if log_level == logging.CRITICAL:
-                    log_level = logging.NOTSET
+                    log_level = logging.DEBUG
                 else:
-                    # see https://docs.python.org/3/library/logging.html#loggin.NOTSET
+                    # see https://docs.python.org/3/library/logging.html#logging-levels
                     log_level += 10
 
                 if self.tx_fn:
