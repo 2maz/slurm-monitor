@@ -145,8 +145,8 @@ class TerminalDisplay:
 
             # header
             screenheight, screenwidth = self._screen.getmaxyx()
-
-            self.addstr(0, 0, f"{'-'*screenwidth}")
+            current_time = f"-- CURRENT TIME  {utcnow().isoformat(timespec='seconds')} "
+            self.addstr(0, 0, f"{current_time}{'-'*(screenwidth-len(current_time))}")
             self.addstr(1, 0, f">> Status: slurm-monitor listen --cluster-name {current_cluster}")
             self.addstr(2, 0, "   q to quit | l to change log level | t to change tabs (" + ','.join(self.tabs) + ")")
             self.addstr(3, 0, "   c to change the cluster")
