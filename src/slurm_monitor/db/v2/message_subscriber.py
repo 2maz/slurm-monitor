@@ -129,7 +129,7 @@ class TerminalDisplay:
 
     def addstr(self, y, x, text, attr = None):
         screenheight, screenwidth = self._screen.getmaxyx()
-        if y > screenheight:
+        if y >= screenheight:
             return
 
         writeable_x = screenwidth - x -1
