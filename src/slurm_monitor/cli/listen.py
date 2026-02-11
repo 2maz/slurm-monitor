@@ -213,11 +213,23 @@ class ListenUiParser(BaseParser):
                             default=SLURM_MONITOR_LISTEN_UI_PORT,
                             help=f"Set the ui port, default is {SLURM_MONITOR_LISTEN_UI_PORT}")
 
+        parser.add_argument("--log-output",
+                type=str,
+                default=None,
+                help="Output file for the log - default: slurm-monitor-listen-ui.<cluster-name>.log",
+        )
+
     def execute(self, args):
         super().execute(args)
 
         if args.ui_host and args.ui_port:
             self.socket.bind(f"tcp://{args.ui_host}:{args.ui_port}")
+
+        log_output = args.log_output
+        if log_output is None:
+            log_output = "slurm-monitor-listen-ui.log"
+            if args.cluster_name:
+                log_output = f"slurm-monitor-listen-ui.{args.cluster_name}.log"
 
         def update():
             """
@@ -234,5 +246,5 @@ class ListenUiParser(BaseParser):
             json_bytes = json.dumps(control.model_dump()).encode("UTF-8")
             self.socket.send_multipart([dealer_id.encode("UTF-8"), b"", json_bytes])
 
-        display = TerminalDisplay(rx_fn=update, tx_fn=send)
+        display = TerminalDisplay(rx_fn=update, tx_fn=send, log_output=log_output)
         display.run()

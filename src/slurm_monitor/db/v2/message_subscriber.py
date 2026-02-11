@@ -76,7 +76,9 @@ class TerminalDisplay:
 
     tx_fn: Callable[[str, MessageSubscriber.Control]]
 
-    def __init__(self, rx_fn: Callable[MessageSubscriber.Output], tx_fn: Callable[[str,MessageSubscriber.Control]]):
+    log_output: Path | None
+
+    def __init__(self, rx_fn: Callable[MessageSubscriber.Output], tx_fn: Callable[[str,MessageSubscriber.Control]], log_output: Path | None = None):
         self._screen = None
 
         self.current_cluster_index = 0
@@ -94,6 +96,17 @@ class TerminalDisplay:
         self.stop = False
 
         self.rx_thread = threading.Thread(target=self.receive)
+
+        self.log_output = log_output
+        if self.log_output:
+            formatter = logging.Formatter(
+                fmt=SLURM_MONITOR_LOG_FORMAT,
+                datefmt=SLURM_MONITOR_LOG_DATE_FORMAT,
+                style=SLURM_MONITOR_LOG_STYLE
+            )
+
+            file_handler = TimedRotatingFileHandler(self.log_output, when='d', interval=3)
+            file_handler.setFormatter(formatter)
 
     def receive(self):
         while not self.stop:
