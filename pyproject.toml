@@ -39,6 +39,7 @@ dependencies = [
     "fastapi[standard]",
     "fastapi-cache2[memcache]",
     "fastapi_utils",
+    "fastapi-pagination",
     "greenlet",
     "kafka-python>=2.2.15",
     "numpy",

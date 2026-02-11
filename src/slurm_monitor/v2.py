@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.inmemory import InMemoryBackend
 from fastapi_utils.tasks import repeat_every
+from fastapi_pagination import add_pagination
 
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -96,6 +97,7 @@ app = createFastAPI(
         openapi_tags=tags_metadata,
       )
 
+add_pagination(app)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
