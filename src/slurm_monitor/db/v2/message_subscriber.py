@@ -78,6 +78,8 @@ class TerminalDisplay:
 
     log_output: Path | None
 
+    _getch_supported: bool
+
     def __init__(self, rx_fn: Callable[MessageSubscriber.Output], tx_fn: Callable[[str,MessageSubscriber.Control]], log_output: Path | None = None):
         self._screen = None
 
@@ -107,6 +109,8 @@ class TerminalDisplay:
 
             file_handler = TimedRotatingFileHandler(self.log_output, when='d', interval=3)
             file_handler.setFormatter(formatter)
+
+        self._getch_supported = True
 
     def receive(self):
         while not self.stop:
@@ -147,7 +151,12 @@ class TerminalDisplay:
                 self._screen = curses.initscr()
                 self._screen.clear()
                 curses.noecho()
-                curses.cbreak()
+                try:
+                    curses.cbreak()
+                except Exception:
+                    logger.warning("Terminal does not support 'cbreak' - key interactions will be disabled")
+                    self._getch_supported = False
+
                 self._screen.nodelay(True)
 
             self._screen.erase()
@@ -193,25 +202,26 @@ class TerminalDisplay:
                 if hasattr(self, f"tab_{tab_name}"):
                     getattr(self, f"tab_{tab_name}")(output=output, y_offset=y_offset, screenwidth=screenwidth)
 
-            key = self._screen.getch()
-            if key == ord('q'):
-                self.stop = True
-                self.addstr(0,0, "Received user's request to stop ... ]")
-            elif key == ord('c'):
-                self.current_cluster_index = (self.current_cluster_index + 1) % len(self.clusters)
-            elif key == ord('l'):
-                log_level = output.log_level
-                if log_level == logging.CRITICAL:
-                    log_level = logging.DEBUG
-                else:
-                    # see https://docs.python.org/3/library/logging.html#logging-levels
-                    log_level += 10
+            if self._getch_supported:
+                key = self._screen.getch()
+                if key == ord('q'):
+                    self.stop = True
+                    self.addstr(0,0, "Received user's request to stop ... ]")
+                elif key == ord('c'):
+                    self.current_cluster_index = (self.current_cluster_index + 1) % len(self.clusters)
+                elif key == ord('l'):
+                    log_level = output.log_level
+                    if log_level == logging.CRITICAL:
+                        log_level = logging.DEBUG
+                    else:
+                        # see https://docs.python.org/3/library/logging.html#logging-levels
+                        log_level += 10
 
-                if self.tx_fn:
-                    control = MessageSubscriber.Control(log_level=log_level)
-                    self.tx_fn(current_cluster, control)
-            elif key == ord('t'):
-                self.current_tab_index = (self.current_tab_index + 1) % len(self.tabs)
+                    if self.tx_fn:
+                        control = MessageSubscriber.Control(log_level=log_level)
+                        self.tx_fn(current_cluster, control)
+                elif key == ord('t'):
+                    self.current_tab_index = (self.current_tab_index + 1) % len(self.tabs)
 
             self._screen.refresh()
         except Exception as e:
