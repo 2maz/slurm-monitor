@@ -23,9 +23,6 @@ class ListenParser(BaseParser):
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
 
-        context = zmq.Context()
-        self.socket = context.socket(zmq.DEALER)
-
         parser.add_argument("--host", type=str, default=None, required=True)
         parser.add_argument("--db-uri", type=str, default=None, help="sqlite:////tmp/sqlite.db or timescaledb://slurmuser:test@localhost:7000/ex3cluster")
         parser.add_argument("--port", type=int, default=SLURM_MONITOR_LISTEN_PORT)
@@ -164,6 +161,9 @@ class ListenParser(BaseParser):
                 if args.cluster_name:
                     log_output = f"slurm-monitor-listen.{args.cluster_name}.log"
 
+            context = zmq.Context()
+            self.socket = context.socket(zmq.DEALER)
+
             if args.ui_host and args.ui_port:
                 self.socket.setsockopt_string(zmq.IDENTITY, args.cluster_name)
                 self.socket.connect(f"tcp://{args.ui_host}:{args.ui_port}")
@@ -194,9 +194,6 @@ class ListenUiParser(BaseParser):
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
 
-        context = zmq.Context()
-        self.socket = context.socket(zmq.ROUTER)
-
         parser.add_argument("--cluster-name",
                 nargs="+",
                 type=str,
@@ -221,6 +218,9 @@ class ListenUiParser(BaseParser):
 
     def execute(self, args):
         super().execute(args)
+
+        context = zmq.Context()
+        self.socket = context.socket(zmq.ROUTER)
 
         if args.ui_host and args.ui_port:
             self.socket.bind(f"tcp://{args.ui_host}:{args.ui_port}")
