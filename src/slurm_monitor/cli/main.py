@@ -7,7 +7,7 @@ from logging import getLogger
 from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.cli.db import DBParser
 from slurm_monitor.cli.probe import ProbeParser
-from slurm_monitor.cli.listen import ListenParser
+from slurm_monitor.cli.listen import ListenParser, ListenUiParser
 from slurm_monitor.cli.system_info import SystemInfoParser
 from slurm_monitor.cli.autodeploy import AutoDeployParser
 from slurm_monitor.cli.query import QueryParser
@@ -79,6 +79,12 @@ def run():
         subcommand="listen",
         help="Listen to monitor messages",
         parser_klass=ListenParser
+    )
+
+    main_parser.attach_subcommand_parser(
+        subcommand="listen-ui",
+        help="Display status of listener",
+        parser_klass=ListenUiParser
     )
 
     main_parser.attach_subcommand_parser(

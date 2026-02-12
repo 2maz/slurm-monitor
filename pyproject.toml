@@ -51,6 +51,7 @@ dependencies = [
     "pydantic-settings",
     "pyjwt[crypto]",
     "pyyaml",
+    "pyzmq",
     "psycopg2-binary",
     "python-snappy",
     "sqlalchemy",

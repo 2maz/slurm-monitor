@@ -1,20 +1,31 @@
 from argparse import ArgumentParser
+import json
 from sqlalchemy import inspect
+import zmq
 
 from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.app_settings import AppSettings
+from slurm_monitor.db.v2.message_subscriber import MessageSubscriber, TerminalDisplay
 
 import logging
 
 logger = logging.getLogger(__name__)
 
+SLURM_MONITOR_LISTEN_PORT = 9099
+SLURM_MONITOR_LISTEN_UI_PORT = 25052
+
 class ListenParser(BaseParser):
+    socket: zmq.Socket
+
+    ui_host: str | None
+    ui_port: int | None
+
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
 
         parser.add_argument("--host", type=str, default=None, required=True)
         parser.add_argument("--db-uri", type=str, default=None, help="sqlite:////tmp/sqlite.db or timescaledb://slurmuser:test@localhost:7000/ex3cluster")
-        parser.add_argument("--port", type=int, default=9099)
+        parser.add_argument("--port", type=int, default=SLURM_MONITOR_LISTEN_PORT)
 
         parser.add_argument("--cluster-name",
                 type=str,
@@ -71,6 +82,27 @@ class ListenParser(BaseParser):
                 help="Output file for the log - default: slurm-monitor-listen.<cluster-name>.log",
         )
 
+        parser.add_argument("--ui-host",
+                            type=str,
+                            default="localhost",
+                            help="Set the ui host")
+
+        parser.add_argument("--ui-port",
+                            type=int,
+                            default=SLURM_MONITOR_LISTEN_UI_PORT,
+                            help=f"Set the ui port, default is {SLURM_MONITOR_LISTEN_UI_PORT}")
+
+    def publish_status(self, output: MessageSubscriber.Output) -> MessageSubscriber.Control:
+        """
+        zmq Dealer/Router pattern in use: this is the 'Dealer' publishing / and receiving instructions
+        """
+        self.socket.send_json(dict(output), default=str)
+        try:
+            empty, json_bytes = self.socket.recv_multipart(zmq.NOBLOCK)
+            control = json.loads(json_bytes.decode("UTF-8"))
+            return MessageSubscriber.Control(**control)
+        except zmq.error.ZMQError:
+            return None
 
     def execute(self, args):
         super().execute(args)
@@ -94,9 +126,6 @@ class ListenParser(BaseParser):
                  database=database,
                  topic=args.topic)
         elif args.use_version == "v2":
-            from slurm_monitor.db.v2.message_subscriber import (
-                    MessageSubscriber
-            )
             from slurm_monitor.db.v2.db import ClusterDB
 
             lookback_in_h = MessageSubscriber.extract_lookbacks(args.lookback)
@@ -132,6 +161,13 @@ class ListenParser(BaseParser):
                 if args.cluster_name:
                     log_output = f"slurm-monitor-listen.{args.cluster_name}.log"
 
+            context = zmq.Context()
+            self.socket = context.socket(zmq.DEALER)
+
+            if args.ui_host and args.ui_port:
+                self.socket.setsockopt_string(zmq.IDENTITY, args.cluster_name)
+                self.socket.connect(f"tcp://{args.ui_host}:{args.ui_port}")
+
             subscriber = MessageSubscriber(
                     host=args.host,
                     port=args.port,
@@ -144,6 +180,71 @@ class ListenParser(BaseParser):
                     stats_output=stats_output,
                     stats_interval_in_s=args.stats_interval,
                     log_output=log_output,
-                    log_level=args.log_level
+                    log_level=args.log_level,
+                    output_fn=self.publish_status,
                 )
             subscriber.run()
+
+class ListenUiParser(BaseParser):
+    socket: zmq.Socket
+
+    ui_host: str | None
+    ui_port: int | None
+
+    def __init__(self, parser: ArgumentParser):
+        super().__init__(parser=parser)
+
+        parser.add_argument("--cluster-name",
+                nargs="+",
+                type=str,
+                help="Cluster(s) for which the topics shall be extracted",
+        )
+
+        parser.add_argument("--ui-host",
+                            type=str,
+                            default="*",
+                            help="Set the ui host")
+
+        parser.add_argument("--ui-port",
+                            type=int,
+                            default=SLURM_MONITOR_LISTEN_UI_PORT,
+                            help=f"Set the ui port, default is {SLURM_MONITOR_LISTEN_UI_PORT}")
+
+        parser.add_argument("--log-output",
+                type=str,
+                default=None,
+                help="Output file for the log - default: slurm-monitor-listen-ui.<cluster-name>.log",
+        )
+
+    def execute(self, args):
+        super().execute(args)
+
+        context = zmq.Context()
+        self.socket = context.socket(zmq.ROUTER)
+
+        if args.ui_host and args.ui_port:
+            self.socket.bind(f"tcp://{args.ui_host}:{args.ui_port}")
+
+        log_output = args.log_output
+        if log_output is None:
+            log_output = "slurm-monitor-listen-ui.log"
+            if args.cluster_name:
+                log_output = f"slurm-monitor-listen-ui.{args.cluster_name}.log"
+
+        def update():
+            """
+            zmq DEALER / ROUTER pattern: receiving a multipart message from dealer here
+            """
+            try:
+                dealer_id, json_content = self.socket.recv_multipart(zmq.NOBLOCK)
+                message = json.loads(json_content)
+                return MessageSubscriber.Output.from_dict(message)
+            except zmq.error.ZMQError:
+                return None
+
+        def send(dealer_id: str, control: MessageSubscriber.Control):
+            json_bytes = json.dumps(control.model_dump()).encode("UTF-8")
+            self.socket.send_multipart([dealer_id.encode("UTF-8"), b"", json_bytes])
+
+        display = TerminalDisplay(rx_fn=update, tx_fn=send, log_output=log_output)
+        display.run()

@@ -11,11 +11,13 @@ import datetime as dt
 from kafka import KafkaConsumer, TopicPartition
 import json
 from pathlib import Path
+from pydantic import BaseModel
 import re
 import sys
 import time
 from typing import Iterable, Callable
 import traceback as tb
+import threading
 
 from slurm_monitor.utils import utcnow
 import slurm_monitor.db.v2.sonar as sonar
@@ -65,6 +67,250 @@ class TopicBound:
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
 
+class TerminalDisplay:
+    stop: bool
+    clusters: dict[str, MessageSubscriber.Output]
+
+    rx_fn: Callable[MessageSubscriber.Output]
+    rx_thread: threading.Thread
+
+    tx_fn: Callable[[str, MessageSubscriber.Control]]
+
+    log_output: Path | None
+
+    _getch_supported: bool
+
+    def __init__(self, rx_fn: Callable[MessageSubscriber.Output], tx_fn: Callable[[str,MessageSubscriber.Control]], log_output: Path | None = None):
+        self._screen = None
+
+        self.current_cluster_index = 0
+        self.clusters = {}
+
+        self.current_tab_index = 0
+        self.tabs = [
+            "messages",
+            "statistics"
+        ]
+
+        self.rx_fn = rx_fn
+        self.tx_fn = tx_fn
+
+        self.stop = False
+
+        self.rx_thread = threading.Thread(target=self.receive)
+
+        self.log_output = log_output
+        if self.log_output:
+            formatter = logging.Formatter(
+                fmt=SLURM_MONITOR_LOG_FORMAT,
+                datefmt=SLURM_MONITOR_LOG_DATE_FORMAT,
+                style=SLURM_MONITOR_LOG_STYLE
+            )
+
+            file_handler = TimedRotatingFileHandler(self.log_output, when='d', interval=3)
+            file_handler.setFormatter(formatter)
+
+        self._getch_supported = True
+
+    def receive(self):
+        while not self.stop:
+            output = self.rx_fn()
+            if not output:
+                time.sleep(0.1)
+            else:
+                self.clusters[output.cluster] = output
+
+    def run(self):
+        self.rx_thread.start()
+        try:
+            while not self.stop:
+                self.show()
+                time.sleep(0.1)
+        finally:
+            self.stop = True
+            self.close()
+            self.rx_thread.join()
+
+    def addstr(self, y, x, text, attr = None):
+        screenheight, screenwidth = self._screen.getmaxyx()
+        if y >= screenheight:
+            return
+
+        writeable_x = screenwidth - x -1
+        if writeable_x < 1:
+            return
+
+        if attr:
+            self._screen.addstr(y, x, text[:writeable_x], attr)
+        else:
+            self._screen.addstr(y, x, text[:writeable_x])
+
+    def show(self):
+        try:
+            if not self._screen:
+                self._screen = curses.initscr()
+                self._screen.clear()
+                curses.noecho()
+                try:
+                    curses.cbreak()
+                except Exception:
+                    logger.warning("Terminal does not support 'cbreak' - key interactions will be disabled")
+                    self._getch_supported = False
+
+                self._screen.nodelay(True)
+
+            self._screen.erase()
+
+            current_cluster = None
+            if self.clusters:
+                current_cluster = list(self.clusters.keys())[self.current_cluster_index]
+
+            # header
+            screenheight, screenwidth = self._screen.getmaxyx()
+            current_time = f"-- CURRENT TIME  {utcnow().isoformat(timespec='seconds')} "
+            self.addstr(0, 0, f"{current_time}{'-'*(screenwidth-len(current_time))}")
+            self.addstr(1, 0, f">> Status: slurm-monitor listen --cluster-name {current_cluster}")
+            self.addstr(2, 0, "   q to quit | l to change log level | t to change tabs (" + ','.join(self.tabs) + ")")
+            self.addstr(3, 0, "   c to change the cluster")
+            self.addstr(4, 0, " "*screenwidth)
+            self.addstr(5, 0, f"    UI attached to {len(self.clusters)} listeners (last seen):")
+            y_offset = 6
+
+            for idx, (cluster, output) in enumerate(self.clusters.items(), start=y_offset):
+                if output.highlight:
+                    self.addstr(idx, 0, f"        {cluster.ljust(25)}: {output.highlight.time}")
+                else:
+                    self.addstr(idx, 0, f"        {cluster.ljust(25)}: 'unknown'")
+
+                y_offset = idx
+
+            y_offset += 1
+            self.addstr(y_offset, 0, f"{'-'*screenwidth}")
+
+            if current_cluster:
+                output = self.clusters[current_cluster]
+                y_offset +=2
+                self.addstr(y_offset, 0, f"Cluster {output.cluster}", curses.A_BOLD)
+                y_offset+=1
+                if output.highlight:
+                    self.addstr(y_offset,0, output.highlight.to_str(), curses.A_BOLD)
+                else:
+                    self.addstr(y_offset, 0, "    waiting for messages    ", curses.A_BOLD)
+
+                y_offset += 1
+                tab_name = self.tabs[self.current_tab_index]
+                if hasattr(self, f"tab_{tab_name}"):
+                    getattr(self, f"tab_{tab_name}")(output=output, y_offset=y_offset, screenwidth=screenwidth)
+
+            if self._getch_supported:
+                key = self._screen.getch()
+                if key == ord('q'):
+                    self.stop = True
+                    self.addstr(0,0, "Received user's request to stop ... ]")
+                elif key == ord('c'):
+                    self.current_cluster_index = (self.current_cluster_index + 1) % len(self.clusters)
+                elif key == ord('l'):
+                    log_level = output.log_level
+                    if log_level == logging.CRITICAL:
+                        log_level = logging.DEBUG
+                    else:
+                        # see https://docs.python.org/3/library/logging.html#logging-levels
+                        log_level += 10
+
+                    if self.tx_fn:
+                        control = MessageSubscriber.Control(log_level=log_level)
+                        self.tx_fn(current_cluster, control)
+                elif key == ord('t'):
+                    self.current_tab_index = (self.current_tab_index + 1) % len(self.tabs)
+
+            self._screen.refresh()
+        except Exception as e:
+            logger.error(f"Screen update failed: {e}")
+            print(f"Screen update failed: {e}")
+            tb.print_tb(e.__traceback__)
+            sys.exit(0)
+
+
+    def tab_messages(self, output: MessageSubscriber.Output, y_offset: int, screenwidth: int):
+            # Messages
+            self.addstr(y_offset,   0, f"{'-'*screenwidth}")
+            self.addstr(y_offset+1, 0, f"| Messages (listener log level: {logging.getLevelName(output.log_level)})")
+            self.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
+
+            idx = 0
+            y_offset += 4
+            for idx, msg in enumerate(list(output.messages)[-20:]):
+                self.addstr(idx + y_offset, 0, msg)
+
+            # Nodes
+            y_offset += idx + 4
+            # sort by time, then by name
+            timesorted_messages = sorted([(k,v) for k,v in output.msg_timestamps.items()],key=itemgetter(1,0))
+
+            self.addstr(y_offset,   0, f"{'-'*screenwidth}")
+            self.addstr(y_offset+1, 0, "| Nodes")
+            self.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
+
+            y_offset += 3
+            column_x = max(min(screenwidth / 2, 40), 100)
+            self.addstr(y_offset, 0, "Recently seen first", curses.A_BOLD)
+            for idx, msg in enumerate(reversed(timesorted_messages[-15:])):
+                row = f"{msg[1]} {msg[0]}"
+                self.addstr(y_offset + idx + 1, 0, row[:column_x-1])
+            self.addstr(y_offset + idx + 2, 0, "    ...")
+
+            self.addstr(y_offset, column_x, "Oldest seen first", curses.A_BOLD)
+            for idx, msg in enumerate(timesorted_messages[:15]):
+                row = f"{msg[1]} {msg[0]}"
+                self.addstr(y_offset + idx + 1, column_x, row[:column_x-1])
+            self.addstr(y_offset + idx + 2, column_x, "    ...")
+
+            return y_offset
+
+    def tab_statistics(self, output: MessageSubscriber.Output, y_offset: int, screenwidth: int):
+        # Statistics
+        self.addstr(y_offset,   0, f"{'-'*screenwidth}")
+        self.addstr(y_offset+1, 0, f"| Statistics (update in: {output.next_stats_update:.2f} s)")
+        self.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
+
+        if output.stats:
+            group_header_y = y_offset + 3
+            group_sizes = []
+            columns = 3
+
+            column_width = 40 # characters
+            for group_idx, (group_name, values) in enumerate(output.stats.items()):
+                group_header_x = (group_idx % columns)*column_width
+
+                # when to reset the group_header_y, so to progress to the next 'row' of groups
+                if group_sizes and group_idx % columns == 0:
+                    group_header_y += max(group_sizes) + 4
+                    group_sizes = []
+
+                # Group Header
+                self.addstr(group_header_y, group_header_x, group_name, curses.A_BOLD)
+                # Properties
+                for field_idx, (field_name, field_value) in enumerate(values.items()):
+                    if type(field_value) is float:
+                        field_value = f"{field_value:.5f}"
+
+                    try:
+                        y_offset = group_header_y + 2 + field_idx
+                        self.addstr(y_offset, group_header_x, f"{field_name}: {field_value}", curses.A_DIM)
+                    except curses.error:
+                        pass
+
+                group_sizes.append(len(values))
+            return y_offset
+
+    def close(self):
+        if self._screen:
+            self._screen.clear()
+            curses.echo()
+            curses.nocbreak()
+            curses.endwin()
+
+
 class MessageSubscriber:
     host: str
     port: int
@@ -87,11 +333,27 @@ class MessageSubscriber:
         STOPPING = 'STOPPING'
         UNKNOWN = 'UNKNOWN'
 
+    class Highlight(BaseModel):
+        state: str
+        time: str
+        last_processed_topic: str
+        consumer_record_offset: int
+        latency_in_s: float
+
+        def to_str(self):
+            return f"[{self.state}][{self.time}] last processed: topic={self.last_processed_topic} offset={self.consumer_record_offset} latency: {self.latency_in_s:.2f}s"
+
+    class Control(BaseModel):
+        log_level: int = 0
+
     class Output:
+        cluster: str
         messages: Iterable[str]
         stats: dict[str, any]
         next_stats_update: int
         highlight: str
+
+        log_level: int
 
         current_tab: str
         tabs: dict[str, Callable]
@@ -99,164 +361,43 @@ class MessageSubscriber:
         max_msg_delay: int
         msg_timestamps: dict[str, dt.datetime]
 
-        def __init__(self, parent: MessageSubscriber):
-            self.parent = parent
-
+        def __init__(self, cluster: str = ''):
+            self.cluster = cluster
             self.messages = collections.deque(maxlen=100)
             self.stats = {}
-            self.highlight = ''
+            self.highlight = None
 
-            self._screen = None
             self.next_stats_update = -1
             self.msg_timestamps = {}
 
-            self.current_tab_index = 0
-            self.tabs = [
-                "messages",
-                "statistics"
-            ]
+            self.log_level = logger.level
+
+        @classmethod
+        def from_dict(self, data: dict[str, any]):
+            output = MessageSubscriber.Output()
+            output.cluster = data['cluster']
+            output.messages = collections.deque(data['messages'])
+            output.stats = data['stats']
+            if "highlight" in data:
+                output.highlight = MessageSubscriber.Highlight(**data['highlight'])
+            output.next_stats_update = data['next_stats_update']
+            output.msg_timestamps = data['msg_timestamps']
+            output.log_level = data['log_level']
+
+            return output
+
+        def __iter__(self):
+            yield "cluster", self.cluster
+            yield "messages", list(self.messages)
+            yield "stats", self.stats
+            if self.highlight:
+                yield "highlight", self.highlight.model_dump()
+            yield "next_stats_update", self.next_stats_update
+            yield "msg_timestamps", self.msg_timestamps
+            yield "log_level", self.log_level
 
         def put_nowait(self, record: logging.LogRecord):
             self.messages.append(record.message)
-
-        def addstr(self, y, x, text, attr = None):
-            screenheight, screenwidth = self._screen.getmaxyx()
-            if y > screenheight:
-                return
-
-            writeable_x = screenwidth - x -1
-            if writeable_x < 1:
-                return
-
-            if attr:
-                self._screen.addstr(y, x, text[:writeable_x], attr)
-            else:
-                self._screen.addstr(y, x, text[:writeable_x])
-
-
-        def print(self):
-            try:
-                if not self._screen:
-                    self._screen = curses.initscr()
-                    self._screen.clear()
-                    curses.noecho()
-                    curses.cbreak()
-                    self._screen.nodelay(True)
-
-                self._screen.erase()
-
-                # header
-                screenheight, screenwidth = self._screen.getmaxyx()
-
-                self.addstr(0, 0, f"{'-'*screenwidth}")
-                self.addstr(1, 0, ">> Status: slurm-monitor listen")
-                self.addstr(2, 0, "   q to quit | l to change log level | t to change tabs (" + ','.join(self.tabs) + ")")
-                self.addstr(3, 0, f"{'-'*screenwidth}")
-
-                self.addstr(5, 0, self.highlight, curses.A_BOLD)
-
-                tab_name = self.tabs[self.current_tab_index]
-                if hasattr(self, f"tab_{tab_name}"):
-                    getattr(self, f"tab_{tab_name}")(y_offset=7, screenwidth=screenwidth)
-
-                key = self._screen.getch()
-                if key == ord('q'):
-                    self.parent.state = MessageSubscriber.State.STOPPING
-                    self.addstr(0,0, "Received user's request to stop ... ]")
-                elif key == ord('l'):
-                    for handler in logger.handlers:
-                        current_level = handler.level
-                        if current_level == logging.CRITICAL:
-                            handler.setLevel(logging.getLevelName(logging.NOTSET))
-                        else:
-                            # see https://docs.python.org/3/library/logging.html#loggin.NOTSET
-                            handler.setLevel(logging.getLevelName(current_level+10))
-                elif key == ord('t'):
-                    self.current_tab_index += 1
-                    if self.current_tab_index >= len(self.tabs):
-                        self.current_tab_index = 0
-
-                self._screen.refresh()
-            except Exception as e:
-                logger.error(f"Screen update failed: {e}")
-                print(f"Screen update failed: {e}")
-                sys.exit(0)
-
-
-        def tab_messages(self, y_offset: int, screenwidth: int):
-                # Messages
-                self.addstr(y_offset,   0, f"{'-'*screenwidth}")
-                self.addstr(y_offset+1, 0, f"| Messages (log level: {logging.getLevelName(logger.handlers[0].level)})")
-                self.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
-
-                idx = 0
-                y_offset += 4
-                for idx, msg in enumerate(list(self.messages)[-20:]):
-                    self.addstr(idx + y_offset, 0, msg)
-
-                # Nodes
-                y_offset += idx + 4
-                # sort by time, then by name
-                timesorted_messages = sorted([(k,v) for k,v in self.msg_timestamps.items()],key=itemgetter(1,0))
-                self.addstr(y_offset,   0, f"{'-'*screenwidth}")
-                self.addstr(y_offset+1, 0, "| Nodes")
-                self.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
-
-                y_offset += 3
-                self.addstr(y_offset, 0, "Recently seen first", curses.A_BOLD)
-                for idx, msg in enumerate(reversed(timesorted_messages[-15:])):
-                    self.addstr(y_offset + idx + 1, 0, f"{msg[1]} {msg[0]}")
-                self.addstr(y_offset + idx + 2, 0, "    ...")
-
-                self.addstr(y_offset, 40, "Oldest seen first", curses.A_BOLD)
-                for idx, msg in enumerate(timesorted_messages[:15]):
-                    self.addstr(y_offset + idx + 1, 40, f"{msg[1]} {msg[0]}")
-                self.addstr(y_offset + idx + 2, 40, "    ...")
-
-                return y_offset
-
-        def tab_statistics(self, y_offset: int, screenwidth: int):
-            # Statistics
-            self.addstr(y_offset,   0, f"{'-'*screenwidth}")
-            self.addstr(y_offset+1, 0, f"| Statistics (update in: {self.next_stats_update:.2f} s)")
-            self.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
-
-            if self.stats:
-                group_header_y = y_offset + 3
-                group_sizes = []
-                columns = 3
-
-                column_width = 40 # characters
-                for group_idx, (group_name, values) in enumerate(self.stats.items()):
-                    group_header_x = (group_idx % columns)*column_width
-
-                    # when to reset the group_header_y, so to progress to the next 'row' of groups
-                    if group_sizes and group_idx % columns == 0:
-                        group_header_y += max(group_sizes) + 4
-                        group_sizes = []
-
-                    # Group Header
-                    self.addstr(group_header_y, group_header_x, group_name, curses.A_BOLD)
-                    # Properties
-                    for field_idx, (field_name, field_value) in enumerate(values.items()):
-                        if type(field_value) is float:
-                            field_value = f"{field_value:.5f}"
-
-                        try:
-                            y_offset = group_header_y + 2 + field_idx
-                            self.addstr(y_offset, group_header_x, f"{field_name}: {field_value}", curses.A_DIM)
-                        except curses.error:
-                            pass
-
-                    group_sizes.append(len(values))
-                return y_offset
-
-        def close(self):
-            if self._screen:
-                self._screen.clear()
-                curses.echo()
-                curses.nocbreak()
-                curses.endwin()
 
     def __init__(self,
             host: str, port: int,
@@ -272,6 +413,7 @@ class MessageSubscriber:
             stats_interval_in_s: int = 30,
             log_output: Path | str | None = None,
             log_level: int = logging.INFO,
+            output_fn: Callable[Output] | None = None
     ):
         self.host = host
         self.port = port
@@ -298,8 +440,11 @@ class MessageSubscriber:
         self.kafka_consumer_options = kafka_consumer_options
 
         self.state = self.State.UNKNOWN
+        self.output = MessageSubscriber.Output(cluster=self.cluster_name)
 
-        self.output = MessageSubscriber.Output(parent=self)
+        # function that will receive the latest output
+        self.output_fn = output_fn
+
 
         # setup the logging
         root_logger = logging.getLogger()
@@ -360,6 +505,17 @@ class MessageSubscriber:
 
         return lookbacks_in_h
 
+    def receive_and_notify(self):
+        if self.output_fn:
+            self.output.log_level = logger.handlers[0].level
+            command = self.output_fn(self.output)
+            if command:
+                log_level = logging.getLevelName(command.log_level)
+                logger.info(f"Changing log level to: {log_level}")
+                for handler in logger.handlers:
+                    handler.setLevel(log_level)
+
+
     async def consume(self,
                 topics: list[str],
                 consumer: KafkaConsumer,
@@ -383,8 +539,7 @@ class MessageSubscriber:
         while topics and not self.state == self.State.STOPPING:
             interval_start_time = dt.datetime.now(dt.timezone.utc)
 
-            self.output.print()
-
+            self.receive_and_notify()
             consumer._fetch_all_topic_metadata()
             if not consumer.assignment():
                 # Wait for partitions to become available
@@ -438,7 +593,12 @@ class MessageSubscriber:
                     now = utcnow()
                     seconds_from_now = (now.timestamp() - consumer_record.timestamp/1000.0)
 
-                    self.output.highlight = f"[{self.state.value}][{now.isoformat(timespec='milliseconds')}] last processed: topic={topic} offset={consumer_record.offset} latency: {seconds_from_now:.2f}s"
+                    self.output.highlight = MessageSubscriber.Highlight(state=self.state.value,
+                                                    time=now.isoformat(timespec='milliseconds'),
+                                                    last_processed_topic=topic,
+                                                    consumer_record_offset=consumer_record.offset,
+                                                    latency_in_s=seconds_from_now
+                                            )
 
                     self.output.next_stats_update = self.stats_interval_in_s - (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds()
                     if (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds() > self.stats_interval_in_s:
@@ -484,7 +644,7 @@ class MessageSubscriber:
 
                         self.output.stats = metrics
 
-                    self.output.print()
+                    self.receive_and_notify()
                 except Exception as e:
                     if self.verbose:
                         tb.print_tb(e.__traceback__)
@@ -513,7 +673,12 @@ class MessageSubscriber:
         return TopicBound(topic, lower_bound, upper_bound)
 
     def run(self):
-        asyncio.run(self._run())
+        try:
+            asyncio.run(self._run())
+        except KeyboardInterrupt:
+            print("Keyboard interrupt received - stopping")
+            self.state = self.State.STOPPING
+
 
     async def _run(self):
         """
@@ -606,4 +771,3 @@ class MessageSubscriber:
                 time.sleep(self.retry_timeout_in_s)
 
         logger.info("All tasks gracefully stopped")
-        self.output.close()
