@@ -318,6 +318,8 @@ class SampleDiskResponse(TimestampedModel):
     flush_requests_completed:    int = Field(description="Number of completed flush requests")
     ms_spent_flushing:           int = Field(description="Milliseconds spent flushing")
 
+    delta_time_in_s:             int = Field(default=0, description="Time delta for which these value hold, 0 if unknown")
+
 class SampleDiskTimeseriesResponse(BaseModel):
     """
     provide the timeseries of samples

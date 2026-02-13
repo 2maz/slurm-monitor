@@ -1,5 +1,6 @@
 from collections.abc import Awaitable
 import datetime as dt
+import re
 import sqlalchemy
 from sqlalchemy import (
         distinct,
@@ -43,6 +44,10 @@ from slurm_monitor.db.v2.db_base import (
     INTERVAL_2WEEKS,  # noqa
 )
 import slurm_monitor.db.v2.sonar as sonar
+from slurm_monitor.timescaledb.functions import (
+    first,
+    last,
+)
 
 from .db_base import DatabaseSettings # noqa
 from .db_tables import (
@@ -1788,7 +1793,7 @@ class ClusterDB(Database):
             node: str,
             start_time_in_s: int,
             end_time_in_s: int,
-            resolution_in_s: int
+            resolution_in_s: int | None = None
             ) -> list[SampleDiskTimeseriesResponse]:
         """
         Get SampleDisk timeseries for a given timeframe.
@@ -1799,6 +1804,12 @@ class ClusterDB(Database):
         return:
             [ { name: string, major: int, minor: int, data: Array[SampleDisk] } ]
         """
+        if resolution_in_s is None:
+            resolution_in_s = 60
+        else:
+            # resolution needs to be at least a minute
+            resolution_in_s = max(resolution_in_s, 60)
+
         query = select(
                     SampleDisk.name.distinct()
                ).where(
@@ -1833,6 +1844,90 @@ class ClusterDB(Database):
                     major=result[0][0].major,
                     minor=result[0][0].minor,
                     data=data
+                )
+            )
+        return response
+
+
+    async def get_node_sample_disk_rates_timeseries(
+            self,
+            cluster: str,
+            node: str,
+            start_time_in_s: int,
+            end_time_in_s: int,
+            resolution_in_s: int
+            ) -> list[SampleDiskTimeseriesResponse]:
+        """
+        Get SampleDisk timeseries for a given timeframe.
+
+        This is node specific data
+
+        For all disks on node:
+        return:
+            [ { name: string, major: int, minor: int, data: Array[SampleDisk] } ]
+        """
+        query = select(
+                    SampleDisk.name.distinct().label('name'),
+                    SampleDisk.major,
+                    SampleDisk.minor,
+               ).where(
+                    (SampleDisk.cluster == cluster),
+                    (SampleDisk.node == node),
+                    (SampleDisk.time >= fromtimestamp(start_time_in_s)),
+                    (SampleDisk.time <= fromtimestamp(end_time_in_s))
+               )
+
+        async with self.make_async_session() as session:
+            all_disks = (await session.execute(query)).mappings().all()
+
+        disks = []
+        for d in all_disks:
+            disk_name = d['name']
+            if disk_name.startswith("loop"):
+                logger.info(f"Ignoring disk stats for loop device: {disk_name}")
+                continue
+            elif re.search(r"p[0-9]+$", disk_name):
+                logger.info(f"Ignoring diskstats for partition: {disk_name}")
+                continue
+
+            disks.append(d)
+
+        disks = sorted(disks, key=lambda x: x['name'])
+
+        response = []
+        fields = []
+        for x in list(SampleDisk.diskstats().keys()):
+            f = getattr(SampleDisk, x)
+            if 'currently' in x:
+                fields.append( (func.max(f)).label(x) )
+            else:
+                fields.append( (last(f, SampleDisk.time) - first(f, SampleDisk.time)).label(x) )
+
+        for disk in tqdm(disks, desc="Disks", total=len(disks)):
+            query = select(
+                           time_bucket(resolution_in_s, SampleDisk.time).label('time'),
+                           *fields,
+                           ).where(
+                        (SampleDisk.cluster == cluster),
+                        (SampleDisk.node == node),
+                        (SampleDisk.name == disk['name']),
+                        (SampleDisk.time >= fromtimestamp(start_time_in_s)),
+                        (SampleDisk.time <= fromtimestamp(end_time_in_s)),
+                   ).group_by(
+                        'time'
+                   ).order_by(
+                        'time'
+                   )
+
+            async with self.make_async_session() as session:
+                result = (await session.execute(query)).mappings().all()
+                data = [ SampleDiskResponse(**x, delta_time_in_s=resolution_in_s) for x in result ]
+
+            response.append(SampleDiskTimeseriesResponse(
+                    name=disk['name'],
+                    major=disk['major'],
+                    minor=disk['minor'],
+                    data=data,
                 )
             )
         return response
