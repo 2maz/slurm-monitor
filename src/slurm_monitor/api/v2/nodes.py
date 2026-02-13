@@ -4,6 +4,7 @@ import datetime as dt
 
 from fastapi import Depends, HTTPException, Response
 from fastapi_cache.decorator import cache
+import logging
 from typing import Annotated
 
 from slurm_monitor.db_operations import DBManager
@@ -25,6 +26,8 @@ from slurm_monitor.api.v2.response_models import (
     NodeDiskTimeseriesResponse,
     SampleProcessAccResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @api_router.get("/cluster/{cluster}/nodes",
