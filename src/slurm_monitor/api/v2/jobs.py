@@ -21,6 +21,7 @@ from slurm_monitor.api.v2.response_models import (
     JobResponse,
     JobsResponse,
     SystemProcessTimeseriesResponse,
+    SystemProcessTreeResponse,
     JobNodeSampleProcessGpuTimeseriesResponse,
 )
 
@@ -84,6 +85,45 @@ async def job_sample_process_system(
             end_time_in_s=end_time_in_s,
             resolution_in_s=resolution_in_s
         )
+
+@api_router.get("/cluster/{cluster}/jobs/{job_id}/process/tree",
+        summary="Get **job**-specific process (cpu/memory) timeseries data",
+        tags=["job"],
+        response_model=SystemProcessTreeResponse
+)
+@cache(expire=90)
+async def job_sample_process_system_tree(
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    cluster: str,
+    job_id: int,
+    epoch: int = 0,
+    nodename: str | None = None,
+    start_time_in_s: float | None = None,
+    end_time_in_s: float | None = None,
+    resolution_in_s: int | None = None,
+    dbi: ClusterDB = Depends(DBManager.get_database)
+):
+    """
+    Get job-related process tree providing process level data for all related nodes
+
+    By default this related to SLURM jobs (epoch set to 0).
+    To relate to non-SLURM jobs, provide the epoch as parameter to the query.
+    """
+    start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
+            start_time_in_s=start_time_in_s,
+            end_time_in_s=end_time_in_s,
+            resolution_in_s=resolution_in_s
+    )
+
+    nodes_data = await dbi.get_job_sample_system_per_pid_timeseries(
+            cluster=cluster,
+            job_id=job_id,
+            epoch=epoch,
+            start_time_in_s=start_time_in_s,
+            end_time_in_s=end_time_in_s,
+            resolution_in_s=resolution_in_s
+        )
+    return SystemProcessTreeResponse(job=job_id, epoch=epoch, nodes=nodes_data)
 
 @api_router.get("/cluster/{cluster}/jobs/process/gpu/timeseries",
         summary="Get GPU samples as timeseries, aggregated per job (for all jobs) and process on a given cluster",

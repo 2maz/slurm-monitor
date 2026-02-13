@@ -1,5 +1,7 @@
 from collections.abc import Awaitable
 import datetime as dt
+import networkx as nx
+import re
 import sqlalchemy
 from sqlalchemy import (
         distinct,
@@ -26,6 +28,10 @@ from slurm_monitor.api.v2.response_models import (
     JobReport,
     JobResponse,
     JobSpecificTimeseriesResponse,
+    ProcessData,
+    ProcessRelations,
+    ProcessTreeResponse,
+    ProcessTreeMetaData,
     SampleDiskResponse,
     SampleDiskTimeseriesResponse,
     SampleGpuBaseResponse,
@@ -43,6 +49,10 @@ from slurm_monitor.db.v2.db_base import (
     INTERVAL_2WEEKS,  # noqa
 )
 import slurm_monitor.db.v2.sonar as sonar
+from slurm_monitor.timescaledb.functions import (
+    first,
+    last,
+)
 
 from .db_base import DatabaseSettings # noqa
 from .db_tables import (
@@ -1538,13 +1548,141 @@ class ClusterDB(Database):
 ##### END SAMPLE PROCESS GPU #######################################################
 
 ##### BEGIN SAMPLE PROCESS (CPU) ###################################################
+    async def get_job_sample_system_per_pid_timeseries(
+            self,
+            cluster: str,
+            job_id: int,
+            start_time_in_s: int,
+            end_time_in_s: int,
+            resolution_in_s: int,
+            epoch: int | None = None,
+        ):
+
+        jobs = await self.get_active_jobs_with_nodes(
+                cluster=cluster,
+                job_id=job_id,
+                epoch=epoch,
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s
+        )
+        if not jobs:
+            return {}
+
+        job_id, epoch, nodes = jobs[0]
+        node_configs = await self.get_nodes_sysinfo_attributes(
+                           cluster=cluster,
+                           nodes=nodes,
+                           time_in_s=start_time_in_s,
+                           fields=["node", "memory"]
+                        )
+
+        if not node_configs:
+            raise RuntimeError(f"sample_system: {nodes=} on {cluster=} are not available")
+
+        nodes_sample_process = {}
+        for node_config in node_configs:
+            where = (SampleProcess.cluster == cluster) & (SampleProcess.node == node_config.node)
+            if job_id:
+                where &= SampleProcess.job == job_id
+                if epoch:
+                    where &= SampleProcess.epoch == epoch
+
+            if start_time_in_s:
+                where &= SampleProcess.time >= fromtimestamp(start_time_in_s)
+
+            if end_time_in_s:
+                where &= SampleProcess.time <= fromtimestamp(end_time_in_s)
+
+            # Identifiable processes in the time window on this particular node
+            subquery = select(
+                        SampleProcess.job,
+                        SampleProcess.epoch,
+                        SampleProcess.pid,
+                        SampleProcess.ppid,
+                        SampleProcess.user,
+                        SampleProcess.cmd,
+                    ).where(
+                        where
+                    ).distinct()
+
+            subquery = subquery.distinct()
+
+            async with self.make_async_session() as session:
+                active_processes = (await session.execute(subquery)).mappings().all()
+
+            processes = {}
+            relations = []
+
+            root_pid = 0
+            graph = nx.Graph()
+            for process in active_processes:
+                pid = process['pid']
+                ppid = process['ppid']
+
+                graph.add_node(pid)
+                graph.add_node(ppid)
+                graph.add_edge(ppid, pid)
+
+                timeseries_data = await self.get_sample_process_by_pid_timeseries(
+                        cluster=cluster,
+                        node=node_config.node,
+                        job_id=process['job'],
+                        epoch=process['epoch'],
+                        pid=pid,
+                        memory=node_config.memory,
+                        start_time_in_s=start_time_in_s,
+                        end_time_in_s=end_time_in_s,
+                        resolution_in_s=resolution_in_s
+                )
+
+                processes[pid]= ProcessData(
+                        ppid=ppid,
+                        user=process['user'],
+                        cmd=process['cmd'],
+                        data=timeseries_data
+                )
+
+                if ppid not in active_processes:
+                    root_pid = pid
+
+                relations.append(
+                        ProcessRelations(
+                            relation_id=f"{ppid}_{pid}",
+                            source=ppid,
+                            target=pid
+                        )
+                )
+
+            max_depth = 0
+            for process in active_processes:
+                path = nx.shortest_path(graph, root_pid, process['pid'])
+                max_depth = max(len(path), max_depth)
+
+            metadata = ProcessTreeMetaData(
+                    total_processes=len(processes),
+                    start_time=int(start_time_in_s),
+                    end_time=int(end_time_in_s),
+                    root_pid=root_pid,
+                    max_depth=max_depth
+            )
+
+            nodes_sample_process[node_config.node] = ProcessTreeResponse(
+                    processes=processes,
+                    relations=relations,
+                    metadata=metadata
+            )
+
+        return nodes_sample_process
+
     async def get_nodes_sample_process_timeseries(
             self,
             cluster: str,
             nodes: list[str],
             start_time_in_s: int,
             end_time_in_s: int,
-            resolution_in_s: int
+            resolution_in_s: int,
+            job_id: int | None = None,
+            epoch: int | None = None
             ):
         """
         return:
@@ -1565,6 +1703,11 @@ class ClusterDB(Database):
         nodes_sample_process = {}
         for node_config in node_configs:
             where = (SampleProcess.cluster == cluster) & (SampleProcess.node == node_config.node)
+            if job_id:
+                where &= SampleProcess.job == job_id
+                if epoch:
+                    where &= SampleProcess.epoch == epoch
+
             if start_time_in_s:
                 where &= SampleProcess.time >= fromtimestamp(start_time_in_s)
 
@@ -1788,7 +1931,7 @@ class ClusterDB(Database):
             node: str,
             start_time_in_s: int,
             end_time_in_s: int,
-            resolution_in_s: int
+            resolution_in_s: int | None = None
             ) -> list[SampleDiskTimeseriesResponse]:
         """
         Get SampleDisk timeseries for a given timeframe.
@@ -1799,6 +1942,12 @@ class ClusterDB(Database):
         return:
             [ { name: string, major: int, minor: int, data: Array[SampleDisk] } ]
         """
+        if resolution_in_s is None:
+            resolution_in_s = 60
+        else:
+            # resolution needs to be at least a minute
+            resolution_in_s = max(resolution_in_s, 60)
+
         query = select(
                     SampleDisk.name.distinct()
                ).where(
@@ -1833,6 +1982,90 @@ class ClusterDB(Database):
                     major=result[0][0].major,
                     minor=result[0][0].minor,
                     data=data
+                )
+            )
+        return response
+
+
+    async def get_node_sample_disk_rates_timeseries(
+            self,
+            cluster: str,
+            node: str,
+            start_time_in_s: int,
+            end_time_in_s: int,
+            resolution_in_s: int
+            ) -> list[SampleDiskTimeseriesResponse]:
+        """
+        Get SampleDisk timeseries for a given timeframe.
+
+        This is node specific data
+
+        For all disks on node:
+        return:
+            [ { name: string, major: int, minor: int, data: Array[SampleDisk] } ]
+        """
+        query = select(
+                    SampleDisk.name.distinct().label('name'),
+                    SampleDisk.major,
+                    SampleDisk.minor,
+               ).where(
+                    (SampleDisk.cluster == cluster),
+                    (SampleDisk.node == node),
+                    (SampleDisk.time >= fromtimestamp(start_time_in_s)),
+                    (SampleDisk.time <= fromtimestamp(end_time_in_s))
+               )
+
+        async with self.make_async_session() as session:
+            all_disks = (await session.execute(query)).mappings().all()
+
+        disks = []
+        for d in all_disks:
+            disk_name = d['name']
+            if disk_name.startswith("loop"):
+                logger.info(f"Ignoring disk stats for loop device: {disk_name}")
+                continue
+            elif re.search(r"p[0-9]+$", disk_name):
+                logger.info(f"Ignoring diskstats for partition: {disk_name}")
+                continue
+
+            disks.append(d)
+
+        disks = sorted(disks, key=lambda x: x['name'])
+
+        response = []
+        fields = []
+        for x in list(SampleDisk.diskstats().keys()):
+            f = getattr(SampleDisk, x)
+            if 'currently' in x:
+                fields.append( (func.max(f)).label(x) )
+            else:
+                fields.append( (last(f, SampleDisk.time) - first(f, SampleDisk.time)).label(x) )
+
+        for disk in tqdm(disks, desc="Disks", total=len(disks)):
+            query = select(
+                           time_bucket(resolution_in_s, SampleDisk.time).label('time'),
+                           *fields,
+                           ).where(
+                        (SampleDisk.cluster == cluster),
+                        (SampleDisk.node == node),
+                        (SampleDisk.name == disk['name']),
+                        (SampleDisk.time >= fromtimestamp(start_time_in_s)),
+                        (SampleDisk.time <= fromtimestamp(end_time_in_s)),
+                   ).group_by(
+                        'time'
+                   ).order_by(
+                        'time'
+                   )
+
+            async with self.make_async_session() as session:
+                result = (await session.execute(query)).mappings().all()
+                data = [ SampleDiskResponse(**x, delta_time_in_s=resolution_in_s) for x in result ]
+
+            response.append(SampleDiskTimeseriesResponse(
+                    name=disk['name'],
+                    major=disk['major'],
+                    minor=disk['minor'],
+                    data=data,
                 )
             )
         return response
@@ -1877,6 +2110,7 @@ class ClusterDB(Database):
                 end_time_in_s: int,
                 node: str | None = None,
                 job_id: int | None = None,
+                epoch: int | None = None,
                 ):
         """
             Get all active jobs in the cluster with related node information
@@ -1889,6 +2123,9 @@ class ClusterDB(Database):
 
         if job_id is not None:
             where &= (SampleProcess.job == job_id)
+
+        if epoch is not None:
+            where &= (SampleProcess.epoch == epoch)
 
         if node is not None:
             where &= (SampleProcess.node == node)
