@@ -585,7 +585,7 @@ class ClusterDB(Database):
                     )
             job_ids_to_nodes = {x[0]: x[1] for x in (await session.execute(jobs_with_nodes_query)).all()}
 
-        active_jobs_with_nodes = {x[0]: x[2] for x in (await self.get_active_jobs_with_nodes(cluster=cluster,
+        active_jobs_with_nodes = {x[0]: x[2] for x in (await self.get_jobs_with_nodes(cluster=cluster,
                 start_time_in_s=time_in_s - 15*60,
                 end_time_in_s=time_in_s
         ))}
@@ -1053,7 +1053,7 @@ class ClusterDB(Database):
                 nodes=nodes
             )
 
-        active_jobs = await self.get_active_jobs_with_nodes(
+        active_jobs = await self.get_jobs_with_nodes(
                 cluster=cluster,
                 start_time_in_s=start_time_in_s,
                 end_time_in_s=end_time_in_s,
@@ -1062,7 +1062,7 @@ class ClusterDB(Database):
 
         all_jobs = []
         for job in active_jobs:
-            jid, job_epoch, job_nodes = job
+            jid, job_epoch, job_nodes, start_time, end_time = job
 
             if nodes is None:
                 nodes = job_nodes
@@ -1552,13 +1552,13 @@ class ClusterDB(Database):
             self,
             cluster: str,
             job_id: int,
-            start_time_in_s: int,
-            end_time_in_s: int,
             resolution_in_s: int,
+            start_time_in_s: int | None = None,
+            end_time_in_s: int | None = None,
             epoch: int | None = None,
         ):
 
-        jobs = await self.get_active_jobs_with_nodes(
+        jobs = await self.get_jobs_with_nodes(
                 cluster=cluster,
                 job_id=job_id,
                 epoch=epoch,
@@ -1568,11 +1568,11 @@ class ClusterDB(Database):
         if not jobs:
             return {}
 
-        job_id, epoch, nodes = jobs[0]
+        job_id, epoch, nodes, start_time, end_time = jobs[0]
         node_configs = await self.get_nodes_sysinfo_attributes(
                            cluster=cluster,
                            nodes=nodes,
-                           time_in_s=start_time_in_s,
+                           time_in_s=start_time.timestamp(),
                            fields=["node", "memory"]
                         )
 
@@ -1587,11 +1587,8 @@ class ClusterDB(Database):
                 if epoch:
                     where &= SampleProcess.epoch == epoch
 
-            if start_time_in_s:
-                where &= SampleProcess.time >= fromtimestamp(start_time_in_s)
-
-            if end_time_in_s:
-                where &= SampleProcess.time <= fromtimestamp(end_time_in_s)
+            where &= SampleProcess.time >= start_time
+            where &= SampleProcess.time <= end_time
 
             # Identifiable processes in the time window on this particular node
             subquery = select(
@@ -1615,6 +1612,9 @@ class ClusterDB(Database):
 
             root_pid = 0
             graph = nx.Graph()
+            graph.add_node(root_pid)
+
+            known_pids = [x['pid'] for x in active_processes]
             for process in active_processes:
                 pid = process['pid']
                 ppid = process['ppid']
@@ -1630,8 +1630,8 @@ class ClusterDB(Database):
                         epoch=process['epoch'],
                         pid=pid,
                         memory=node_config.memory,
-                        start_time_in_s=start_time_in_s,
-                        end_time_in_s=end_time_in_s,
+                        start_time_in_s=start_time.timestamp(),
+                        end_time_in_s=end_time.timestamp(),
                         resolution_in_s=resolution_in_s
                 )
 
@@ -1642,8 +1642,15 @@ class ClusterDB(Database):
                         data=timeseries_data
                 )
 
-                if ppid not in active_processes:
-                    root_pid = pid
+                if ppid not in known_pids:
+                    graph.add_edge(root_pid, ppid)
+                    relations.append(
+                            ProcessRelations(
+                                relation_id=f"{root_pid}_{ppid}",
+                                source=root_pid,
+                                target=ppid
+                            )
+                    )
 
                 relations.append(
                         ProcessRelations(
@@ -1656,12 +1663,14 @@ class ClusterDB(Database):
             max_depth = 0
             for process in active_processes:
                 path = nx.shortest_path(graph, root_pid, process['pid'])
-                max_depth = max(len(path), max_depth)
+                # Compensate for the introduction of the artifical root node
+                # for parallel processes
+                max_depth = max(len(path) - 2, max_depth)
 
             metadata = ProcessTreeMetaData(
                     total_processes=len(processes),
-                    start_time=int(start_time_in_s),
-                    end_time=int(end_time_in_s),
+                    start_time=int(start_time.timestamp()),
+                    end_time=int(end_time.timestamp()),
                     root_pid=root_pid,
                     max_depth=max_depth
             )
@@ -2104,10 +2113,10 @@ class ClusterDB(Database):
         async with self.make_async_session() as session:
             return (await session.execute(query)).all()
 
-    async def get_active_jobs_with_nodes(self,
+    async def get_jobs_with_nodes(self,
                 cluster: str,
-                start_time_in_s: int,
-                end_time_in_s: int,
+                start_time_in_s: int | None = None,
+                end_time_in_s: int | None = None,
                 node: str | None = None,
                 job_id: int | None = None,
                 epoch: int | None = None,
@@ -2117,9 +2126,13 @@ class ClusterDB(Database):
             return
                 [ (job, epoch, nodes) ]
         """
-        where = (SampleProcess.cluster == cluster) & \
-                (SampleProcess.time >= fromtimestamp(start_time_in_s)) & \
-                (SampleProcess.time <= fromtimestamp(end_time_in_s))
+        where = (SampleProcess.cluster == cluster)
+
+        if start_time_in_s:
+            where &= (SampleProcess.time >= fromtimestamp(start_time_in_s))
+
+        if end_time_in_s:
+            where &= (SampleProcess.time <= fromtimestamp(end_time_in_s))
 
         if job_id is not None:
             where &= (SampleProcess.job == job_id)
@@ -2133,7 +2146,9 @@ class ClusterDB(Database):
         query = select(
                     SampleProcess.job,
                     SampleProcess.epoch,
-                    func.array_agg(SampleProcess.node.distinct())
+                    func.array_agg(SampleProcess.node.distinct()),
+                    func.min(SampleProcess.time).label('start_time'),
+                    func.max(SampleProcess.time).label('end_time')
                 ).where(
                     where
                 ).group_by(

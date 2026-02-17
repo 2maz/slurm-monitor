@@ -109,11 +109,15 @@ async def job_sample_process_system_tree(
     By default this related to SLURM jobs (epoch set to 0).
     To relate to non-SLURM jobs, provide the epoch as parameter to the query.
     """
-    start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s
-    )
+    if start_time_in_s is not None and end_time_in_s is not None:
+        start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
+                start_time_in_s=start_time_in_s,
+                end_time_in_s=end_time_in_s,
+                resolution_in_s=resolution_in_s
+        )
+
+    if not resolution_in_s:
+        resolution_in_s = 5*60 # 5 mins
 
     nodes_data = await dbi.get_job_sample_system_per_pid_timeseries(
             cluster=cluster,
