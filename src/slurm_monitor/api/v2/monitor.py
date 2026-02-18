@@ -8,6 +8,7 @@ from logging import getLogger, Logger
 import pandas as pd
 from pathlib import Path
 from typing import Annotated
+import yaml
 
 from slurm_monitor.db.v2.db import ClusterDB
 from slurm_monitor.utils import utcnow
@@ -291,24 +292,32 @@ async def queries(
         )
 
 @api_router.get("/cluster/{cluster}/benchmarks/{benchmark_name}")
+@cache(expire=3600)
 def benchmarks(
         token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
         cluster: str,
         benchmark_name: str = "lambdal"):
     app_settings = AppSettings.initialize()
+
     if app_settings.data_dir is None:
         logger.warning("No data directory set. Please set SLURM_MONITOR_DATA_DIR")
         return {}
 
     path = Path(app_settings.data_dir) / cluster / f"{benchmark_name}-benchmark-results.csv"
-    if not path.exists():
-        logger.warning(f"{cluster=}: could not find benchmarking results: {path=}")
-        return {}
+    if path.exists():
+        df = pd.read_csv(str(path))
+        df = df.fillna(-1)
+        del df['Unnamed: 0']
+        return df.to_dict(orient="records")
 
-    df = pd.read_csv(str(path))
-    df = df.fillna(-1)
-    del df['Unnamed: 0']
-    return df.to_dict(orient="records")
+    path = Path(app_settings.data_dir) / cluster / f"{benchmark_name}-results.yaml"
+    if path.exists():
+        with open(path, 'r') as f:
+            return yaml.load(f, Loader=yaml.SafeLoader)
+
+    logger.warning(f"{cluster=}: could not find benchmarking results: {path=}")
+    return {}
+
 
 
 ####### v1 ###############################
