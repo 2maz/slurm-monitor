@@ -4,6 +4,7 @@ import datetime as dt
 
 from fastapi import Depends, HTTPException, Response
 from fastapi_cache.decorator import cache
+import logging
 from typing import Annotated
 
 from slurm_monitor.db_operations import DBManager
@@ -25,6 +26,8 @@ from slurm_monitor.api.v2.response_models import (
     NodeDiskTimeseriesResponse,
     SampleProcessAccResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @api_router.get("/cluster/{cluster}/nodes",
@@ -349,7 +352,7 @@ async def nodes_sample_disk(
     nodename: str | None = None,
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
-    resolution_in_s: int | None = None,
+    resolution_in_s: int | None = 300,
     dbi: ClusterDB = Depends(DBManager.get_database)
 ):
     try:
@@ -361,8 +364,9 @@ async def nodes_sample_disk(
 
         nodes = await dbi.get_nodes(cluster=cluster, time_in_s=start_time_in_s) if nodename is None else [nodename]
         tasks = {}
-        for node in nodes:
-            tasks[node] = asyncio.create_task(dbi.get_node_sample_disk_timeseries(
+        for idx, node in enumerate(nodes, 1):
+            logger.info(f"Start querying diskstats for {node=} ({idx}/{len(nodes)})")
+            tasks[node] = asyncio.create_task(dbi.get_node_sample_disk_rates_timeseries(
                     cluster=cluster,
                     node=node,
                     start_time_in_s=start_time_in_s,

@@ -774,6 +774,7 @@ class SampleProcess(TableBase):
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
     __table_args__ = (
+        Index(f"{ExtraIndexPrefix}sample_process_job_epoch", "job", "epoch", time.desc()),
         ForeignKeyConstraint(["cluster", "node"], [Node.cluster, Node.node]),
         CheckConstraint("job != 0 or epoch != 0", "job_or_epoch_non_zero"),
         CheckConstraint("job >= 0 and epoch >= 0", "job_or_epoch_non_negative"),

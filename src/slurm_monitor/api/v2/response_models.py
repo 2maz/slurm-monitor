@@ -318,6 +318,8 @@ class SampleDiskResponse(TimestampedModel):
     flush_requests_completed:    int = Field(description="Number of completed flush requests")
     ms_spent_flushing:           int = Field(description="Milliseconds spent flushing")
 
+    delta_time_in_s:             int = Field(default=0, description="Time delta for which these value hold, 0 if unknown")
+
 class SampleDiskTimeseriesResponse(BaseModel):
     """
     provide the timeseries of samples
@@ -382,6 +384,36 @@ class SystemProcessTimeseriesResponse(BaseModel):
     job: int = Field(description="Job ID")
     epoch: int = Field(description="Epoch uniquely identifying non-slurm jobs")
     nodes: dict[str, CombinedProcessTimeSeriesResponse]
+
+# BEGIN PROCESS TREE
+class ProcessData(BaseModel):
+    ppid: int = Field(description="Parent Process Id")
+    user: str = Field(description="User")
+    cmd: str = Field(description="Command (this is not the command line)")
+    data: list[SampleProcessAccResponse]
+
+class ProcessRelations(BaseModel):
+    relation_id: str = Field(description="Identifier for this relation")
+    source: int = Field(description="Source aka parent process id")
+    target: int = Field(description="Target aka child process id")
+
+class ProcessTreeMetaData(BaseModel):
+    total_processes: int
+    start_time: int
+    end_time: int
+    root_pid: int
+    max_depth: int
+
+class ProcessTreeResponse(BaseModel):
+    processes: dict[int, ProcessData]
+    relations: list[ProcessRelations]
+    metadata: ProcessTreeMetaData
+
+class SystemProcessTreeResponse(BaseModel):
+    job: int = Field(description="Job ID")
+    epoch: int = Field(description="Epoch uniquely identifying non-slurm jobs")
+    nodes: dict[str, ProcessTreeResponse] = Field(description="Process tree per node")
+# END PROCESS TREE
 
 class NodeJobSampleProcessTimeseriesResponse(BaseModel):
     job: int = Field(description="Job ID")
