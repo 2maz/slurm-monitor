@@ -4,6 +4,8 @@ import datetime as dt
 
 from fastapi import Depends, HTTPException, Response
 from fastapi_cache.decorator import cache
+import fastapi_pagination
+
 import logging
 from typing import Annotated
 
@@ -11,6 +13,7 @@ from slurm_monitor.db_operations import DBManager
 from slurm_monitor.db.v2.db import ClusterDB
 from slurm_monitor.api.v2.routes import (
     api_router,
+    create_custom_page,
     validate_interval,
     get_token_payload,
     TokenPayload
@@ -29,6 +32,7 @@ from slurm_monitor.api.v2.response_models import (
 
 logger = logging.getLogger(__name__)
 
+NodesPage = create_custom_page("nodes")
 
 @api_router.get("/cluster/{cluster}/nodes",
         summary="Nodes available in a given cluster",
@@ -95,6 +99,35 @@ async def nodes_sysinfo(cluster: str,
     yet.  To check - compare with the complete node list /cluster/{cluster}/nodes
     """
     return await dbi.get_nodes_sysinfo(cluster, nodename, time_in_s)
+
+@api_router.get("/cluster/{cluster}/nodes/info/pages",
+        summary="Detailed information about nodes in a cluster",
+        tags=["cluster"],
+        response_model=NodesPage[NodeInfoResponse]
+)
+@cache(expire=90)
+async def nodes_sysinfo_pages(cluster: str,
+        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+        time_in_s: int | None = None,
+        limit: int = 100,
+        page: int = 1 ,
+        page_size: int = 50,
+        dbi: ClusterDB = Depends(DBManager.get_database),
+    ):
+    """
+    Get available information about nodes in a cluster
+
+    It will only contain information about reporting nodes - in some case a
+    node might exist in a cluster, but no system information has been received
+    yet.  To check - compare with the complete node list /cluster/{cluster}/nodes
+    """
+
+    result = await dbi.get_nodes_sysinfo(cluster=cluster, time_in_s=time_in_s, limit=limit)
+    nodes = sorted(result.values(), key=lambda x: x['node'])
+
+    return fastapi_pagination.paginate(nodes, params=fastapi_pagination.Params(page=page, size=page_size))
+
+
 
 @api_router.get("/cluster/{cluster}/nodes/states",
         summary="Information about the states of all nodes in a cluster",

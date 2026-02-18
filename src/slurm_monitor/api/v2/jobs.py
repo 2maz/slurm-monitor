@@ -1,16 +1,15 @@
 from fastapi import Depends
 from fastapi_cache.decorator import cache
 import fastapi_pagination
-from fastapi_pagination import Params, Page
 
-from pydantic import Field
-from typing import Annotated, Generic, TypeVar, Sequence
+from typing import Annotated
 
 from slurm_monitor.utils import utcnow
 from slurm_monitor.db_operations import DBManager
 from slurm_monitor.db.v2.db import ClusterDB
 from slurm_monitor.api.v2.routes import (
     api_router,
+    create_custom_page,
     validate_interval,
     get_token_payload,
     TokenPayload
@@ -28,14 +27,6 @@ from slurm_monitor.api.v2.response_models import (
 # avoid warning on not using sqlalchemy.ext.paginate
 # we query directly to cache the full query response on the db layer
 fastapi_pagination.utils.disable_installed_extensions_check()
-
-T = TypeVar("T")
-def create_custom_page(items_alias: str):
-    class CustomPage(Page[T], Generic[T]):
-        items: Sequence[T] = Field(alias=items_alias)
-        model_config = { 'populate_by_name': True }
-
-    return CustomPage
 
 JobsPage = create_custom_page("jobs")
 
@@ -341,7 +332,7 @@ async def query_jobs_pages(
         timestamp=timestamp
         )
 
-    return fastapi_pagination.paginate(jobs, params=Params(page=page, size=page_size))
+    return fastapi_pagination.paginate(jobs, params=fastapi_pagination.Params(page=page, size=page_size))
 
 
 @api_router.get("/cluster/{cluster}/jobs/{job_id}/report",

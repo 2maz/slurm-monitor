@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
+from fastapi_pagination import Page
+
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
-
 from logging import getLogger, Logger
 import jwt
+from typing import Generic, Sequence, TypeVar
 
 from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.utils import utcnow
@@ -151,3 +153,12 @@ async def get_token_payload(request: Request) -> TokenPayload:
 
     logger.info("get_token_payload: authentication disabled")
     return None
+
+
+T = TypeVar("T")
+def create_custom_page(items_alias: str):
+    class CustomPage(Page[T], Generic[T]):
+        items: Sequence[T] = Field(alias=items_alias)
+        model_config = { 'populate_by_name': True }
+
+    return CustomPage

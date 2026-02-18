@@ -640,7 +640,8 @@ class ClusterDB(Database):
             nodes: str | list[str] | None = None,
             time_in_s: int | None = None,
             interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S,
-            fields: list[str] | None = None
+            fields: list[str] | None = None,
+            limit: int | None = None
             ) -> list[SysinfoAttributes]:
         """
         Retrieve the node configuration that is active at the given point in time
@@ -747,6 +748,9 @@ class ClusterDB(Database):
                         (SysinfoAttributes.time == subquery.c.min_time)
                     ).order_by(None)
 
+            if limit:
+                query = query.limit(limit)
+
             async with self.make_async_session() as session:
                 return [x[0] for x in (await session.execute(query)).all()]
 
@@ -756,13 +760,14 @@ class ClusterDB(Database):
 
         return []
 
-    @ttl_cache_async(ttl=90, maxsize=1024)
+    @ttl_cache_async(ttl=300, maxsize=1024)
     async def get_nodes_sysinfo(self,
             cluster: str,
             nodelist: list[str] | str | None = None,
             time_in_s: int | None = None,
             interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S,
-            fields: list[str] | None = None
+            fields: list[str] | None = None,
+            limit: int | None = None
         ):
         """
         Get the sysinfo information for all nodes
@@ -773,7 +778,6 @@ class ClusterDB(Database):
         Activity related information, including related partitions, and resource allocation is only augmented
         for the selected *interval_in_s*
         """
-
         if time_in_s is None:
             time_in_s = utcnow().timestamp()
 
@@ -788,7 +792,8 @@ class ClusterDB(Database):
                 # ensure that sysinfo contains information about nodes, that
                 # have been seen at least once in the past 14 days
                 interval_in_s=INTERVAL_2WEEKS,
-                fields=fields
+                fields=fields,
+                limit=limit
         )
 
         nodes = [x.node for x in node_configs]
@@ -821,6 +826,7 @@ class ClusterDB(Database):
 
         nodeinfo = {}
         time_start = utcnow()
+
         for node_config in tqdm(node_configs, total=len(node_configs), desc="Collection node configurations"):
             nodename = node_config.node
             nodeinfo[nodename] = dict(node_config)
