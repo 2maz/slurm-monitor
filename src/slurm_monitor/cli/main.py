@@ -47,6 +47,15 @@ class MainParser(ArgumentParser):
         self.add_argument("--version", "-i", action="store_true", help="Show version")
         self.add_argument("--verbose", action="store_true", help="Show verbose information")
 
+        # This is mainly here to provide documentation,
+        # the actual loading need to be done in AppSettings, since this
+        # will be initialized before the parser is parsing the arguments
+        self.add_argument("--env-file",
+                          type=str,
+                          default=".env",
+                          help="Set the env-file"
+        )
+
     def attach_subcommand_parser(
         self, subcommand: str, help: str, parser_klass: BaseParser
     ):

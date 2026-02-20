@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from pydantic import Field, computed_field, BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
+import sys
 
 from slurm_monitor.db import DatabaseSettings
 
@@ -70,6 +71,8 @@ class SSLSettings(BaseModel):
     certfile: str | None = Field(default=None, description="Certfile to use")
 
 class AppSettings(BaseSettings):
+    # export SLURM_MONITOR_ENVFILE='.dev.env' in order to change the default
+    # .env file that is being loaded
     model_config = SettingsConfigDict(
                     env_file='.env',
                     env_nested_delimiter='_',
@@ -110,10 +113,15 @@ class AppSettings(BaseSettings):
             return cls._instance
 
         env_file = ".env"
+        if "--env-file" in sys.argv:
+            idx = sys.argv.index("--env-file")
+            env_file = sys.argv[idx+1]
+
         if "SLURM_MONITOR_ENVFILE" in os.environ:
             env_file = os.environ["SLURM_MONITOR_ENVFILE"]
-            if not Path(env_file).exists():
-                raise FileNotFoundError(f"AppSettings.initialize: could not find {env_file=}")
+
+        if env_file == '' or not Path(env_file).exists():
+            raise FileNotFoundError(f"AppSettings.initialize: could not find {env_file=}")
 
         logger.info(f"AppSettings.initialize: loading {env_file=}")
         cls._instance = AppSettings(_env_file=env_file, **kwargs)
