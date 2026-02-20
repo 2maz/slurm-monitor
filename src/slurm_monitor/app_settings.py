@@ -5,10 +5,13 @@ from jwt import PyJWKClient
 import os
 import logging
 from pathlib import Path
-from pydantic import Field, computed_field
+from pydantic import Field, computed_field, BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from slurm_monitor.db import DatabaseSettings
+
+SLURM_MONITOR_LISTEN_PORT = 9099
+SLURM_MONITOR_LISTEN_UI_PORT = 25052
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +45,30 @@ class PrefetchSettings(BaseSettings):
     enabled: bool = Field(default=True)
     interval: int = Field(default=90)
 
+class ServerSettings(BaseModel):
+    host: str
+    port: int
+
+class ListenStatsSettings(BaseModel):
+    interval: int = Field(default=30, description="Interval in seconds to compute stats")
+
+class ListenSettings(BaseModel):
+    cluster: str | None = Field(default=None, description="Name of cluster", alias="CLUSTER_NAME")
+    lookback: int | None = Field(default=None, description="Lookback timeframe in hours")
+
+    ui: ServerSettings = Field(default=ServerSettings(host="localhost", port=SLURM_MONITOR_LISTEN_UI_PORT), description="Connection to UI")
+    kafka: ServerSettings  = Field(
+            default=ServerSettings(host="localhost", port=SLURM_MONITOR_LISTEN_PORT),
+            description="Connection to kafka broker",
+            alias="KAFKA_BROKER"
+    )
+
+    stats: ListenStatsSettings = Field(default_factory=ListenStatsSettings)
+
+class SSLSettings(BaseModel):
+    keyfile: str | None = Field(default=None, description="Keyfile to use")
+    certfile: str | None = Field(default=None, description="Certfile to use")
+
 class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
                     env_file='.env',
@@ -49,8 +76,9 @@ class AppSettings(BaseSettings):
                     env_prefix='SLURM_MONITOR_',
                     extra='ignore'
                 )
-    host: str = Field(default="localhost")
+    host: str = Field(default="0.0.0.0")
     port: int = Field(default=12000)
+    ssl: SSLSettings = Field(default_factory=SSLSettings)
 
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     data_dir: str | None = Field(default=None)
@@ -59,6 +87,8 @@ class AppSettings(BaseSettings):
 
     db_schema_version: str | None = Field(default="v2")
     oauth: OAuthSettings = Field(default_factory=OAuthSettings)
+
+    listen: ListenSettings = Field(default_factory=ListenSettings)
 
     @classmethod
     def get_instance(cls) -> AppSettings:
@@ -71,6 +101,14 @@ class AppSettings(BaseSettings):
 
     @classmethod
     def initialize(cls, **kwargs) -> AppSettings:
+        force = False
+        if 'force' in kwargs:
+            force = kwargs['force']
+            del kwargs['force']
+
+        if not force and hasattr(cls, "_instance") and cls._instance:
+            return cls._instance
+
         env_file = ".env"
         if "SLURM_MONITOR_ENVFILE" in os.environ:
             env_file = os.environ["SLURM_MONITOR_ENVFILE"]
