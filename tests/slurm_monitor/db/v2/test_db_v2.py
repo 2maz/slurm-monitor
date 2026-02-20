@@ -2,7 +2,6 @@ import pytest
 import datetime as dt
 from pathlib import Path
 
-import datetime as dt
 from slurm_monitor.db.v2.validation import Specification
 from slurm_monitor.utils import utcnow
 
