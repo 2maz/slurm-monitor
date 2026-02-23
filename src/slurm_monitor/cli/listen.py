@@ -32,8 +32,9 @@ class ListenParser(BaseParser):
 
         parser.add_argument("--db-uri",
                             type=str,
-                            default=None,
-                            help="sqlite:////tmp/sqlite.db or timescaledb://slurmuser:test@localhost:7000/ex3cluster"
+                            default=app_settings.database.uri,
+                            help=f"Set the database connection sqlite:////tmp/sqlite.db or timescaledb://slurmuser:test@localhost:7000/ex3cluster"
+                                f" default is {app_settings.database.uri}"
         )
 
         parser.add_argument("--port", type=int,
@@ -43,6 +44,7 @@ class ListenParser(BaseParser):
 
         parser.add_argument("--cluster-name",
                 type=str,
+                default=app_settings.listen.cluster,
                 help=f"Cluster for which the topics shall be extracted, default is {app_settings.listen.cluster}",
                 required=(app_settings.listen.cluster is None),
         )
@@ -122,6 +124,9 @@ class ListenParser(BaseParser):
         super().execute(args)
 
         app_settings = AppSettings.get_instance()
+
+        if args.cluster_name is None:
+            raise ValueError("Missing cluster name - please specify with --cluster-name")
 
         if args.db_uri is not None:
             app_settings.database.uri = args.db_uri

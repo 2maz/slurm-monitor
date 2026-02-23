@@ -54,14 +54,13 @@ class ListenStatsSettings(BaseModel):
     interval: int = Field(default=30, description="Interval in seconds to compute stats")
 
 class ListenSettings(BaseModel):
-    cluster: str | None = Field(default=None, description="Name of cluster", alias="CLUSTER_NAME")
+    cluster: str | None = Field(default=None, description="Name of cluster")
     lookback: int | None = Field(default=None, description="Lookback timeframe in hours")
 
     ui: ServerSettings = Field(default=ServerSettings(host="localhost", port=SLURM_MONITOR_LISTEN_UI_PORT), description="Connection to UI")
     kafka: ServerSettings  = Field(
             default=ServerSettings(host="localhost", port=SLURM_MONITOR_LISTEN_PORT),
             description="Connection to kafka broker",
-            alias="KAFKA_BROKER"
     )
 
     stats: ListenStatsSettings = Field(default_factory=ListenStatsSettings)
