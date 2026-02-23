@@ -69,7 +69,7 @@ class MainParser(ArgumentParser):
 
 
 def run():
-    AppSettings.initialize()
+    AppSettings.initialize(env_file_required=False)
 
     main_parser = MainParser()
     main_parser.attach_subcommand_parser(
