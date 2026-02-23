@@ -11,6 +11,7 @@ from slurm_monitor.utils.command import Command
 
 logger = logging.getLogger(__name__)
 
+
 # from .db_tables import GPUs, GPUStatus
 class GPUStatus(BaseModel):
     uuid: str
@@ -40,7 +41,7 @@ class GPUProcessStatus(BaseModel):
     used_memory: int
 
 
-class GPU():
+class GPU:
     node: str
     _uuids: list[str]
 
@@ -103,15 +104,16 @@ class GPUInfo:
     count: int = 0
     framework: Framework | None = None
 
-    versions: dict[str,any] = {}
-    def __init__(self,
-            model: str | None = None,
-            count: int = 0,
-            memory_total: int = 0,
-            framework: Framework = Framework.UNKNOWN,
-            versions: dict[str,any] = {}
-            ):
+    versions: dict[str, any] = {}
 
+    def __init__(
+        self,
+        model: str | None = None,
+        count: int = 0,
+        memory_total: int = 0,
+        framework: Framework = Framework.UNKNOWN,
+        versions: dict[str, any] = {},
+    ):
         self.model = model
         self.count = count
         self.memory_total = memory_total

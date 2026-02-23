@@ -3,9 +3,8 @@ from slurm_monitor.db.v2.db_base import Database
 from typing import ClassVar, Awaitable
 import pandas as pd
 
-from sqlalchemy import (
-        text
-)
+from sqlalchemy import text
+
 
 class Query:
     statement: str = None
@@ -30,10 +29,8 @@ class Query:
             result = await session.execute(query, params)
             return pd.DataFrame(result.fetchall(), columns=result.keys())
 
-
     async def execute_async(self) -> Awaitable[pd.DataFrame]:
         return await self._execute_async(text(self.statement), {})
-
 
     def ensure_parameter(self, name):
         """
@@ -52,9 +49,10 @@ class UserJobResults(Query):
         number_of_jobs (total), avg_time (per job),
         min_time, max_time, avg_cpu_count, avg_node_count
     """
+
     @property
     def statement(self):
-        cluster = self.ensure_parameter('cluster')
+        cluster = self.ensure_parameter("cluster")
 
         return f"""
         SELECT row_number() OVER(ORDER BY  user_name) as anon_user,
@@ -89,6 +87,7 @@ class UserJobResults(Query):
         ORDER BY number_of_jobs;
     """
 
+
 class UserSuccessJobResults(Query):
     """
     Generate a query to output:
@@ -96,6 +95,7 @@ class UserSuccessJobResults(Query):
         number_of_jobs (total), avg_time (per job),
         min_time, max_time, avg_cpu_count, avg_node_count
     """
+
     statement: str = """
         SELECT row_number() OVER(ORDER BY  user_name) as anon_user,
             user_name,
@@ -124,6 +124,7 @@ class UserSuccessJobResults(Query):
         ORDER BY number_of_successful_jobs;
     """
 
+
 class UserFailedJobResults(Query):
     """
     Generate a query to output:
@@ -131,6 +132,7 @@ class UserFailedJobResults(Query):
         number_of_jobs (total), avg_time (per job),
         min_time, max_time, avg_cpu_count, avg_node_count
     """
+
     statement: str = """
         SELECT row_number() OVER(ORDER BY  user_name) as anon_user,
             user_name,
@@ -164,9 +166,10 @@ class PopularPartitionsByNumberOfJobs(Query):
     Generate a query to output:
         partition, number_of_jobs (total), avg_time (per job)
     """
+
     @property
     def statement(self):
-        cluster = self.ensure_parameter('cluster')
+        cluster = self.ensure_parameter("cluster")
 
         return f"""
         SELECT partition,
@@ -198,15 +201,14 @@ class PopularPartitionsByNumberOfJobs(Query):
     """
 
 
-
 class QueryMaker:
     db: Database
 
     _queries: ClassVar[dict[str, Query]] = {
-            "user-job-results": UserJobResults,
-            "user-success-job-results": UserSuccessJobResults,
-            "user-failed-job-results": UserFailedJobResults,
-            "popular-partitions-by-number-of-jobs": PopularPartitionsByNumberOfJobs,
+        "user-job-results": UserJobResults,
+        "user-success-job-results": UserSuccessJobResults,
+        "user-failed-job-results": UserFailedJobResults,
+        "popular-partitions-by-number-of-jobs": PopularPartitionsByNumberOfJobs,
     }
 
     def __init__(self, db: Database):
@@ -216,7 +218,7 @@ class QueryMaker:
         if name not in self._queries:
             raise ValueError(f"{self.__class__} .run: no query '{name}' exists")
 
-        return  self._queries[name](self.db, parameters)
+        return self._queries[name](self.db, parameters)
 
     @classmethod
     def list_available(cls) -> list[str]:

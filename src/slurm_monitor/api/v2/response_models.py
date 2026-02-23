@@ -6,7 +6,7 @@ from pydantic import (
     ConfigDict,
     Field,
     model_validator,
-    RootModel
+    RootModel,
 )
 from typing import TypeVar, Generic
 
@@ -21,30 +21,47 @@ UUID = str
 #
 # Augmented / computed fields will be marked as 'computed field'
 
+
 class SimpleModel(BaseModel):
     # https://docs.pydantic.dev/2.10/api/config/#pydantic.config.ConfigDict.from_attributes
     model_config = ConfigDict(from_attributes=True)
 
+
 class TimestampedModel(SimpleModel):
     time: AwareDatetime = Field(description="Timezone Aware timestamp")
+
 
 class ClusterResponse(TimestampedModel):
     cluster: str = Field(description="Name of the cluster")
     slurm: int = Field(description="Whether SLURM is in use (1) or not (0)")
-    partitions: list[str] = Field(description="List of available partitions in this cluster", default=[])
+    partitions: list[str] = Field(
+        description="List of available partitions in this cluster", default=[]
+    )
     nodes: list[str] = Field(description="List of available nodes in this cluster")
 
-doc_sacct = "(see <a href='https://slurm.schedmd.com/sacct.html#SECTION_Job-Accounting-Fields'> " \
+
+doc_sacct = (
+    "(see <a href='https://slurm.schedmd.com/sacct.html#SECTION_Job-Accounting-Fields'> "
     "SLURM Job Accounting</a>)"
+)
+
 
 class SAcctResponse(BaseModel):
     f"""Slurm Job Accounting Response {doc_sacct}"""
 
-    AllocTRES: str = Field(description=f"Allocated Trackable resources (TRES) {doc_sacct}")
-    ElapsedRaw: int = Field(description=f"The job's elapsed time in seconds {doc_sacct}")
+    AllocTRES: str = Field(
+        description=f"Allocated Trackable resources (TRES) {doc_sacct}"
+    )
+    ElapsedRaw: int = Field(
+        description=f"The job's elapsed time in seconds {doc_sacct}"
+    )
 
-    SystemCPU: int = Field(description=f"The amount of CPU time used by the job or job step. {doc_sacct}")
-    UserCPU: int = Field(description=f"The amount of user CPU time used by the job or job step. {doc_sacct}")
+    SystemCPU: int = Field(
+        description=f"The amount of CPU time used by the job or job step. {doc_sacct}"
+    )
+    UserCPU: int = Field(
+        description=f"The amount of user CPU time used by the job or job step. {doc_sacct}"
+    )
 
     AveVMSize: int = Field(description=f"Average virtual memory size {doc_sacct}")
     MaxVMSize: int = Field(description=f"Maximum virtual memory size {doc_sacct}")
@@ -52,17 +69,27 @@ class SAcctResponse(BaseModel):
     AveCPU: int = Field(description=f"Average CPU usage {doc_sacct}")
     MinCPU: int = Field(description=f"Minimum CPU usage {doc_sacct}")
 
-    AveRSS: int = Field(description=f"Average resident set size of all tasks in job {doc_sacct}")
-    MaxRSS: int = Field(description=f"Maximum resident set size of all tasks in job {doc_sacct}")
+    AveRSS: int = Field(
+        description=f"Average resident set size of all tasks in job {doc_sacct}"
+    )
+    MaxRSS: int = Field(
+        description=f"Maximum resident set size of all tasks in job {doc_sacct}"
+    )
 
-    AveDiskRead: int = Field(description=f"Average number of bytes read by all tasks in job {doc_sacct}")
-    AveDiskWrite: int = Field(description=f"Average number of bytes written by all tasks in job {doc_sacct}")
+    AveDiskRead: int = Field(
+        description=f"Average number of bytes read by all tasks in job {doc_sacct}"
+    )
+    AveDiskWrite: int = Field(
+        description=f"Average number of bytes written by all tasks in job {doc_sacct}"
+    )
+
 
 class JobResponse(TimestampedModel):
-    cluster: str = Field(description='Name of the cluster')
+    cluster: str = Field(description="Name of the cluster")
 
-    job_id: int = Field(description='Identifier of the SLURM job')
-    job_step: str = Field(description="""
+    job_id: int = Field(description="Identifier of the SLURM job")
+    job_step: str = Field(
+        description="""
         The step identifier for the job identified by job_id.  For the topmost step/stage of a job
         this will be the empty string.  Other values normally have the syntax of unsigned integers,
         but may also be the strings "extern" and "batch".  This field's default value is the empty
@@ -70,19 +97,27 @@ class JobResponse(TimestampedModel):
 
         NOTE: step 0 and step "empty string" are different, in fact thinking of a normal number-like
         step name as a number may not be very helpful.
-        """)
-    job_name: str = Field(description='Name of the job')
-    job_state: str = Field(description="State of the job, e.g., PENDING, RUNNING, FAILED"
-        "(see <a href='https://slurm.schedmd.com/job_state_codes.html#states'>SLURM Job States</a>)")
+        """
+    )
+    job_name: str = Field(description="Name of the job")
+    job_state: str = Field(
+        description="State of the job, e.g., PENDING, RUNNING, FAILED"
+        "(see <a href='https://slurm.schedmd.com/job_state_codes.html#states'>SLURM Job States</a>)"
+    )
 
-    array_job_id: int | None = Field(default=None, description="""
+    array_job_id: int | None = Field(
+        default=None,
+        description="""
         The overarching ID of an array job, see discussion in the postamble.
 
         sacct: the n of a `JobID` of the form `n_m.s`
 
         slurm: `JOB_INFO.array_job_id`.
-        """)
-    array_task_id: int | None = Field(default=None, description="""
+        """,
+    )
+    array_task_id: int | None = Field(
+        default=None,
+        description="""
         if `array_job_id` is not zero, the array element's index.  Individual elements of an array
         job have their own plain job_id; the `array_job_id` identifies these as part of the same array
         job and the array_task_id identifies their position within the array, see later discussion.
@@ -90,122 +125,198 @@ class JobResponse(TimestampedModel):
         sacct: the m of a `JobID` of the form `n_m.s`.
 
         slurm: `JOB_INFO.array_task_id`.
-        """)
+        """,
+    )
 
-    het_job_id: int = Field(description="Id of the het(erogeneous) job "
-        "(see <a href='https://slurm.schedmd.com/heterogeneous_jobs.html'>SLURM documentation</a>)")
-    het_job_offset: int = Field(description="Unique sequence number (starting with 0) the het(erogeneous) "
-            " job component (see <a href='https://slurm.schedmd.com/heterogeneous_jobs.html'>SLURM documentation</a>)")
+    het_job_id: int = Field(
+        description="Id of the het(erogeneous) job "
+        "(see <a href='https://slurm.schedmd.com/heterogeneous_jobs.html'>SLURM documentation</a>)"
+    )
+    het_job_offset: int = Field(
+        description="Unique sequence number (starting with 0) the het(erogeneous) "
+        " job component (see <a href='https://slurm.schedmd.com/heterogeneous_jobs.html'>SLURM documentation</a>)"
+    )
 
     user_name: str = Field(description="Name of the user that started the job")
     account: str = Field(description="Name of the account")
 
     # Pending jobs might have no start time set
-    start_time: AwareDatetime | None = Field(default=None, description="Time at which the job started "
-        "- only present if the job started")
+    start_time: AwareDatetime | None = Field(
+        default=None,
+        description="Time at which the job started "
+        "- only present if the job started",
+    )
     suspend_time: int = Field(description="Time the job was suspended in seconds")
-    submit_time: AwareDatetime = Field(description="Time at which the job was submitted")
+    submit_time: AwareDatetime = Field(
+        description="Time at which the job was submitted"
+    )
     time_limit: int = Field(description="Time limit for this job in seconds")
-    end_time: AwareDatetime | None = Field(default=None, description="Time at which the job ended "
-        "- only present if the job ended")
-    exit_code: int | None = Field(default=None, description="Exit code of the job - given it has finished")
+    end_time: AwareDatetime | None = Field(
+        default=None,
+        description="Time at which the job ended " "- only present if the job ended",
+    )
+    exit_code: int | None = Field(
+        default=None, description="Exit code of the job - given it has finished"
+    )
 
-    partition: str = Field(description="Name of the partition this job is associated with")
+    partition: str = Field(
+        description="Name of the partition this job is associated with"
+    )
     reservation: str
-    nodes: list[str] | None = Field(default=None, description="List of nodes that are requested by this job")
+    nodes: list[str] | None = Field(
+        default=None, description="List of nodes that are requested by this job"
+    )
     reservation: str
     priority: int
     distribution: str
 
-    gres_detail: list[str] | None = Field(default=None, description="DEPRECATED: List of general resources details - use requested_resources and allocated_resources")
-    requested_resources: str | None = Field(default=None, description="List of general resources requested")
-    allocated_resources: str | None = Field(default=None, description="List of general resources allocated")
-
+    gres_detail: list[str] | None = Field(
+        default=None,
+        description="DEPRECATED: List of general resources details - use requested_resources and allocated_resources",
+    )
+    requested_resources: str | None = Field(
+        default=None, description="List of general resources requested"
+    )
+    allocated_resources: str | None = Field(
+        default=None, description="List of general resources allocated"
+    )
 
     requested_cpus: int = Field(description="Number of requested CPUs")
-    requested_memory_per_node: int = Field(description="Requested memory in kilobytes per node")
+    requested_memory_per_node: int = Field(
+        description="Requested memory in kilobytes per node"
+    )
     requested_node_count: int = Field(description="Requested number of nodes")
 
-    minimum_cpus_per_node: int | None = Field(default=None, description="DEPRECATED: Minimum required CPUs per node, use requested_cpus")
+    minimum_cpus_per_node: int | None = Field(
+        default=None,
+        description="DEPRECATED: Minimum required CPUs per node, use requested_cpus",
+    )
 
     # computed field: list of the actually used GPU uuids
     #    what can be oberved in the process data)
-    used_gpu_uuids: list[str] | None = Field(default=None,
-            description="UUIDs of GPUs that are actually used with this job "
-            "- this might be different to the number of reserved GPUs "
-            "(this a field computed by slurm-monitor)")
+    used_gpu_uuids: list[str] | None = Field(
+        default=None,
+        description="UUIDs of GPUs that are actually used with this job "
+        "- this might be different to the number of reserved GPUs "
+        "(this a field computed by slurm-monitor)",
+    )
 
-    sacct: SAcctResponse | None = Field(default=None, description="Slurm Accounting Response data "
-        "(<a href='https://slurm.schedmd.com/sacct.html#SECTION_Job-Accounting-Fields'>Slurm documentation</a>)")
+    sacct: SAcctResponse | None = Field(
+        default=None,
+        description="Slurm Accounting Response data "
+        "(<a href='https://slurm.schedmd.com/sacct.html#SECTION_Job-Accounting-Fields'>Slurm documentation</a>)",
+    )
 
 
 class PartitionResponse(TimestampedModel):
     cluster: str = Field(description="Name of the cluster")
     name: str = Field(description="Name of the partition")
     nodes: list[str] = Field(description="Nodes associated with this partition")
-    nodes_compact: list[str] = Field(description="A compact representation of the list of nodes,"
-        "e.g., n001,n002,n003 is n001-003")
+    nodes_compact: list[str] = Field(
+        description="A compact representation of the list of nodes,"
+        "e.g., n001,n002,n003 is n001-003"
+    )
 
     # computed field: list of jobs that have status PENDING
-    jobs_pending: list[JobResponse] = Field(description=
-            "List of pending jobs in this partition (computed by slurm-monitor)")
+    jobs_pending: list[JobResponse] = Field(
+        description="List of pending jobs in this partition (computed by slurm-monitor)"
+    )
     # computed field: list of jobs that have status RUNNING
-    jobs_running: list[JobResponse] = Field(description=
-            "List of running jobs in this partition (computed by slurm-monitor)")
+    jobs_running: list[JobResponse] = Field(
+        description="List of running jobs in this partition (computed by slurm-monitor)"
+    )
     # computed field: the time of the longest job in PENDING
-    pending_max_submit_time: AwareDatetime = Field(description=
-            "Timestamp of the job being longest in PENDING state")
+    pending_max_submit_time: AwareDatetime = Field(
+        description="Timestamp of the job being longest in PENDING state"
+    )
     # computed field: the time from submit to start for job in RUNNING
-    running_latest_wait_time: int = Field(description=
-            "Waiting time in seconds of the most recent started job in this partition")
+    running_latest_wait_time: int = Field(
+        description="Waiting time in seconds of the most recent started job in this partition"
+    )
 
     # computed field: total number of cpus (sum of node cpus)
-    total_cpus: int = Field(description="Total number of CPUs available in this partition")
+    total_cpus: int = Field(
+        description="Total number of CPUs available in this partition"
+    )
     # computed field: total number of gpus (sum of node gpus)
-    total_gpus: int = Field(description="Total number of GPUs available in this partition")
+    total_gpus: int = Field(
+        description="Total number of GPUs available in this partition"
+    )
     # computed field: number of gpus that are reserved (from slurm jobs)
-    gpus_reserved: int = Field(description="Total number of GPUs that are currently reserved in this partition")
+    gpus_reserved: int = Field(
+        description="Total number of GPUs that are currently reserved in this partition"
+    )
     # computed field: list of uuids that are in use, actually observed
-    gpus_in_use: list[str] = Field(description="UUIDs of gpus that are currently in use in this partition")
+    gpus_in_use: list[str] = Field(
+        description="UUIDs of gpus that are currently in use in this partition"
+    )
+
 
 class JobsResponse(BaseModel):
     jobs: list[JobResponse] = Field(description="List of jobs")
+
 
 class NodeStateResponse(TimestampedModel):
     cluster: str = Field(description="Name of the cluster")
     node: str = Field(description="Name of the node")
     states: list[str] = Field(description="State(s) this node is currently in")
 
+
 class GPUCardResponse(TimestampedModel):
     uuid: str = Field(description="UUID as reported by card")
-    manufacturer: str = Field(description="A manufacturer: 'NVIDIA', 'AMD', 'INTEL' (other TBD)")
+    manufacturer: str = Field(
+        description="A manufacturer: 'NVIDIA', 'AMD', 'INTEL' (other TBD)"
+    )
     model: str = Field(description="card dependent, manufacturer's model string")
-    architecture: str = Field(description=
-            "card-dependent, manufacturer's arch string, for NVIDIA this is 'Turing', 'Volta', etc.")
+    architecture: str = Field(
+        description="card-dependent, manufacturer's arch string, for NVIDIA this is 'Turing', 'Volta', etc."
+    )
     memory: int = Field(description="Memory of card in KiB")
 
-    cluster: str = Field(description="Name of the cluster that this GPU currently belongs to")
+    cluster: str = Field(
+        description="Name of the cluster that this GPU currently belongs to"
+    )
     node: str = Field(description="Name of the node that this GPU belongs to")
     index: int = Field(description="Local card index, may change at boot")
-    address: str = Field(description="Indicates an intra-system card address, e.g., PCI adress")
+    address: str = Field(
+        description="Indicates an intra-system card address, e.g., PCI adress"
+    )
     driver: str = Field(description="card-dependent, the manufacturer's driver string")
-    firmware: str = Field(description="card-dependant, the manufacturer's firmware string")
+    firmware: str = Field(
+        description="card-dependant, the manufacturer's firmware string"
+    )
 
-    max_power_limit: int = Field(description="card-dependent, max power the card can draw in W(atts)")
-    min_power_limit: int = Field(description="card-dependent: min power the card will draw in W(atts)")
-    max_ce_clock: int = Field(description="card-dependent, maximum clock of compute element")
-    max_memory_clock: int = Field(description="card-dependent, maximum clock of GPU memory")
+    max_power_limit: int = Field(
+        description="card-dependent, max power the card can draw in W(atts)"
+    )
+    min_power_limit: int = Field(
+        description="card-dependent: min power the card will draw in W(atts)"
+    )
+    max_ce_clock: int = Field(
+        description="card-dependent, maximum clock of compute element"
+    )
+    max_memory_clock: int = Field(
+        description="card-dependent, maximum clock of GPU memory"
+    )
 
-    last_active: AwareDatetime | None = Field(description="Timezone Aware timestamp", default=None)
+    last_active: AwareDatetime | None = Field(
+        description="Timezone Aware timestamp", default=None
+    )
+
 
 class SampleGpuBaseResponse(TimestampedModel):
-    failing: int = Field(description=
-            "If not zero and error code indicating a card failure state. Code=1 is 'generic failure'. Other codes TBD")
-    fan: float = Field(description=
-            "Percent of primary fan's max speed, max exceed 100% on some cards in some cases")
-    compute_mode: str = Field(description="card-dependent, current compute mode if known")
-    performance_state: float = Field(description=
-            "Current performance level, card-specific >= 0, or unset for 'unknown'")
+    failing: int = Field(
+        description="If not zero and error code indicating a card failure state. Code=1 is 'generic failure'. Other codes TBD"
+    )
+    fan: float = Field(
+        description="Percent of primary fan's max speed, max exceed 100% on some cards in some cases"
+    )
+    compute_mode: str = Field(
+        description="card-dependent, current compute mode if known"
+    )
+    performance_state: float = Field(
+        description="Current performance level, card-specific >= 0, or unset for 'unknown'"
+    )
     memory: float = Field(description="Memory use in KiB")
     memory_util: float = Field(description="Memory used in percentage")
     memory_clock: float = Field(description="Memory current clock")
@@ -213,22 +324,30 @@ class SampleGpuBaseResponse(TimestampedModel):
     ce_util: float = Field(description="Compute element capability used in percentage")
     ce_clock: float = Field(description="Compute element current clock")
 
-    temperature: float = Field(description="Card temperature a primar sensor in degrees Celsius (can be negative")
+    temperature: float = Field(
+        description="Card temperature a primar sensor in degrees Celsius (can be negative"
+    )
     power: float = Field(description="Current power usage in W(atts")
     power_limit: float = Field(description="Current power limit in W(atts)")
+
 
 class SampleGpuResponse(SampleGpuBaseResponse):
     uuid: str = Field(description="UUID of the GPU")
     index: int = Field(description="Local index of the GPU")
+
 
 class SampleGpuTimeseriesResponse(BaseModel):
     """
     Used GPU uuid and (local) index to identify the GPU and
     provide the timeseries of samples
     """
+
     uuid: str = Field(description="UUID of the GPU")
     index: int = Field(description="Local index of the GPU")
-    data: list[SampleGpuBaseResponse] = Field(description="Timeseries of SampleGpu for this GPU")
+    data: list[SampleGpuBaseResponse] = Field(
+        description="Timeseries of SampleGpu for this GPU"
+    )
+
 
 class SampleProcessGpuResponse(TimestampedModel):
     cluster: str = Field(description="Name of the cluster with GPU of given UUID")
@@ -244,6 +363,7 @@ class SampleProcessGpuResponse(TimestampedModel):
     gpu_memory: float = Field(description="GPU Memory being utilized in KiB")
     gpu_memory_util: float = Field(description="GPU Memory utilization in percentage")
 
+
 class SampleProcessGpuAccResponse(TimestampedModel):
     gpu_memory: float = Field(description="GPU Memory being utilized in KiB")
     gpu_util: float = Field(description="GPU Compute utilization in percentage")
@@ -251,7 +371,10 @@ class SampleProcessGpuAccResponse(TimestampedModel):
 
     pids: list[int] = Field(description="Process ids related to an accumulated sample")
 
+
 doc_sample_process = "(see <a href='https://github.com/NordicHPC/sonar/blob/main/util/formats/newfmt/types.go#L632'>SampleProcess</a>)"
+
+
 class SampleProcessResponse(TimestampedModel):
     cluster: str = Field(description="Name of the cluster")
     node: str = Field(description="Name of the node")
@@ -262,18 +385,24 @@ class SampleProcessResponse(TimestampedModel):
     resident_memory: int = Field(description="Resident memory used in KiB")
     virtual_memory: int = Field(description="Virtual memory used in KiB")
     cmd: str = Field(description="The command associate with this process")
-    pid: int = Field(description="Process id of the sampled process - zero for rolled up samples")
+    pid: int = Field(
+        description="Process id of the sampled process - zero for rolled up samples"
+    )
     ppid: int = Field(description="Parent process id of the sampled process")
 
-    cpu_avg: float = Field(description=
-            f"The running average CPU over the true lifetime of the process {doc_sample_process}")
-    cpu_util: float = Field(description=
-            f"The current CPU utilization in percentage {doc_sample_process}")
-    cpu_time: float = Field(description=
-            f"Cumulative CPU time in seconds of the full lifetime of the process {doc_sample_process}")
+    cpu_avg: float = Field(
+        description=f"The running average CPU over the true lifetime of the process {doc_sample_process}"
+    )
+    cpu_util: float = Field(
+        description=f"The current CPU utilization in percentage {doc_sample_process}"
+    )
+    cpu_time: float = Field(
+        description=f"Cumulative CPU time in seconds of the full lifetime of the process {doc_sample_process}"
+    )
 
-    num_threads: int = Field(description=
-            f"Number of threads in the process minus 1 - (main thread is not counted) {doc_sample_process}")
+    num_threads: int = Field(
+        description=f"Number of threads in the process minus 1 - (main thread is not counted) {doc_sample_process}"
+    )
 
     rolled_up: int = Field(
         description=f"""The number of additional samples for processes that are "the same" that have been rolled into
@@ -281,61 +410,88 @@ class SampleProcessResponse(TimestampedModel):
         two processes. {doc_sample_process}"""
     )
 
-    in_container: bool = Field(description="True if process is deemed part of a container", default=False)
+    in_container: bool = Field(
+        description="True if process is deemed part of a container", default=False
+    )
+
 
 class SampleProcessAccResponse(TimestampedModel):
     memory_resident: float = Field(description="Current resident memory usage in KiB")
     memory_virtual: float = Field(description="Current virtual memory usage in KiB")
     memory_util: float = Field(description="Current Memory utilization in percentage")
 
-    cpu_avg: float = Field(description="Average CPU utilization over the lifetime of the accumulated processes")
+    cpu_avg: float = Field(
+        description="Average CPU utilization over the lifetime of the accumulated processes"
+    )
     cpu_util: float = Field(description="Current CPU utilization in percentage")
-    cpu_time: float = Field(description="Total CPU time in seconds for the lifetime of the related processes")
+    cpu_time: float = Field(
+        description="Total CPU time in seconds for the lifetime of the related processes"
+    )
 
     # computed field
-    processes_avg: float = Field(description="Average number of processes running for this accumulated response")
+    processes_avg: float = Field(
+        description="Average number of processes running for this accumulated response"
+    )
+
 
 class SampleDiskResponse(TimestampedModel):
-    reads_completed:             int = Field(description="Number of completed reads")
-    reads_merged:                int = Field(description="Number of reads merged (adjacent reads might be merged)")
-    sectors_read:                int = Field(description="Number of sector read")
-    ms_spent_reading:            int = Field(description="Milliseconds spent reading")
+    reads_completed: int = Field(description="Number of completed reads")
+    reads_merged: int = Field(
+        description="Number of reads merged (adjacent reads might be merged)"
+    )
+    sectors_read: int = Field(description="Number of sector read")
+    ms_spent_reading: int = Field(description="Milliseconds spent reading")
 
-    writes_completed:            int = Field(description="Number of writes completed")
-    writes_merged:               int = Field(description="Number of merged writes")
-    sectors_written:             int = Field(description="Number of sectors being written")
-    ms_spent_writing:            int = Field(description="Milliseconds spent writing")
+    writes_completed: int = Field(description="Number of writes completed")
+    writes_merged: int = Field(description="Number of merged writes")
+    sectors_written: int = Field(description="Number of sectors being written")
+    ms_spent_writing: int = Field(description="Milliseconds spent writing")
 
-    ios_currently_in_progress:   int = Field(description="Number of I/Os in progress")
-    ms_spent_doing_ios:          int = Field(description="Milliseconds on doing I/Os")
-    weighted_ms_spent_doing_ios: int = Field(description="Weighted milliseconds spend on doing I/Os")
+    ios_currently_in_progress: int = Field(description="Number of I/Os in progress")
+    ms_spent_doing_ios: int = Field(description="Milliseconds on doing I/Os")
+    weighted_ms_spent_doing_ios: int = Field(
+        description="Weighted milliseconds spend on doing I/Os"
+    )
 
-    discards_completed:          int = Field(description="Number of completed discards")
-    discards_merged:             int = Field(description="Number of sectors discarded")
-    sectors_discarded:           int = Field(description="Number of section that have been discarded")
-    ms_spent_discarding:         int = Field(description="Milliseconds spent dicarding")
+    discards_completed: int = Field(description="Number of completed discards")
+    discards_merged: int = Field(description="Number of sectors discarded")
+    sectors_discarded: int = Field(
+        description="Number of section that have been discarded"
+    )
+    ms_spent_discarding: int = Field(description="Milliseconds spent dicarding")
 
-    flush_requests_completed:    int = Field(description="Number of completed flush requests")
-    ms_spent_flushing:           int = Field(description="Milliseconds spent flushing")
+    flush_requests_completed: int = Field(
+        description="Number of completed flush requests"
+    )
+    ms_spent_flushing: int = Field(description="Milliseconds spent flushing")
 
-    delta_time_in_s:             int = Field(default=0, description="Time delta for which these value hold, 0 if unknown")
+    delta_time_in_s: int = Field(
+        default=0, description="Time delta for which these value hold, 0 if unknown"
+    )
+
 
 class SampleDiskTimeseriesResponse(BaseModel):
     """
     provide the timeseries of samples
     """
+
     name: str = Field(description="Name of the disk")
     major: int = Field(description="Major device number")
     minor: int = Field(description="Minor device number")
 
-    field_names: list[str] = Field(default=list(SampleDisk.diskstats().keys()), description="diskstat fieldnames")
-    data: list[SampleDiskResponse] = Field(description="Timeseries of SampleDisk for this disk")
+    field_names: list[str] = Field(
+        default=list(SampleDisk.diskstats().keys()), description="diskstat fieldnames"
+    )
+    data: list[SampleDiskResponse] = Field(
+        description="Timeseries of SampleDisk for this disk"
+    )
 
 
 class NodeDiskTimeseriesResponse(RootModel):
     """
-        List of timeseries data per node
+    List of timeseries data per node
     """
+
     root: dict[str, list[SampleDiskTimeseriesResponse]]
 
 
@@ -343,47 +499,65 @@ class NodeInfoResponse(TimestampedModel):
     cluster: str = Field(description="Name of the cluster")
     node: str = Field(description="Name of the node")
     os_name: str = Field(description="Name of the operating system")
-    os_release: str = Field(description="Name of the specific release of the operating system")
+    os_release: str = Field(
+        description="Name of the specific release of the operating system"
+    )
     architecture: str = Field(description="Architecture of this node")
     sockets: int = Field(description="Number of CPU sockets available")
     cores_per_socket: int = Field(description="Number of core per socket")
     threads_per_core: int = Field(description="Number of threads per core")
     cpu_model: str = Field(description="CPU model specifier")
     memory: int = Field(description="Available memory in this node in KiB")
-    topo_svg: str | None = Field(description="The architecture topography (lstopo) as svg")
-    topo_text: str | None = Field(description="The architecture topography (lstopo) as text")
+    topo_svg: str | None = Field(
+        description="The architecture topography (lstopo) as svg"
+    )
+    topo_text: str | None = Field(
+        description="The architecture topography (lstopo) as text"
+    )
     cards: list[GPUCardResponse] = Field(description="List of GPUs")
 
     # augmented field: partitions this node is part of
-    partitions: list[str] = Field(description="List of partitions that this node belongs to", default=[])
+    partitions: list[str] = Field(
+        description="List of partitions that this node belongs to", default=[]
+    )
 
     # augmented field: allocation of traceable resources
     alloc_tres: AllocTRES = Field(description="Allocation of traceable resources")
 
 
-T = TypeVar('T')
+T = TypeVar("T")
+
+
 class JobSpecificTimeseriesResponse(BaseModel, Generic[T]):
     job: int = Field(description="Job ID")
     epoch: int = Field(description="Epoch uniquely identifying non-slurm jobs")
     data: list[T]
 
+
 class PidTimeseriesResponse(BaseModel, Generic[T]):
     pid: int = Field(description="Process ID")
     data: list[T]
 
+
 class GpusProcessTimeSeriesResponse(BaseModel):
     gpus: dict[UUID, list[SampleProcessGpuAccResponse]]
+
 
 class CPUMemoryProcessTimeSeriesResponse(BaseModel):
     cpu_memory: list[SampleProcessAccResponse]
 
-class CombinedProcessTimeSeriesResponse(CPUMemoryProcessTimeSeriesResponse, GpusProcessTimeSeriesResponse):
+
+class CombinedProcessTimeSeriesResponse(
+    CPUMemoryProcessTimeSeriesResponse, GpusProcessTimeSeriesResponse
+):
     pass
+
 
 class SystemProcessTimeseriesResponse(BaseModel):
     job: int = Field(description="Job ID")
     epoch: int = Field(description="Epoch uniquely identifying non-slurm jobs")
     nodes: dict[str, CombinedProcessTimeSeriesResponse]
+
 
 # BEGIN PROCESS TREE
 class ProcessData(BaseModel):
@@ -392,10 +566,12 @@ class ProcessData(BaseModel):
     cmd: str = Field(description="Command (this is not the command line)")
     data: list[SampleProcessAccResponse]
 
+
 class ProcessRelations(BaseModel):
     relation_id: str = Field(description="Identifier for this relation")
     source: int = Field(description="Source aka parent process id")
     target: int = Field(description="Target aka child process id")
+
 
 class ProcessTreeMetaData(BaseModel):
     total_processes: int
@@ -404,26 +580,33 @@ class ProcessTreeMetaData(BaseModel):
     root_pid: int
     max_depth: int
 
+
 class ProcessTreeResponse(BaseModel):
     processes: dict[int, ProcessData]
     relations: list[ProcessRelations]
     metadata: ProcessTreeMetaData
 
+
 class SystemProcessTreeResponse(BaseModel):
     job: int = Field(description="Job ID")
     epoch: int = Field(description="Epoch uniquely identifying non-slurm jobs")
     nodes: dict[str, ProcessTreeResponse] = Field(description="Process tree per node")
+
+
 # END PROCESS TREE
+
 
 class NodeJobSampleProcessTimeseriesResponse(BaseModel):
     job: int = Field(description="Job ID")
     epoch: int = Field(description="Epoch uniquely identifying non-slurm jobs")
     processes: list[PidTimeseriesResponse[SampleProcessAccResponse]]
 
+
 class JobNodeSampleProcessGpuTimeseriesResponse(BaseModel):
     job: int = Field(description="Job ID")
     epoch: int = Field(description="Epoch uniquely identifying non-slurm jobs")
     nodes: dict[str, GpusProcessTimeSeriesResponse]
+
 
 class JobNodeSampleProcessTimeseriesResponse(BaseModel):
     job: int = Field(description="Job ID")
@@ -435,38 +618,49 @@ class JobNodeSampleProcessTimeseriesResponse(BaseModel):
 # Note: using RootModel, we can describ dictionary with out
 #    requiring a top-level key
 
+
 # Uuid top-level
 class GpuJobSampleProcessGpuTimeseriesResponse(BaseModel):
     # gpus: { uuid : list[job-timeseries] }
     gpus: dict[str, list[JobSpecificTimeseriesResponse]]
 
+
 # Node top-level
 class NodeGpuJobSampleProcessGpuTimeseriesResponse(RootModel):
     root: dict[str, GpuJobSampleProcessGpuTimeseriesResponse]
 
+
 class NodeGpuTimeseriesResponse(RootModel):
     """
-        List of timeseries data per GPU
+    List of timeseries data per GPU
     """
+
     root: dict[str, list[SampleGpuTimeseriesResponse]]
+
 
 class NodeSampleProcessGpuAccResponse(RootModel):
     root: dict[str, dict[str, SampleProcessGpuAccResponse]]
 
     @model_validator(mode="before")
-    def check_nested_structure(cls, values) -> dict[str, dict[str, SampleProcessGpuAccResponse]]:
+    def check_nested_structure(
+        cls, values
+    ) -> dict[str, dict[str, SampleProcessGpuAccResponse]]:
         if not isinstance(values, dict):
-            raise ValueError(f"Response must be a dictionary: keys are nodenames - response was {type(values)}")
+            raise ValueError(
+                f"Response must be a dictionary: keys are nodenames - response was {type(values)}"
+            )
         for key, gpus in values.items():
             if not isinstance(gpus, dict):
                 raise ValueError(
-                        "Nodes need to map to dict of gpu-uuid "
-                        f"to timeseries data, but {key=} maps to {gpus=}")
+                    "Nodes need to map to dict of gpu-uuid "
+                    f"to timeseries data, but {key=} maps to {gpus=}"
+                )
             for gpu_uuid, gpu_data in gpus.items():
                 if not isinstance(gpu_data, SampleProcessGpuAccResponse):
                     raise ValueError(
-                            "GPU data should be SampleProcessGpuAccResponse,"
-                            f" but {gpu_uuid=} maps to {gpu_data=}")
+                        "GPU data should be SampleProcessGpuAccResponse,"
+                        f" but {gpu_uuid=} maps to {gpu_data=}"
+                    )
         return values
 
 
@@ -474,14 +668,19 @@ class NodeSampleProcessAccResponse(RootModel):
     root: dict[str, dict[str, SampleProcessAccResponse]]
 
     @model_validator(mode="before")
-    def check_nested_structure(cls, values) -> dict[str, dict[str, SampleProcessGpuAccResponse]]:
+    def check_nested_structure(
+        cls, values
+    ) -> dict[str, dict[str, SampleProcessGpuAccResponse]]:
         if not isinstance(values, dict):
-            raise ValueError("Response must be a dictionary: keys are nodenames"
-                    f"- response was {type(values)}")
+            raise ValueError(
+                "Response must be a dictionary: keys are nodenames"
+                f"- response was {type(values)}"
+            )
         return values
 
+
 ## DASHBOARD
-#export interface FetchedJobQueryResultItem {
+# export interface FetchedJobQueryResultItem {
 #  job: string;
 #  user: string;
 #  host: string;
@@ -494,7 +693,8 @@ class NodeSampleProcessAccResponse(RootModel):
 #  'gpu-peak': number;
 #  'gpumem-peak': number;
 #  cmd: string;
-#}
+# }
+
 
 class JobQueryResultItem(BaseModel):
     job: str
@@ -505,20 +705,20 @@ class JobQueryResultItem(BaseModel):
     end: str
     cmd: str
 
-    cpu_peak: float = Field(default=0.0, serialization_alias='cpu-peak')
-    res_peak: float = Field(default=0.0, serialization_alias='res-peak')
-    mem_peak: float = Field(default=0.0, serialization_alias='mem-peak')
-    gpu_peak: float = Field(default=0.0, serialization_alias='gpu-peak')
-    gpumem_peak: float = Field(default=0.0, serialization_alias='gpumem-peak')
+    cpu_peak: float = Field(default=0.0, serialization_alias="cpu-peak")
+    res_peak: float = Field(default=0.0, serialization_alias="res-peak")
+    mem_peak: float = Field(default=0.0, serialization_alias="mem-peak")
+    gpu_peak: float = Field(default=0.0, serialization_alias="gpu-peak")
+    gpumem_peak: float = Field(default=0.0, serialization_alias="gpumem-peak")
 
 
-#export interface FetchedJobProfileResultItem {
+# export interface FetchedJobProfileResultItem {
 #  time: string;
 #  job: number;
 #  points: ProcessPoint[];
-#}
+# }
 #
-#interface ProcessPoint {
+# interface ProcessPoint {
 #  command: string;
 #  pid: number;
 #  cpu: number;
@@ -527,7 +727,8 @@ class JobQueryResultItem(BaseModel):
 #  gpu: number;
 #  gpumem: number;
 #  nproc: number;
-#}
+# }
+
 
 class ProcessPoint(BaseModel):
     command: str
@@ -541,11 +742,13 @@ class ProcessPoint(BaseModel):
     gpu: float
     gpumem: float
 
+
 class JobProfileResultItem(BaseModel):
     job: int
     time: str
 
     points: list[ProcessPoint]
+
 
 class ErrorMessageResponse(BaseModel):
     cluster: str = Field(description="Name of the cluster")
@@ -554,8 +757,10 @@ class ErrorMessageResponse(BaseModel):
     details: str = Field(description="Details of the reported error")
     time: str = Field(description="Time at which this error occurred")
 
+
 class QueriesResponse(BaseModel):
     queries: list[str] = Field(description="List of available predefined queries")
+
 
 class AllocTRES(BaseModel):
     cpu: int = Field(description="The reserved cpu count", default=0)
@@ -564,7 +769,7 @@ class AllocTRES(BaseModel):
     node: int = Field(description="The involved number of nodes", default=0)
     billing: float | int = Field(description="The actual billing count", default=0)
 
-    model_config = ConfigDict(extra='allow')
+    model_config = ConfigDict(extra="allow")
 
     def add(self, other: AllocTRES):
         """
@@ -576,60 +781,88 @@ class AllocTRES(BaseModel):
         self.node += other.node
         self.billing += other.billing
 
+
 class JobReport(BaseModel):
-    cpu_avg: dict[str, int | float] = Field(description="The mean + stddev for cpu_avg", default={})
-    cpu_util: dict[str, int | float] = Field(description="The mean + stddev for cpu_util", default={})
+    cpu_avg: dict[str, int | float] = Field(
+        description="The mean + stddev for cpu_avg", default={}
+    )
+    cpu_util: dict[str, int | float] = Field(
+        description="The mean + stddev for cpu_util", default={}
+    )
 
-    resident_memory: dict[str, int | float] = Field(description="The mean + stddev for resident_memory in KiB", default={})
-    virtual_memory: dict[str, float] = Field(description="The mean + stddev for virtual_memory in KiB", default={})
+    resident_memory: dict[str, int | float] = Field(
+        description="The mean + stddev for resident_memory in KiB", default={}
+    )
+    virtual_memory: dict[str, float] = Field(
+        description="The mean + stddev for virtual_memory in KiB", default={}
+    )
 
-    num_threads: dict[str, int | float] = Field(description="The mean + stddev for number of threads", default={})
+    num_threads: dict[str, int | float] = Field(
+        description="The mean + stddev for number of threads", default={}
+    )
 
-    data_read: dict[str, int | float] = Field(description="The mean + stddev", default={})
-    data_written: dict[str, int | float] = Field(description="The mean + stddev", default={})
-    data_cancelled: dict[str, int | float] = Field(description="The mean + stddev", default={})
+    data_read: dict[str, int | float] = Field(
+        description="The mean + stddev", default={}
+    )
+    data_written: dict[str, int | float] = Field(
+        description="The mean + stddev", default={}
+    )
+    data_cancelled: dict[str, int | float] = Field(
+        description="The mean + stddev", default={}
+    )
 
     requested_cpus: int = Field(description="Requested cpus", default=0)
-    requested_memory_per_node: int = Field(description="Requested memory per node in KiB", default=0)
+    requested_memory_per_node: int = Field(
+        description="Requested memory per node in KiB", default=0
+    )
     requested_gpus: int = Field(description="Requested gpus", default=0)
 
-    used_gpu_uuids: list[str] = Field(description="List of used gpus (by uuid)", default=[])
+    used_gpu_uuids: list[str] = Field(
+        description="List of used gpus (by uuid)", default=[]
+    )
     nodes: list[str] = Field(description="List of used nodes", default=[])
 
     warnings: list[str] = Field(description="List of warnings", default=[])
 
-
     def get_max(self, field):
         data = getattr(self, field)
-        if 'max' in data:
-            return data['max']
+        if "max" in data:
+            return data["max"]
 
         raise ValueError(f"Missing max value for '{field}'")
 
     def get_mean(self, field):
         data = getattr(self, field)
-        if 'mean' in data:
-            return data['mean']
+        if "mean" in data:
+            return data["mean"]
 
         raise ValueError(f"Missing mean value for '{field}'")
 
     def generate(self):
         warnings = []
-        cpu_max = self.get_max("cpu_util")/100
-        cpu_mean = self.get_mean("cpu_util")/100
+        cpu_max = self.get_max("cpu_util") / 100
+        cpu_mean = self.get_mean("cpu_util") / 100
 
-        if cpu_max > self.requested_cpus*1.2:
-            warnings.append(f"CPU threshold exceeded: requested cpus: {self.requested_cpus}, but actual max encountered: {cpu_max:.2f} cpus")
+        if cpu_max > self.requested_cpus * 1.2:
+            warnings.append(
+                f"CPU threshold exceeded: requested cpus: {self.requested_cpus}, but actual max encountered: {cpu_max:.2f} cpus"
+            )
 
-        if self.requested_cpus > cpu_mean*1.5:
-            warnings.append(f"CPU allocation excessive: requested cpus: {self.requested_cpus}, but actual avg use encountered: {cpu_mean:.2f} cpus")
+        if self.requested_cpus > cpu_mean * 1.5:
+            warnings.append(
+                f"CPU allocation excessive: requested cpus: {self.requested_cpus}, but actual avg use encountered: {cpu_mean:.2f} cpus"
+            )
 
         if self.requested_gpus < len(self.used_gpu_uuids):
-            warnings.append(f"GPU threshold exceeded: requested gpus: {self.requested_gpus}, but actual usage of: {len(self.used_gpu_uuids)} gpus (uuids: {self.used_gpu_uuids})")
+            warnings.append(
+                f"GPU threshold exceeded: requested gpus: {self.requested_gpus}, but actual usage of: {len(self.used_gpu_uuids)} gpus (uuids: {self.used_gpu_uuids})"
+            )
 
         memory_max = self.get_max("virtual_memory")
-        requested_memory = self.requested_memory_per_node*len(self.nodes)
-        if  requested_memory < memory_max:
-            warnings.append(f"Memory threshold exceeded: requested memory (total): {requested_memory:.2f} KiB, but actual usage of: {memory_max:.2f} KiB")
+        requested_memory = self.requested_memory_per_node * len(self.nodes)
+        if requested_memory < memory_max:
+            warnings.append(
+                f"Memory threshold exceeded: requested memory (total): {requested_memory:.2f} KiB, but actual usage of: {memory_max:.2f} KiB"
+            )
 
         self.warnings = warnings

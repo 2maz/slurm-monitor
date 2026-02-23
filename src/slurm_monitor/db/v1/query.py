@@ -3,9 +3,8 @@ from slurm_monitor.db.v1.db import SlurmMonitorDB
 from typing import ClassVar, Awaitable
 import pandas as pd
 
-from sqlalchemy import (
-        text
-)
+from sqlalchemy import text
+
 
 class Query:
     statement: str = None
@@ -28,7 +27,6 @@ class Query:
             result = await session.execute(query, params)
             return pd.DataFrame(result.fetchall(), columns=result.keys())
 
-
     async def execute_async(self) -> Awaitable[pd.DataFrame]:
         return await self._execute_async(text(self.statement), {})
 
@@ -40,6 +38,7 @@ class UserJobResults(Query):
         number_of_jobs (total), avg_time (per job),
         min_time, max_time, avg_cpu
     """
+
     statement: str = """
         SELECT user_id,
             (COUNT
@@ -61,11 +60,13 @@ class UserJobResults(Query):
         ORDER BY number_of_jobs;
     """
 
+
 class PopularPartitionsByNumberOfJobs(Query):
     """
     Generate a query to output:
         partition, number_of_jobs (total), avg_time (per job)
     """
+
     statement: str = """
         SELECT partition,
             COUNT(distinct user_id) as user_count,
@@ -84,13 +85,12 @@ class PopularPartitionsByNumberOfJobs(Query):
     """
 
 
-
 class QueryMaker:
     db: SlurmMonitorDB
 
     _queries: ClassVar[dict[str, Query]] = {
-            "user-job-results": UserJobResults,
-            "popular-partitions-by-number-of-jobs": PopularPartitionsByNumberOfJobs,
+        "user-job-results": UserJobResults,
+        "popular-partitions-by-number-of-jobs": PopularPartitionsByNumberOfJobs,
     }
 
     def __init__(self, db: SlurmMonitorDB):
@@ -100,7 +100,7 @@ class QueryMaker:
         if name not in self._queries:
             raise ValueError(f"{self.__class__} .run: no query '{name}' exists")
 
-        return  self._queries[name](self.db)
+        return self._queries[name](self.db)
 
     @classmethod
     def list_available(cls) -> list[str]:

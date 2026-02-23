@@ -13,6 +13,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class ListenParser(BaseParser):
     socket: zmq.Socket
 
@@ -24,91 +25,107 @@ class ListenParser(BaseParser):
 
         app_settings = AppSettings.get_instance()
 
-        parser.add_argument("--host", type=str,
-                            default=app_settings.listen.kafka.host,
-                            required=(app_settings.listen.kafka.host is None),
-                            help=f"Set the kafka broker host, default is {app_settings.listen.kafka.host}"
+        parser.add_argument(
+            "--host",
+            type=str,
+            default=app_settings.listen.kafka.host,
+            required=(app_settings.listen.kafka.host is None),
+            help=f"Set the kafka broker host, default is {app_settings.listen.kafka.host}",
         )
 
-        parser.add_argument("--db-uri",
-                            type=str,
-                            default=app_settings.database.uri,
-                            help=f"Set the database connection sqlite:////tmp/sqlite.db or timescaledb://slurmuser:test@localhost:7000/ex3cluster"
-                                f" default is {app_settings.database.uri}"
+        parser.add_argument(
+            "--db-uri",
+            type=str,
+            default=app_settings.database.uri,
+            help=f"Set the database connection sqlite:////tmp/sqlite.db or timescaledb://slurmuser:test@localhost:7000/ex3cluster"
+            f" default is {app_settings.database.uri}",
         )
 
-        parser.add_argument("--port", type=int,
-                            default=app_settings.listen.kafka.port,
-                            help=f"Set the kafka brokers port to connect to, default is {app_settings.listen.kafka.port}"
+        parser.add_argument(
+            "--port",
+            type=int,
+            default=app_settings.listen.kafka.port,
+            help=f"Set the kafka brokers port to connect to, default is {app_settings.listen.kafka.port}",
         )
 
-        parser.add_argument("--cluster-name",
-                type=str,
-                default=app_settings.listen.cluster,
-                help=f"Cluster for which the topics shall be extracted, default is {app_settings.listen.cluster}",
-                required=(app_settings.listen.cluster is None),
+        parser.add_argument(
+            "--cluster-name",
+            type=str,
+            default=app_settings.listen.cluster,
+            help=f"Cluster for which the topics shall be extracted, default is {app_settings.listen.cluster}",
+            required=(app_settings.listen.cluster is None),
         )
 
-        parser.add_argument("--topic",
-                nargs="+",
-                type=str,
-                default=None,
-                help="Topic name(s) - if given, cluster-name has no relevance " \
-                        "can be used with lower and upper offset bounds <topic-name>:<lb-offset-<ub-offset>" \
-                        " after reached the upper bound, processing will be stopped for the topic"
+        parser.add_argument(
+            "--topic",
+            nargs="+",
+            type=str,
+            default=None,
+            help="Topic name(s) - if given, cluster-name has no relevance "
+            "can be used with lower and upper offset bounds <topic-name>:<lb-offset-<ub-offset>"
+            " after reached the upper bound, processing will be stopped for the topic",
         )
 
-        parser.add_argument("--use-version",
-                type=str,
-                default="v2",
-                help="Use this API and DB version"
+        parser.add_argument(
+            "--use-version", type=str, default="v2", help="Use this API and DB version"
         )
 
-        parser.add_argument("--use-strict-mode",
-                action="store_true",
-                default=False,
-                help="When receiving message, insert content only for messsages that contain only values "\
-                     "present in the table schema. This means, message format and table schema need to be in sync, since no extra / new fields are allowed"
+        parser.add_argument(
+            "--use-strict-mode",
+            action="store_true",
+            default=False,
+            help="When receiving message, insert content only for messsages that contain only values "
+            "present in the table schema. This means, message format and table schema need to be in sync, since no extra / new fields are allowed",
         )
 
-        parser.add_argument("--lookback",
-                nargs="+",
-                type=str,
-                default=app_settings.listen.lookback,
-                help="Define the lookback timeframe in hours, e.g., 1 or 0.1, for all and/or specific topics: "
-                      "'--lookback 0.5 cluster:1.5' will apply 0.5 to all topics, but cluster, "
-                      f"which will use a lookback time of 1.5 hours, default is {app_settings.listen.lookback}"
+        parser.add_argument(
+            "--lookback",
+            nargs="+",
+            type=str,
+            default=app_settings.listen.lookback,
+            help="Define the lookback timeframe in hours, e.g., 1 or 0.1, for all and/or specific topics: "
+            "'--lookback 0.5 cluster:1.5' will apply 0.5 to all topics, but cluster, "
+            f"which will use a lookback time of 1.5 hours, default is {app_settings.listen.lookback}",
         )
 
-        parser.add_argument("--stats-output",
-                type=str,
-                default=None,
-                help="Output file for the listen stats - default: slurm-monitor-listen.<cluster-name>.stats.json",
+        parser.add_argument(
+            "--stats-output",
+            type=str,
+            default=None,
+            help="Output file for the listen stats - default: slurm-monitor-listen.<cluster-name>.stats.json",
         )
 
-        parser.add_argument("--stats-interval",
-                type=int,
-                default=app_settings.listen.stats.interval,
-                help=f"Interval in seconds for generating stats output, default is {app_settings.listen.stats.interval}"
+        parser.add_argument(
+            "--stats-interval",
+            type=int,
+            default=app_settings.listen.stats.interval,
+            help=f"Interval in seconds for generating stats output, default is {app_settings.listen.stats.interval}",
         )
 
-        parser.add_argument("--log-output",
-                type=str,
-                default=None,
-                help="Output file for the log - default: slurm-monitor-listen.<cluster-name>.log",
+        parser.add_argument(
+            "--log-output",
+            type=str,
+            default=None,
+            help="Output file for the log - default: slurm-monitor-listen.<cluster-name>.log",
         )
 
-        parser.add_argument("--ui-host",
-                            type=str,
-                            default=app_settings.listen.ui.host,
-                            help=f"Set the ui host, default is {app_settings.listen.ui.host}")
+        parser.add_argument(
+            "--ui-host",
+            type=str,
+            default=app_settings.listen.ui.host,
+            help=f"Set the ui host, default is {app_settings.listen.ui.host}",
+        )
 
-        parser.add_argument("--ui-port",
-                            type=int,
-                            default=app_settings.listen.ui.port,
-                            help=f"Set the ui port, default is {app_settings.listen.ui.port}")
+        parser.add_argument(
+            "--ui-port",
+            type=int,
+            default=app_settings.listen.ui.port,
+            help=f"Set the ui port, default is {app_settings.listen.ui.port}",
+        )
 
-    def publish_status(self, output: MessageSubscriber.Output) -> MessageSubscriber.Control:
+    def publish_status(
+        self, output: MessageSubscriber.Output
+    ) -> MessageSubscriber.Control:
         """
         zmq Dealer/Router pattern in use: this is the 'Dealer' publishing / and receiving instructions
         """
@@ -126,7 +143,9 @@ class ListenParser(BaseParser):
         app_settings = AppSettings.get_instance()
 
         if args.cluster_name is None:
-            raise ValueError("Missing cluster name - please specify with --cluster-name")
+            raise ValueError(
+                "Missing cluster name - please specify with --cluster-name"
+            )
 
         if args.db_uri is not None:
             app_settings.database.uri = args.db_uri
@@ -140,10 +159,7 @@ class ListenParser(BaseParser):
 
             database = SlurmMonitorDB(db_settings=app_settings.database)
 
-            main(host=args.host,
-                 port=args.port,
-                 database=database,
-                 topic=args.topic)
+            main(host=args.host, port=args.port, database=database, topic=args.topic)
         elif args.use_version == "v2":
             from slurm_monitor.db.v2.db import ClusterDB
 
@@ -154,8 +170,10 @@ class ListenParser(BaseParser):
                 database = ClusterDB(db_settings=app_settings.database)
                 inspector = inspect(database.engine)
                 if not inspector.get_table_names():
-                    raise RuntimeError("Listener is trying to connect to an uninitialized database."
-                                       f" Call 'slurm-monitor db --init --db-uri {app_settings.database.uri}' for the database first")
+                    raise RuntimeError(
+                        "Listener is trying to connect to an uninitialized database."
+                        f" Call 'slurm-monitor db --init --db-uri {app_settings.database.uri}' for the database first"
+                    )
 
                 suggested_lookback = database.suggest_lookback(args.cluster_name)
                 logger.info("Adapting lookback time based on db information")
@@ -165,14 +183,16 @@ class ListenParser(BaseParser):
                 logger.info("Running in listen mode")
 
             print("Using lookbacks: ")
-            for x,y in lookback_in_h.items():
+            for x, y in lookback_in_h.items():
                 print(f"    {x.rjust(10)}: {str(y).rjust(4)}h")
 
             stats_output = args.stats_output
             if stats_output is None:
                 stats_output = "slurm-monitor-listen.stats.json"
                 if args.cluster_name:
-                    stats_output = f"slurm-monitor-listen.{args.cluster_name}.stats.json"
+                    stats_output = (
+                        f"slurm-monitor-listen.{args.cluster_name}.stats.json"
+                    )
 
             log_output = args.log_output
             if log_output is None:
@@ -188,21 +208,22 @@ class ListenParser(BaseParser):
                 self.socket.connect(f"tcp://{args.ui_host}:{args.ui_port}")
 
             subscriber = MessageSubscriber(
-                    host=args.host,
-                    port=args.port,
-                    database=database,
-                    topics=args.topic,
-                    cluster_name=args.cluster_name,
-                    verbose=args.verbose,
-                    strict_mode=args.use_strict_mode,
-                    lookback_in_h=lookback_in_h,
-                    stats_output=stats_output,
-                    stats_interval_in_s=args.stats_interval,
-                    log_output=log_output,
-                    log_level=args.log_level,
-                    output_fn=self.publish_status,
-                )
+                host=args.host,
+                port=args.port,
+                database=database,
+                topics=args.topic,
+                cluster_name=args.cluster_name,
+                verbose=args.verbose,
+                strict_mode=args.use_strict_mode,
+                lookback_in_h=lookback_in_h,
+                stats_output=stats_output,
+                stats_interval_in_s=args.stats_interval,
+                log_output=log_output,
+                log_level=args.log_level,
+                output_fn=self.publish_status,
+            )
             subscriber.run()
+
 
 class ListenUiParser(BaseParser):
     socket: zmq.Socket
@@ -215,27 +236,30 @@ class ListenUiParser(BaseParser):
 
         app_settings = AppSettings.get_instance()
 
-        parser.add_argument("--cluster-name",
-                nargs="+",
-                type=str,
-                default=app_settings.listen.cluster,
-                help=f"Cluster(s) for which the topics shall be extracted, default is {app_settings.listen.cluster}",
+        parser.add_argument(
+            "--cluster-name",
+            nargs="+",
+            type=str,
+            default=app_settings.listen.cluster,
+            help=f"Cluster(s) for which the topics shall be extracted, default is {app_settings.listen.cluster}",
         )
 
-        parser.add_argument("--ui-host",
-                            type=str,
-                            default="*",
-                            help="Set the ui host, default is *")
+        parser.add_argument(
+            "--ui-host", type=str, default="*", help="Set the ui host, default is *"
+        )
 
-        parser.add_argument("--ui-port",
-                            type=int,
-                            default=app_settings.listen.ui.port,
-                            help=f"Set the ui port, default is {app_settings.listen.ui.port}")
+        parser.add_argument(
+            "--ui-port",
+            type=int,
+            default=app_settings.listen.ui.port,
+            help=f"Set the ui port, default is {app_settings.listen.ui.port}",
+        )
 
-        parser.add_argument("--log-output",
-                type=str,
-                default=None,
-                help="Output file for the log - default: slurm-monitor-listen-ui.<cluster-name>.log",
+        parser.add_argument(
+            "--log-output",
+            type=str,
+            default=None,
+            help="Output file for the log - default: slurm-monitor-listen-ui.<cluster-name>.log",
         )
 
     def execute(self, args):

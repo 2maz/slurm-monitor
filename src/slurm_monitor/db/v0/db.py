@@ -148,7 +148,9 @@ class SlurmMonitorDB(Database):
     GPUStatus = GPUStatus
 
     def apply_resolution(
-            self, data: list[GPUStatus], resolution_in_s: int,
+        self,
+        data: list[GPUStatus],
+        resolution_in_s: int,
     ) -> list[GPUStatus]:
         smoothed_data = []
         samples_in_window = {}
@@ -175,8 +177,9 @@ class SlurmMonitorDB(Database):
                 window_index += 1
 
                 samples_in_window[sample.uuid] = [sample]
-                window_start_time = base_time + dt.timedelta(seconds=window_index*resolution_in_s)
-
+                window_start_time = base_time + dt.timedelta(
+                    seconds=window_index * resolution_in_s
+                )
 
         for uuid, values in samples_in_window.items():
             if values:
@@ -198,14 +201,15 @@ class SlurmMonitorDB(Database):
         try:
             gpu_uuids = self.get_gpu_uuids(node=node)
             gpu_infos = [
-                    self.fetch_first(GPUStatus,
-                        where=((GPUStatus.node == node) & (GPUStatus.uuid == gpu_uuid)),
-                        order_by=GPUStatus.timestamp
-                    )
+                self.fetch_first(
+                    GPUStatus,
+                    where=((GPUStatus.node == node) & (GPUStatus.uuid == gpu_uuid)),
+                    order_by=GPUStatus.timestamp,
+                )
                 for gpu_uuid in gpu_uuids
             ]
             gpu_info_dicts = [x.to_dict() for x in gpu_infos]
-            return { "gpus": gpu_info_dicts }
+            return {"gpus": gpu_info_dicts}
         except Exception as e:
             logger.warn(e)
             raise
@@ -250,11 +254,13 @@ class SlurmMonitorDB(Database):
         start_time_in_s: float | None = None,
         end_time_in_s: float | None = None,
         resolution_in_s: int | None = None,
-        local_indices: list[int] | None = None
+        local_indices: list[int] | None = None,
     ) -> list[dict[str, any]]:
         gpu_status_series_list = []
 
-        logger.info(f"{nodes=} {start_time_in_s=} {end_time_in_s=} {resolution_in_s=} {local_indices=}")
+        logger.info(
+            f"{nodes=} {start_time_in_s=} {end_time_in_s=} {resolution_in_s=} {local_indices=}"
+        )
         if nodes is None or nodes == []:
             nodes = self.fetch_all(Nodes.name)
 

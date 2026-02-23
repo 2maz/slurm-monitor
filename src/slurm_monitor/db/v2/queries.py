@@ -1,5 +1,6 @@
 from slurm_monitor.db.v2.query import Query
 
+
 class ClusterQuery(Query):
     @property
     def statement(self):
@@ -12,12 +13,13 @@ class ClusterQuery(Query):
             ON c.cluster = latest.cluster and c.time = latest.max_time;
         """
 
+
 class NodesQuery(Query):
     @property
     def statement(self):
-        cluster = self.ensure_parameter('cluster')
-        time_in_s = self.ensure_parameter('time_in_s')
-        interval_in_s = self.ensure_parameter('interval_in_s')
+        cluster = self.ensure_parameter("cluster")
+        time_in_s = self.ensure_parameter("time_in_s")
+        interval_in_s = self.ensure_parameter("interval_in_s")
 
         return f"""
             SELECT nodes, time
@@ -30,14 +32,15 @@ class NodesQuery(Query):
             LIMIT 1
             ;
         """
+
 
 class NodesPartitionsQuery(Query):
     @property
     def statement(self):
-        cluster = self.ensure_parameter('cluster')
-        #nodes = self.ensure_parameter('nodes')
-        time_in_s = self.ensure_parameter('time_in_s')
-        interval_in_s = self.ensure_parameter('interval_in_s')
+        cluster = self.ensure_parameter("cluster")
+        # nodes = self.ensure_parameter('nodes')
+        time_in_s = self.ensure_parameter("time_in_s")
+        interval_in_s = self.ensure_parameter("interval_in_s")
 
         return f"""
             SELECT nodes, time
@@ -51,12 +54,13 @@ class NodesPartitionsQuery(Query):
             ;
         """
 
+
 class GpuNodesQuery(Query):
     @property
     def statement(self):
-        cluster = self.ensure_parameter('cluster')
-        time_in_s = self.ensure_parameter('time_in_s')
-        interval_in_s = self.ensure_parameter('interval_in_s')
+        cluster = self.ensure_parameter("cluster")
+        time_in_s = self.ensure_parameter("time_in_s")
+        interval_in_s = self.ensure_parameter("interval_in_s")
 
         return f"""
             SELECT cluster, node, max(time) as time
@@ -71,12 +75,13 @@ class GpuNodesQuery(Query):
             ;
         """
 
+
 class PartitionsQuery(Query):
     @property
     def statement(self):
-        cluster = self.ensure_parameter('cluster')
-        time_in_s = self.ensure_parameter('time_in_s')
-        interval_in_s = self.ensure_parameter('interval_in_s')
+        cluster = self.ensure_parameter("cluster")
+        time_in_s = self.ensure_parameter("time_in_s")
+        interval_in_s = self.ensure_parameter("interval_in_s")
 
         return f"""
             SELECT p.cluster, p.partition, p.nodes, p.nodes_compact, p.time

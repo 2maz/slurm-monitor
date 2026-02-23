@@ -8,14 +8,21 @@ from slurm_monitor.utils.command import Command
 
 logger = logging.getLogger(__name__)
 
-SCALE_BY_UNIT = { 'K': 1024, 'M': 1024**2, 'G': 1024**3, 'T': 1024**4, 'P': 1024**5 }
+SCALE_BY_UNIT = {
+    "K": 1024,
+    "M": 1024**2,
+    "G": 1024**3,
+    "T": 1024**4,
+    "P": 1024**5,
+}
 
 TRES_KEYS = ["cpu", "mem", "gpu", "node", "billing"]
-TRES_PATTERN = r"([^/]+)(:[^=]+)?=([0-9.]+)([" + ''.join(SCALE_BY_UNIT.keys()) + "])?"
+TRES_PATTERN = r"([^/]+)(:[^=]+)?=([0-9.]+)([" + "".join(SCALE_BY_UNIT.keys()) + "])?"
 TRES_REGEXP = re.compile(TRES_PATTERN)
 
 COMPACT_NODE_EXPRESSION_PATTERN: str = r"(.*)\[(.*)\](\..+){0,}$"
 COMPACT_NODE_EXPRESSION_REXEXP = re.compile(COMPACT_NODE_EXPRESSION_PATTERN)
+
 
 class Slurm:
     API_PREFIX: ClassVar[str] = "/slurm/v0.0.37"
@@ -23,12 +30,15 @@ class Slurm:
     SLURMRESTD = "slurmrestd"
     SCONTROL = "scontrol"
 
-    _BIN_HINTS: ClassVar[list[str]] = ["/cm/shared/apps/slurm/current/sbin/", "/cm/shared/apps/slurm/current/bin/"]
+    _BIN_HINTS: ClassVar[list[str]] = [
+        "/cm/shared/apps/slurm/current/sbin/",
+        "/cm/shared/apps/slurm/current/bin/",
+    ]
     _ensured_commands: ClassVar[list[str]] = []
 
     @classmethod
     def ensure_commands(cls):
-        for cmd in ["slurmrestd","scontrol"]:
+        for cmd in ["slurmrestd", "scontrol"]:
             cls.ensure(cmd)
 
     @classmethod
@@ -66,10 +76,14 @@ class Slurm:
             return pids
 
         cmd = f"{scontrol} listpids {job_id}"
-        response = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        response = subprocess.run(
+            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
         if response.returncode != 0:
-            error_msg = response.stderr.decode('UTF-8').strip()
-            if re.match("No job steps", error_msg) or re.match(".*no steps.*", error_msg):
+            error_msg = response.stderr.decode("UTF-8").strip()
+            if re.match("No job steps", error_msg) or re.match(
+                ".*no steps.*", error_msg
+            ):
                 return pids
             elif re.match("Unable to connect to slurmstepd", error_msg):
                 pass
@@ -91,12 +105,16 @@ class Slurm:
                         continue
 
                     if job_id != current_job_id:
-                        logger.warning(f"{current_job_id=} does not match requested {job_id=} - skipping")
+                        logger.warning(
+                            f"{current_job_id=} does not match requested {job_id=} - skipping"
+                        )
                         continue
 
                     pids.append(pid)
                 except Exception as e:
-                    logger.warning(f"Line '{line}' does not match the expected format - {e}")
+                    logger.warning(
+                        f"Line '{line}' does not match the expected format - {e}"
+                    )
                     continue
         return pids
 
@@ -120,7 +138,7 @@ class Slurm:
                     key += specifier
 
                 value = m.groups()[2]
-                if '.' in value:
+                if "." in value:
                     values[key] = float(value)
                 else:
                     values[key] = int(value)
@@ -132,7 +150,9 @@ class Slurm:
 
                 values[key] *= SCALE_BY_UNIT[unit]
             else:
-                logger.info(f"Slurm.parse_sacct_tres: invalid pattern encountered {txt}")
+                logger.info(
+                    f"Slurm.parse_sacct_tres: invalid pattern encountered {txt}"
+                )
 
         return values
 
@@ -144,7 +164,9 @@ class Slurm:
         """
         nodes = []
         if type(names) is not str:
-            raise TypeError(f"Importer.expand_node_names: expects names to be str, but was '{type(names)}'")
+            raise TypeError(
+                f"Importer.expand_node_names: expects names to be str, but was '{type(names)}'"
+            )
 
         current_expr = None
         for chunk in names.split(","):
@@ -166,8 +188,8 @@ class Slurm:
             prefix, suffixes = m.groups()[:2]
             domain = m.groups()[2]
             # [005-006,001,005]
-            for suffix in suffixes.split(','):
-                #0,0
+            for suffix in suffixes.split(","):
+                # 0,0
                 if "-" not in suffix:
                     nodename = f"{prefix}{suffix}"
                     if domain:
@@ -180,7 +202,7 @@ class Slurm:
                 start, end = suffix.split("-")
                 pattern_length = len(start)
 
-                for i in range(int(start), int(end)+1):
+                for i in range(int(start), int(end) + 1):
                     node_number = str(i).zfill(pattern_length)
                     nodename = f"{prefix}{node_number}"
                     if domain:

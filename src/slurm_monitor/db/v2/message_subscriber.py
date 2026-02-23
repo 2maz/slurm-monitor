@@ -22,51 +22,46 @@ import threading
 
 from slurm_monitor.utils import utcnow
 import slurm_monitor.db.v2.sonar as sonar
-from slurm_monitor.db.v2.importer import (
-    Importer,
-    DBJsonImporter
-)
+from slurm_monitor.db.v2.importer import Importer, DBJsonImporter
 from slurm_monitor.db.v2.db_tables import TableBase
-from slurm_monitor.db.v2.db import (
-    ClusterDB
-)
+from slurm_monitor.db.v2.db import ClusterDB
 
 from slurm_monitor.config import (
     SLURM_MONITOR_LOG_FORMAT,
     SLURM_MONITOR_LOG_STYLE,
-    SLURM_MONITOR_LOG_DATE_FORMAT
+    SLURM_MONITOR_LOG_DATE_FORMAT,
 )
 
 logger = logging.getLogger(__name__)
 logger.propagate = False
 
 KAFKA_CONSUMER_DEFAULTS = {
-    'max_poll_records': 5000,
-    'max_poll_interval_ms': '300000',
-    'fetch_max_bytes': 200*1024**2,
-    'max_partition_fetch_bytes': 200*1024**2
+    "max_poll_records": 5000,
+    "max_poll_interval_ms": "300000",
+    "fetch_max_bytes": 200 * 1024**2,
+    "max_partition_fetch_bytes": 200 * 1024**2,
 }
 
 LOOKBACK_IN_H_DEFAULT = 36
-LOOKBACK_IN_H_DEFAULTS : dict[str, float] = {
+LOOKBACK_IN_H_DEFAULTS: dict[str, float] = {
     sonar.TopicType.cluster: LOOKBACK_IN_H_DEFAULT,
     sonar.TopicType.sample: 1,
     sonar.TopicType.job: 1,
     sonar.TopicType.sysinfo: LOOKBACK_IN_H_DEFAULT,
 }
 
+
 class TopicBound:
     topic: str
     lower_bound: int | None
     upper_bound: int | None
 
-    def __init__(self, topic: str,
-                 lower_bound: int | None,
-                 upper_bound: int | None):
+    def __init__(self, topic: str, lower_bound: int | None, upper_bound: int | None):
         self.topic = topic
 
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
+
 
 class TerminalDisplay:
     stop: bool
@@ -81,17 +76,19 @@ class TerminalDisplay:
 
     _getch_supported: bool
 
-    def __init__(self, rx_fn: Callable[MessageSubscriber.Output], tx_fn: Callable[[str,MessageSubscriber.Control]], log_output: Path | None = None):
+    def __init__(
+        self,
+        rx_fn: Callable[MessageSubscriber.Output],
+        tx_fn: Callable[[str, MessageSubscriber.Control]],
+        log_output: Path | None = None,
+    ):
         self._screen = None
 
         self.current_cluster_index = 0
         self.clusters = {}
 
         self.current_tab_index = 0
-        self.tabs = [
-            "messages",
-            "statistics"
-        ]
+        self.tabs = ["messages", "statistics"]
 
         self.rx_fn = rx_fn
         self.tx_fn = tx_fn
@@ -105,10 +102,12 @@ class TerminalDisplay:
             formatter = logging.Formatter(
                 fmt=SLURM_MONITOR_LOG_FORMAT,
                 datefmt=SLURM_MONITOR_LOG_DATE_FORMAT,
-                style=SLURM_MONITOR_LOG_STYLE
+                style=SLURM_MONITOR_LOG_STYLE,
             )
 
-            file_handler = TimedRotatingFileHandler(self.log_output, when='d', interval=3)
+            file_handler = TimedRotatingFileHandler(
+                self.log_output, when="d", interval=3
+            )
             file_handler.setFormatter(formatter)
 
         self._getch_supported = True
@@ -132,12 +131,12 @@ class TerminalDisplay:
             self.close()
             self.rx_thread.join()
 
-    def addstr(self, y, x, text, attr = None):
+    def addstr(self, y, x, text, attr=None):
         screenheight, screenwidth = self._screen.getmaxyx()
         if y >= screenheight:
             return
 
-        writeable_x = screenwidth - x -1
+        writeable_x = screenwidth - x - 1
         if writeable_x < 1:
             return
 
@@ -155,7 +154,9 @@ class TerminalDisplay:
                 try:
                     curses.cbreak()
                 except Exception:
-                    logger.warning("Terminal does not support 'cbreak' - key interactions will be disabled")
+                    logger.warning(
+                        "Terminal does not support 'cbreak' - key interactions will be disabled"
+                    )
                     self._getch_supported = False
 
                 self._screen.nodelay(True)
@@ -170,16 +171,32 @@ class TerminalDisplay:
             screenheight, screenwidth = self._screen.getmaxyx()
             current_time = f"-- CURRENT TIME  {utcnow().isoformat(timespec='seconds')} "
             self.addstr(0, 0, f"{current_time}{'-'*(screenwidth-len(current_time))}")
-            self.addstr(1, 0, f">> Status: slurm-monitor listen --cluster-name {current_cluster}")
-            self.addstr(2, 0, "   q to quit | l to change log level | t to change tabs (" + ','.join(self.tabs) + ")")
+            self.addstr(
+                1,
+                0,
+                f">> Status: slurm-monitor listen --cluster-name {current_cluster}",
+            )
+            self.addstr(
+                2,
+                0,
+                "   q to quit | l to change log level | t to change tabs ("
+                + ",".join(self.tabs)
+                + ")",
+            )
             self.addstr(3, 0, "   c to change the cluster")
-            self.addstr(4, 0, " "*screenwidth)
-            self.addstr(5, 0, f"    UI attached to {len(self.clusters)} listeners (last seen):")
+            self.addstr(4, 0, " " * screenwidth)
+            self.addstr(
+                5, 0, f"    UI attached to {len(self.clusters)} listeners (last seen):"
+            )
             y_offset = 6
 
-            for idx, (cluster, output) in enumerate(self.clusters.items(), start=y_offset):
+            for idx, (cluster, output) in enumerate(
+                self.clusters.items(), start=y_offset
+            ):
                 if output.highlight:
-                    self.addstr(idx, 0, f"        {cluster.ljust(25)}: {output.highlight.time}")
+                    self.addstr(
+                        idx, 0, f"        {cluster.ljust(25)}: {output.highlight.time}"
+                    )
                 else:
                     self.addstr(idx, 0, f"        {cluster.ljust(25)}: 'unknown'")
 
@@ -190,27 +207,33 @@ class TerminalDisplay:
 
             if current_cluster:
                 output = self.clusters[current_cluster]
-                y_offset +=2
+                y_offset += 2
                 self.addstr(y_offset, 0, f"Cluster {output.cluster}", curses.A_BOLD)
-                y_offset+=1
+                y_offset += 1
                 if output.highlight:
-                    self.addstr(y_offset,0, output.highlight.to_str(), curses.A_BOLD)
+                    self.addstr(y_offset, 0, output.highlight.to_str(), curses.A_BOLD)
                 else:
-                    self.addstr(y_offset, 0, "    waiting for messages    ", curses.A_BOLD)
+                    self.addstr(
+                        y_offset, 0, "    waiting for messages    ", curses.A_BOLD
+                    )
 
                 y_offset += 1
                 tab_name = self.tabs[self.current_tab_index]
                 if hasattr(self, f"tab_{tab_name}"):
-                    getattr(self, f"tab_{tab_name}")(output=output, y_offset=y_offset, screenwidth=screenwidth)
+                    getattr(self, f"tab_{tab_name}")(
+                        output=output, y_offset=y_offset, screenwidth=screenwidth
+                    )
 
             if self._getch_supported:
                 key = self._screen.getch()
-                if key == ord('q'):
+                if key == ord("q"):
                     self.stop = True
-                    self.addstr(0,0, "Received user's request to stop ... ]")
-                elif key == ord('c'):
-                    self.current_cluster_index = (self.current_cluster_index + 1) % len(self.clusters)
-                elif key == ord('l'):
+                    self.addstr(0, 0, "Received user's request to stop ... ]")
+                elif key == ord("c"):
+                    self.current_cluster_index = (self.current_cluster_index + 1) % len(
+                        self.clusters
+                    )
+                elif key == ord("l"):
                     log_level = output.log_level
                     if log_level == logging.CRITICAL:
                         log_level = logging.DEBUG
@@ -221,8 +244,10 @@ class TerminalDisplay:
                     if self.tx_fn:
                         control = MessageSubscriber.Control(log_level=log_level)
                         self.tx_fn(current_cluster, control)
-                elif key == ord('t'):
-                    self.current_tab_index = (self.current_tab_index + 1) % len(self.tabs)
+                elif key == ord("t"):
+                    self.current_tab_index = (self.current_tab_index + 1) % len(
+                        self.tabs
+                    )
 
             self._screen.refresh()
         except Exception as e:
@@ -231,57 +256,70 @@ class TerminalDisplay:
             tb.print_tb(e.__traceback__)
             sys.exit(0)
 
+    def tab_messages(
+        self, output: MessageSubscriber.Output, y_offset: int, screenwidth: int
+    ):
+        # Messages
+        self.addstr(y_offset, 0, f"{'-'*screenwidth}")
+        self.addstr(
+            y_offset + 1,
+            0,
+            f"| Messages (listener log level: {logging.getLevelName(output.log_level)})",
+        )
+        self.addstr(y_offset + 2, 0, f"{'-'*screenwidth}")
 
-    def tab_messages(self, output: MessageSubscriber.Output, y_offset: int, screenwidth: int):
-            # Messages
-            self.addstr(y_offset,   0, f"{'-'*screenwidth}")
-            self.addstr(y_offset+1, 0, f"| Messages (listener log level: {logging.getLevelName(output.log_level)})")
-            self.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
+        idx = 0
+        y_offset += 4
+        for idx, msg in enumerate(list(output.messages)[-20:]):
+            self.addstr(idx + y_offset, 0, msg)
 
-            idx = 0
-            y_offset += 4
-            for idx, msg in enumerate(list(output.messages)[-20:]):
-                self.addstr(idx + y_offset, 0, msg)
+        # Nodes
+        y_offset += idx + 4
+        # sort by time, then by name
+        timesorted_messages = sorted(
+            [(k, v) for k, v in output.msg_timestamps.items()], key=itemgetter(1, 0)
+        )
 
-            # Nodes
-            y_offset += idx + 4
-            # sort by time, then by name
-            timesorted_messages = sorted([(k,v) for k,v in output.msg_timestamps.items()],key=itemgetter(1,0))
+        self.addstr(y_offset, 0, f"{'-'*screenwidth}")
+        self.addstr(y_offset + 1, 0, "| Nodes")
+        self.addstr(y_offset + 2, 0, f"{'-'*screenwidth}")
 
-            self.addstr(y_offset,   0, f"{'-'*screenwidth}")
-            self.addstr(y_offset+1, 0, "| Nodes")
-            self.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
+        y_offset += 3
+        column_x = max(min(screenwidth / 2, 40), 100)
+        self.addstr(y_offset, 0, "Recently seen first", curses.A_BOLD)
+        for idx, msg in enumerate(reversed(timesorted_messages[-15:])):
+            row = f"{msg[1]} {msg[0]}"
+            self.addstr(y_offset + idx + 1, 0, row[: column_x - 1])
+        self.addstr(y_offset + idx + 2, 0, "    ...")
 
-            y_offset += 3
-            column_x = max(min(screenwidth / 2, 40), 100)
-            self.addstr(y_offset, 0, "Recently seen first", curses.A_BOLD)
-            for idx, msg in enumerate(reversed(timesorted_messages[-15:])):
-                row = f"{msg[1]} {msg[0]}"
-                self.addstr(y_offset + idx + 1, 0, row[:column_x-1])
-            self.addstr(y_offset + idx + 2, 0, "    ...")
+        self.addstr(y_offset, column_x, "Oldest seen first", curses.A_BOLD)
+        for idx, msg in enumerate(timesorted_messages[:15]):
+            row = f"{msg[1]} {msg[0]}"
+            self.addstr(y_offset + idx + 1, column_x, row[: column_x - 1])
+        self.addstr(y_offset + idx + 2, column_x, "    ...")
 
-            self.addstr(y_offset, column_x, "Oldest seen first", curses.A_BOLD)
-            for idx, msg in enumerate(timesorted_messages[:15]):
-                row = f"{msg[1]} {msg[0]}"
-                self.addstr(y_offset + idx + 1, column_x, row[:column_x-1])
-            self.addstr(y_offset + idx + 2, column_x, "    ...")
+        return y_offset
 
-            return y_offset
-
-    def tab_statistics(self, output: MessageSubscriber.Output, y_offset: int, screenwidth: int):
+    def tab_statistics(
+        self, output: MessageSubscriber.Output, y_offset: int, screenwidth: int
+    ):
         # Statistics
-        self.addstr(y_offset,   0, f"{'-'*screenwidth}")
-        self.addstr(y_offset+1, 0, f"| Statistics (update in: {output.next_stats_update:.2f} s)")
-        self.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
+        self.addstr(y_offset, 0, f"{'-'*screenwidth}")
+        self.addstr(
+            y_offset + 1,
+            0,
+            f"| Statistics (update in: {output.next_stats_update:.2f} s)",
+        )
+        self.addstr(y_offset + 2, 0, f"{'-'*screenwidth}")
 
         if output.stats:
             group_header_y = y_offset + 3
             group_sizes = []
             columns = 3
 
-            column_width = 40 # characters
+            column_width = 40  # characters
             for group_idx, (group_name, values) in enumerate(output.stats.items()):
-                group_header_x = (group_idx % columns)*column_width
+                group_header_x = (group_idx % columns) * column_width
 
                 # when to reset the group_header_y, so to progress to the next 'row' of groups
                 if group_sizes and group_idx % columns == 0:
@@ -297,7 +335,12 @@ class TerminalDisplay:
 
                     try:
                         y_offset = group_header_y + 2 + field_idx
-                        self.addstr(y_offset, group_header_x, f"{field_name}: {field_value}", curses.A_DIM)
+                        self.addstr(
+                            y_offset,
+                            group_header_x,
+                            f"{field_name}: {field_value}",
+                            curses.A_DIM,
+                        )
                     except curses.error:
                         pass
 
@@ -329,10 +372,10 @@ class MessageSubscriber:
     output: Output
 
     class State(str, Enum):
-        INITIALIZING = 'INITIALIZING'
-        RUNNING = 'RUNNING'
-        STOPPING = 'STOPPING'
-        UNKNOWN = 'UNKNOWN'
+        INITIALIZING = "INITIALIZING"
+        RUNNING = "RUNNING"
+        STOPPING = "STOPPING"
+        UNKNOWN = "UNKNOWN"
 
     class Highlight(BaseModel):
         state: str
@@ -362,7 +405,7 @@ class MessageSubscriber:
         max_msg_delay: int
         msg_timestamps: dict[str, dt.datetime]
 
-        def __init__(self, cluster: str = ''):
+        def __init__(self, cluster: str = ""):
             self.cluster = cluster
             self.messages = collections.deque(maxlen=100)
             self.stats = {}
@@ -376,14 +419,14 @@ class MessageSubscriber:
         @classmethod
         def from_dict(self, data: dict[str, any]):
             output = MessageSubscriber.Output()
-            output.cluster = data['cluster']
-            output.messages = collections.deque(data['messages'])
-            output.stats = data['stats']
+            output.cluster = data["cluster"]
+            output.messages = collections.deque(data["messages"])
+            output.stats = data["stats"]
             if "highlight" in data:
-                output.highlight = MessageSubscriber.Highlight(**data['highlight'])
-            output.next_stats_update = data['next_stats_update']
-            output.msg_timestamps = data['msg_timestamps']
-            output.log_level = data['log_level']
+                output.highlight = MessageSubscriber.Highlight(**data["highlight"])
+            output.next_stats_update = data["next_stats_update"]
+            output.msg_timestamps = data["msg_timestamps"]
+            output.log_level = data["log_level"]
 
             return output
 
@@ -400,21 +443,23 @@ class MessageSubscriber:
         def put_nowait(self, record: logging.LogRecord):
             self.messages.append(record.message)
 
-    def __init__(self,
-            host: str, port: int,
-            cluster_name: str,
-            topics: str | list[str] | None,
-            database: ClusterDB | None = None,
-            retry_timeout_in_s: int = 5,
-            verbose: bool = False,
-            strict_mode: bool = False,
-            lookback_in_h: dict[str, float] = LOOKBACK_IN_H_DEFAULTS,
-            kafka_consumer_options: dict[str, any] = KAFKA_CONSUMER_DEFAULTS,
-            stats_output: Path | str | None = None,
-            stats_interval_in_s: int = 30,
-            log_output: Path | str | None = None,
-            log_level: int = logging.INFO,
-            output_fn: Callable[Output] | None = None
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        cluster_name: str,
+        topics: str | list[str] | None,
+        database: ClusterDB | None = None,
+        retry_timeout_in_s: int = 5,
+        verbose: bool = False,
+        strict_mode: bool = False,
+        lookback_in_h: dict[str, float] = LOOKBACK_IN_H_DEFAULTS,
+        kafka_consumer_options: dict[str, any] = KAFKA_CONSUMER_DEFAULTS,
+        stats_output: Path | str | None = None,
+        stats_interval_in_s: int = 30,
+        log_output: Path | str | None = None,
+        log_level: int = logging.INFO,
+        output_fn: Callable[Output] | None = None,
     ):
         self.host = host
         self.port = port
@@ -446,7 +491,6 @@ class MessageSubscriber:
         # function that will receive the latest output
         self.output_fn = output_fn
 
-
         # setup the logging
         root_logger = logging.getLogger()
         root_logger.handlers.clear()
@@ -454,7 +498,7 @@ class MessageSubscriber:
         formatter = logging.Formatter(
             fmt=SLURM_MONITOR_LOG_FORMAT,
             datefmt=SLURM_MONITOR_LOG_DATE_FORMAT,
-            style=SLURM_MONITOR_LOG_STYLE
+            style=SLURM_MONITOR_LOG_STYLE,
         )
 
         queue_handler = QueueHandler(self.output)
@@ -464,17 +508,18 @@ class MessageSubscriber:
         root_logger.addHandler(queue_handler)
 
         if self.log_output:
-            file_handler = TimedRotatingFileHandler(self.log_output, when='d', interval=3)
+            file_handler = TimedRotatingFileHandler(
+                self.log_output, when="d", interval=3
+            )
             file_handler.setLevel(logging.getLevelName(log_level))
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
             root_logger.addHandler(file_handler)
 
-
     @classmethod
     def extract_lookback(cls, lookback: str) -> tuple[str, float]:
         """
-            return tuple of topic name and hours
+        return tuple of topic name and hours
         """
         m = re.match(r"[0-9]+(\.[0-9]+)?", lookback)
         if m:
@@ -486,10 +531,9 @@ class MessageSubscriber:
 
         raise ValueError(f"Invalid pattern: {lookback} - could not extract lookback")
 
-
     @classmethod
     def extract_lookbacks(cls, lookbacks: list[str]) -> dict[str, float]:
-        lookbacks_in_h : dict[sonar.TopicType, float] = LOOKBACK_IN_H_DEFAULTS.copy()
+        lookbacks_in_h: dict[sonar.TopicType, float] = LOOKBACK_IN_H_DEFAULTS.copy()
 
         if not lookbacks:
             return lookbacks_in_h
@@ -516,16 +560,15 @@ class MessageSubscriber:
                 for handler in logger.handlers:
                     handler.setLevel(log_level)
 
-
-    async def consume(self,
-                topics: list[str],
-                consumer: KafkaConsumer,
-                msg_handler: Importer,
-                startup_offsets: dict[str, int] = {},
-                topic_lb: dict[str, int] = {},
-                topic_ub: dict[str,int] = {}
-            ):
-
+    async def consume(
+        self,
+        topics: list[str],
+        consumer: KafkaConsumer,
+        msg_handler: Importer,
+        startup_offsets: dict[str, int] = {},
+        topic_lb: dict[str, int] = {},
+        topic_ub: dict[str, int] = {},
+    ):
         start_time = dt.datetime.now(dt.timezone.utc)
 
         if msg_handler is None:
@@ -561,16 +604,22 @@ class MessageSubscriber:
                         if topic in topic_ub:
                             ub = topic_ub[topic]
                             if ub and consumer_record.offset >= ub:
-                                logger.info(f"MessageSubscriber.consume: {topic.ljust(25)} -- upper bound reached: {ub}, pausing: {topic}")
+                                logger.info(
+                                    f"MessageSubscriber.consume: {topic.ljust(25)} -- upper bound reached: {ub}, pausing: {topic}"
+                                )
                                 consumer.pause(TopicPartition(topic, 0))
                                 topics.remove(topic)
                                 if not topics:
-                                    logger.info("MessageSubscriber.consume: no topics left to listen on. Stopping ...")
+                                    logger.info(
+                                        "MessageSubscriber.consume: no topics left to listen on. Stopping ..."
+                                    )
                                     self.state = self.State.STOPPING
                                     return
 
                     if self.state == self.State.INITIALIZING and not startup_offsets:
-                        logger.info(f"Startup completed: historic message lookup finished (after {(utcnow() - start_time).total_seconds():.2}s)")
+                        logger.info(
+                            f"Startup completed: historic message lookup finished (after {(utcnow() - start_time).total_seconds():.2}s)"
+                        )
                         self.state = self.State.RUNNING
                         ignore_integrity_errors = False
 
@@ -584,50 +633,78 @@ class MessageSubscriber:
                     # If a sample arrives there should be no duplicates in the database - an exception is the initialization
                     # where historic records are retrieved
                     if sonar.TopicType.infer(topic) == sonar.TopicType.sample:
-                        await msg_handler.insert(json.loads(msg), update=False, ignore_integrity_errors=ignore_integrity_errors)
+                        await msg_handler.insert(
+                            json.loads(msg),
+                            update=False,
+                            ignore_integrity_errors=ignore_integrity_errors,
+                        )
                     else:
                         # Allow to update / merge existing information
-                        await msg_handler.insert(json.loads(msg), update=True, ignore_integrity_errors=ignore_integrity_errors)
+                        await msg_handler.insert(
+                            json.loads(msg),
+                            update=True,
+                            ignore_integrity_errors=ignore_integrity_errors,
+                        )
 
                     if sonar.TopicType.infer(topic) == sonar.TopicType.job:
-                        logging.info("Auto update - aligning cluster information from jobs data")
+                        logging.info(
+                            "Auto update - aligning cluster information from jobs data"
+                        )
                         await msg_handler.autoupdate(cluster=self.cluster_name)
 
                     now = utcnow()
-                    seconds_from_now = (now.timestamp() - consumer_record.timestamp/1000.0)
+                    seconds_from_now = (
+                        now.timestamp() - consumer_record.timestamp / 1000.0
+                    )
 
-                    self.output.highlight = MessageSubscriber.Highlight(state=self.state.value,
-                                                    time=now.isoformat(timespec='milliseconds'),
-                                                    last_processed_topic=topic,
-                                                    consumer_record_offset=consumer_record.offset,
-                                                    latency_in_s=seconds_from_now
-                                            )
+                    self.output.highlight = MessageSubscriber.Highlight(
+                        state=self.state.value,
+                        time=now.isoformat(timespec="milliseconds"),
+                        last_processed_topic=topic,
+                        consumer_record_offset=consumer_record.offset,
+                        latency_in_s=seconds_from_now,
+                    )
 
-                    self.output.next_stats_update = self.stats_interval_in_s - (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds()
-                    if (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds() > self.stats_interval_in_s:
+                    self.output.next_stats_update = (
+                        self.stats_interval_in_s
+                        - (
+                            dt.datetime.now(dt.timezone.utc) - interval_start_time
+                        ).total_seconds()
+                    )
+                    if (
+                        dt.datetime.now(dt.timezone.utc) - interval_start_time
+                    ).total_seconds() > self.stats_interval_in_s:
                         interval_start_time = dt.datetime.now(dt.timezone.utc)
 
                         msg_timestamps = msg_handler.last_msg_per_node
                         max_delay = 0
                         if msg_timestamps:
-                            max_delay = (interval_start_time - min(msg_handler.last_msg_per_node.values())).total_seconds()
+                            max_delay = (
+                                interval_start_time
+                                - min(msg_handler.last_msg_per_node.values())
+                            ).total_seconds()
                             self.output.msg_timestamps = msg_timestamps
                         else:
-                            logger.warning(f"No messages received - {interval_start_time} s")
+                            logger.warning(
+                                f"No messages received - {interval_start_time} s"
+                            )
 
                         metrics = consumer.metrics()
                         listen_status = {
-                                         'positions': { },
-                                         'stats_interval_in_s': self.stats_interval_in_s,
-                                         'interval_start_time': interval_start_time,
-                                         'max_delay': max_delay
-                                        }
+                            "positions": {},
+                            "stats_interval_in_s": self.stats_interval_in_s,
+                            "interval_start_time": interval_start_time,
+                            "max_delay": max_delay,
+                        }
 
                         consumer._fetch_all_topic_metadata()
                         for tp in consumer.assignment():
                             current_pos = consumer.position(tp)
                             highwater = consumer.highwater(tp)
-                            listen_status['positions'][tp.topic] = { 'current': current_pos, 'highwater': highwater }
+                            listen_status["positions"][tp.topic] = {
+                                "current": current_pos,
+                                "highwater": highwater,
+                            }
 
                             # Include startup cleanup for topics that have received no updates
                             if tp.topic in startup_offsets:
@@ -635,7 +712,7 @@ class MessageSubscriber:
                                 if so and current_pos >= so:
                                     del startup_offsets[tp.topic]
 
-                        metrics['listen'] = listen_status
+                        metrics["listen"] = listen_status
                         stats = json.dumps(metrics, indent=4, default=str)
 
                         if self.stats_output:
@@ -665,7 +742,9 @@ class MessageSubscriber:
         # check if topic follows: <topic-name>:<lower-bound-offset>-<upper-bound-offset>
         m = re.match(r"^([^:]+)(:[0-9]+)?(-[0-9]+)?$", txt)
         if not m:
-            raise ValueError("MessageSubscriber: invalid pattern: use <topic-name>, or <topic-name>:<lower-bount:int> or <topic-name>:<lower-bound:int>-<upper-bound:int>")
+            raise ValueError(
+                "MessageSubscriber: invalid pattern: use <topic-name>, or <topic-name>:<lower-bount:int> or <topic-name>:<lower-bound:int>-<upper-bound:int>"
+            )
 
         topic = m.groups()[0]
         lower_bound = None
@@ -688,7 +767,6 @@ class MessageSubscriber:
             print("Keyboard interrupt received - stopping")
             self.state = self.State.STOPPING
 
-
     async def _run(self):
         """
         Set up a kafka consumer that subscribes to a list of topics
@@ -699,20 +777,24 @@ class MessageSubscriber:
         """
 
         if self.strict_mode:
-            TableBase.__extra_values__ = 'forbid'
+            TableBase.__extra_values__ = "forbid"
 
         msg_handler = Importer()
         if self.database:
             msg_handler = DBJsonImporter(db=self.database)
         else:
-            print("MessageSubscriber: no database specified. Will only print messages to console")
+            print(
+                "MessageSubscriber: no database specified. Will only print messages to console"
+            )
 
         topic_lb = {}
         topic_ub = {}
 
         topics = self.topics
         if not topics:
-            topics = [f"{x.get_topic(cluster=self.cluster_name)}" for x in sonar.TopicType]
+            topics = [
+                f"{x.get_topic(cluster=self.cluster_name)}" for x in sonar.TopicType
+            ]
         else:
             # Process topic will contain the topics without and lower bound, upper bound constraints
             processed_topics = []
@@ -732,10 +814,10 @@ class MessageSubscriber:
                 # https://kafka-python.readthedocs.io/en/master/apidoc/KafkaConsumer.html
                 logger.info(f"Subscribing to topics: {topics}")
                 consumer = KafkaConsumer(
-                            *topics,
-                            bootstrap_servers=f"{self.host}:{self.port}",
-                            **self.kafka_consumer_options
-                            )
+                    *topics,
+                    bootstrap_servers=f"{self.host}:{self.port}",
+                    **self.kafka_consumer_options,
+                )
                 consumer._fetch_all_topic_metadata()
 
                 # In particular sysinfo message are expected to run with low
@@ -753,15 +835,26 @@ class MessageSubscriber:
 
                         # go back in history to search for topic messages
                         topic_type = sonar.TopicType.infer(topic=topic)
-                        timelimit = utcnow() - dt.timedelta(seconds=int(self.lookback_in_h.get(topic_type, LOOKBACK_IN_H_DEFAULT)*3600))
+                        timelimit = utcnow() - dt.timedelta(
+                            seconds=int(
+                                self.lookback_in_h.get(
+                                    topic_type, LOOKBACK_IN_H_DEFAULT
+                                )
+                                * 3600
+                            )
+                        )
                         logger.info(f"{topic=}: search offset for {timelimit=}")
-                        offset_and_timestamp = consumer.offsets_for_times({ tp: int(timelimit.timestamp()*1000) })[tp]
+                        offset_and_timestamp = consumer.offsets_for_times(
+                            {tp: int(timelimit.timestamp() * 1000)}
+                        )[tp]
                         if not offset_and_timestamp:
                             continue
 
                         offset = offset_and_timestamp.offset
                         timestamp_in_s = offset_and_timestamp.timestamp / 1000
-                        logger.info(f"{topic=}: found {offset=} for {dt.datetime.fromtimestamp(timestamp_in_s)}")
+                        logger.info(
+                            f"{topic=}: found {offset=} for {dt.datetime.fromtimestamp(timestamp_in_s)}"
+                        )
                         topic_lb[topic] = offset
                         startup_offsets[topic] = consumer.end_offsets([tp])[tp]
 
@@ -769,10 +862,14 @@ class MessageSubscriber:
                     logger.info(f"{topic=}: seek to {lb}")
                     consumer.seek(TopicPartition(topic, 0), lb)
 
-                await self.consume(topics, consumer,
-                              msg_handler=msg_handler,
-                              startup_offsets=startup_offsets,
-                              topic_lb=topic_lb, topic_ub=topic_ub)
+                await self.consume(
+                    topics,
+                    consumer,
+                    msg_handler=msg_handler,
+                    startup_offsets=startup_offsets,
+                    topic_lb=topic_lb,
+                    topic_ub=topic_ub,
+                )
             except TimeoutError:
                 raise
             except Exception as e:

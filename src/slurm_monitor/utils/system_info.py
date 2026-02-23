@@ -13,6 +13,7 @@ from slurm_monitor.devices.gpu import GPU, GPUInfo
 
 logger = logging.getLogger(__name__)
 
+
 class CPUInfo:
     model: str = None
     count: int = 0
@@ -46,8 +47,8 @@ class SystemInfo:
     cpu_info: CPUInfo
     gpu_info: GPUInfo | None
 
-    env: dict[str,str] = {}
-    platform_params: dict[str,str] = {}
+    env: dict[str, str] = {}
+    platform_params: dict[str, str] = {}
 
     # Query object for the gpu, if available
     _gpu: GPU | None
@@ -60,7 +61,9 @@ class SystemInfo:
 
         prefixes = ["SLURM_", "CUDA_", "ROCR_"]
         for prefix in prefixes:
-            self.env.update({ k: v for k,v in os.environ.items() if k.startswith(prefix)})
+            self.env.update(
+                {k: v for k, v in os.environ.items() if k.startswith(prefix)}
+            )
 
     def __iter__(self):
         yield "cpus", dict(self.cpu_info)
@@ -68,9 +71,9 @@ class SystemInfo:
         yield "env", self.env
         yield "platform", self.platform_params
 
-    def mlflow_log(self, args: argparse.Namespace | dict[str|str] | None = None):
+    def mlflow_log(self, args: argparse.Namespace | dict[str | str] | None = None):
         """
-            Helper method to log information with mlflow
+        Helper method to log information with mlflow
         """
         import mlflow
 
@@ -81,7 +84,7 @@ class SystemInfo:
         mlflow.log_param("SYSTEM_INFO__GPU_MODEL", self.gpu_info.model)
         mlflow.log_param("SYSTEM_INFO__GPU_COUNT", self.gpu_info.count)
         if self.env:
-           mlflow.log_params(self.env)
+            mlflow.log_params(self.env)
 
         mlflow.log_param("SYSTEM_INFO__ARGV", sys.argv)
         mlflow.log_param("SYSTEM_INFO__CWD", os.getcwd())
@@ -92,8 +95,16 @@ class SystemInfo:
 
     def get_platform_params(self) -> dict[str, any]:
         if not self.platform_params:
-            for i in ["system", "processor", "platform", "machine", "version", "node", "python_version"]:
-                self.platform_params[i] =  getattr(platform,i)()
+            for i in [
+                "system",
+                "processor",
+                "platform",
+                "machine",
+                "version",
+                "node",
+                "python_version",
+            ]:
+                self.platform_params[i] = getattr(platform, i)()
         return self.platform_params
 
     def get_descriptor(self) -> str:

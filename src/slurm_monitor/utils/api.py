@@ -3,6 +3,7 @@ from fastapi import FastAPI
 
 from slurm_monitor.app_settings import AppSettings
 
+
 # see https://fastapi.tiangolo.com/how-to/extending-openapi
 def createFastAPI(**kwargs):
     title = "slurm-monitor"
@@ -11,7 +12,7 @@ def createFastAPI(**kwargs):
     else:
         kwargs["title"] = title
 
-    version="0.3.0"
+    version = "0.3.0"
     if "version" in kwargs:
         version = kwargs["version"]
     else:
@@ -21,11 +22,10 @@ def createFastAPI(**kwargs):
     if "root_path" in kwargs:
         root_path = kwargs["root_path"]
 
-    app = FastAPI(
-        **kwargs
-    )
+    app = FastAPI(**kwargs)
 
     app_settings = AppSettings.initialize(db_schema_version="v2")
+
     def custom_openapi():
         if app.openapi_schema:
             return app.openapi_schema
@@ -36,7 +36,7 @@ def createFastAPI(**kwargs):
             routes=app.routes,
         )
 
-        openapi_schema["servers"] = [{ 'url': root_path}]
+        openapi_schema["servers"] = [{"url": root_path}]
 
         if app_settings.oauth.required:
             app.openapi_schema = openapi_schema

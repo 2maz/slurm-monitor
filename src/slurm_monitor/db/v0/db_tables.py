@@ -89,7 +89,9 @@ class GPUIdList(types.TypeDecorator):
 
     def transform_input(self, value: list[str]):
         if len(set(value)) > 1:
-            raise RuntimeError(f"Assuming maximum length of 1 for GPU details, but found: {value}")
+            raise RuntimeError(
+                f"Assuming maximum length of 1 for GPU details, but found: {value}"
+            )
 
         for x in value:
             return self.get_logical_ids(x)
@@ -290,14 +292,24 @@ class GPUStatus(TableBase):
         return data
 
     @classmethod
-    def merge(cls, samples: list[GPUStatus], merge_op: Callable[list[int | float]] | None = np.mean) -> GPUStatus:
+    def merge(
+        cls,
+        samples: list[GPUStatus],
+        merge_op: Callable[list[int | float]] | None = np.mean,
+    ) -> GPUStatus:
         values = {}
 
         reference_sample = samples[-1]
         for sample in samples:
-            assert sample.uuid == reference_sample.uuid, \
-                f"sample uuid {sample.uuid} does not match reference_sample {reference_sample.uuid}"
-            for attribute in ["temperature_gpu", "power_draw", "utilization_gpu", "utilization_memory"]:
+            assert (
+                sample.uuid == reference_sample.uuid
+            ), f"sample uuid {sample.uuid} does not match reference_sample {reference_sample.uuid}"
+            for attribute in [
+                "temperature_gpu",
+                "power_draw",
+                "utilization_gpu",
+                "utilization_memory",
+            ]:
                 value = getattr(sample, attribute)
                 if attribute not in values:
                     values[attribute] = [value]

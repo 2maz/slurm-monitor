@@ -15,17 +15,18 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-class ROCM(GPU):
 
+class ROCM(GPU):
     @classmethod
     def detect(cls):
         versions = {}
         if "ROCm_ROOT" in os.environ:
-            for file in (Path(os.environ['ROCm_ROOT']) / ".info").glob("version*"):
+            for file in (Path(os.environ["ROCm_ROOT"]) / ".info").glob("version*"):
                 with open(file, "r") as f:
                     versions[file.name] = f.read().strip()
         try:
             from pyrsmi import rocml
+
             rocml.smi_initialize()
             device_count = rocml.smi_get_device_count()
             if device_count < 1:
@@ -35,32 +36,41 @@ class ROCM(GPU):
             memory_total_in_bytes = rocml.smi_get_device_memory_total(0)
             rocml.smi_shutdown()
             return GPUInfo(
-                    model=model,
-                    count=device_count,
-                    memory_total=memory_total_in_bytes,
-                    framework=GPUInfo.Framework.ROCM,
-                    versions=versions
+                model=model,
+                count=device_count,
+                memory_total=memory_total_in_bytes,
+                framework=GPUInfo.Framework.ROCM,
+                versions=versions,
             )
         except ImportError as e:
             logger.debug(f"{cls}.detect: failed to import {e}")
         except Exception as e:
             logger.debug(f"{cls}.detect: failed to extract information - {e}")
 
-        response = subprocess.run("command -v rocm-smi", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        response = subprocess.run(
+            "command -v rocm-smi",
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
         if response.returncode != 0:
             raise RuntimeError("rocm-smi is not available")
 
-        result = subprocess.run("rocm-smi --showproductname --showmeminfo vram --csv",
-                shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        result = subprocess.run(
+            "rocm-smi --showproductname --showmeminfo vram --csv",
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
         info = result.stdout.decode("UTF-8").strip().split("\n")
         if len(info) > 1:
             fields = info[1].split(",")
             return GPUInfo(
-                    model=fields[3],
-                    count=len(info)-1 ,
-                    memory_total=int(fields[1]), # in bytes
-                    framework=GPUInfo.Framework.ROCM,
-                    versions=versions
+                model=fields[3],
+                count=len(info) - 1,
+                memory_total=int(fields[1]),  # in bytes
+                framework=GPUInfo.Framework.ROCM,
+                versions=versions,
             )
 
         raise RuntimeError("ROCM.detect: no AMD GPU found")
@@ -110,24 +120,28 @@ class ROCM(GPU):
                 --showmeminfo vram --showvoltage --showtemp --showpower --csv"
 
     def transform(self, response: str) -> list[GPUStatus]:
-        main_response = [x for x in response.strip().split("\n") if not x.lower().startswith("warn")]
+        main_response = [
+            x for x in response.strip().split("\n") if not x.lower().startswith("warn")
+        ]
 
-        df = pd.read_csv(StringIO('\n'.join(main_response)))
-        column_names = { x: x.strip().lower() for x in df.columns }
-        df.rename(columns = column_names, inplace = True)
+        df = pd.read_csv(StringIO("\n".join(main_response)))
+        column_names = {x: x.strip().lower() for x in df.columns}
+        df.rename(columns=column_names, inplace=True)
 
-        records = df.to_dict('records')
+        records = df.to_dict("records")
 
         samples = []
         timestamp = utcnow()
-
 
         for idx, value in enumerate(records):
             total_memory_in_bytes = int(value["vram total memory (b)"])
 
             power_draw = None
             # account for different ROCM versions
-            for name in ["current socket graphics package power (w)", "average graphics package power (w)"]:
+            for name in [
+                "current socket graphics package power (w)",
+                "average graphics package power (w)",
+            ]:
                 if name in value:
                     power_draw = value[name]
                     break
@@ -142,7 +156,9 @@ class ROCM(GPU):
                 node=self.node,
                 power_draw=power_draw,
                 temperature_gpu=value["temperature (sensor edge) (c)"],
-                utilization_memory=int(value["vram total used memory (b)"])*100.0/total_memory_in_bytes,
+                utilization_memory=int(value["vram total used memory (b)"])
+                * 100.0
+                / total_memory_in_bytes,
                 utilization_gpu=value["gpu use (%)"],
                 memory_total=total_memory_in_bytes,
                 timestamp=timestamp,
@@ -150,7 +166,6 @@ class ROCM(GPU):
             samples.append(sample)
 
         return samples
-
 
     def get_processes(self) -> list[GPUProcessStatus]:
         response = Command.run("rocm-smi --showpidgpus")
@@ -161,7 +176,9 @@ class ROCM(GPU):
                 try:
                     local_ids = [int(i.strip()) for i in x.strip().split(" ")]
                 except Exception:
-                    logger.debug("ROCM.get_processes: pid known, but GPU id are not yet registered")
+                    logger.debug(
+                        "ROCM.get_processes: pid known, but GPU id are not yet registered"
+                    )
                 # local ids for this pid have been processed, so reset
                 pid = None
 
@@ -173,24 +190,26 @@ class ROCM(GPU):
                 pid = int(m.group(1))
 
         response = Command.run("rocm-smi --showpids --csv")
-        main_response = [x for x in response.strip().split("\n") if "warn" not in x.lower()]
+        main_response = [
+            x for x in response.strip().split("\n") if "warn" not in x.lower()
+        ]
         samples = []
         for line in main_response[1:]:
-            line = line.replace("\"","").replace(", ",",")
+            line = line.replace('"', "").replace(", ", ",")
             try:
                 fields = line.split(",")
                 if not fields[0].startswith("PID"):
                     raise ValueError("Expected PID prefix")
 
-                pid = int(fields[0].replace("PID",""))
+                pid = int(fields[0].replace("PID", ""))
                 for local_id in local_ids:
                     sample = GPUProcessStatus(
                         uuid=self.uuids[local_id],
                         pid=pid,
                         process_name=fields[1].strip(),
-                        #number_of_gpus=int(fields[2]),
-                        used_memory=int(fields[3]), # vram_used
-                        #sdma_used=int(fields[4]),
+                        # number_of_gpus=int(fields[2]),
+                        used_memory=int(fields[3]),  # vram_used
+                        # sdma_used=int(fields[4]),
                         utilization_sm=float(fields[5].strip()),
                     )
                     samples.append(sample)

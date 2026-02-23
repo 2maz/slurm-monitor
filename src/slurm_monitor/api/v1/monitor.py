@@ -25,15 +25,17 @@ api_router = APIRouter(
 
 NODE_INFOS = {}
 
+
 def _get_slurmrestd(prefix: str):
     try:
         return Slurm.get_slurmrestd(prefix)
     except Exception as e:
         logger.warn(e)
         raise HTTPException(
-                status_code=503,
-                detail="The slurmrestd service seems to be down. SLURM or the server might be under maintenance"
+            status_code=503,
+            detail="The slurmrestd service seems to be down. SLURM or the server might be under maintenance",
         )
+
 
 def _get_nodeinfo(nodelist: list[str] | None, dbi):
     if not nodelist:
@@ -48,16 +50,24 @@ def _get_nodeinfo(nodelist: list[str] | None, dbi):
             try:
                 nodeinfo[nodename].update(dbi.get_gpu_infos(node=nodename))
             except Exception as e:
-                logger.warn(f"Internal error: Retrieving GPU info for {nodename} failed -- {e}")
+                logger.warn(
+                    f"Internal error: Retrieving GPU info for {nodename} failed -- {e}"
+                )
 
         try:
-            nodeinfo[nodename].update(dbi.get_cpu_infos(nodename) )
+            nodeinfo[nodename].update(dbi.get_cpu_infos(nodename))
         except Exception as e:
-            logger.warn(f"Internal error: Retrieving CPU info for {nodename} failed -- {e}")
+            logger.warn(
+                f"Internal error: Retrieving CPU info for {nodename} failed -- {e}"
+            )
     return nodeinfo
 
 
-def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None, resolution_in_s: int | None):
+def validate_interval(
+    end_time_in_s: float | None,
+    start_time_in_s: float | None,
+    resolution_in_s: int | None,
+):
     if end_time_in_s is None:
         now = utcnow()
         end_time_in_s = now.timestamp()
@@ -75,7 +85,7 @@ def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None
             detail=f"ValueError: {end_time_in_s=} cannot be smaller than {start_time_in_s=}",
         )
 
-    if (end_time_in_s - start_time_in_s) > 3600*24*14:
+    if (end_time_in_s - start_time_in_s) > 3600 * 24 * 14:
         raise HTTPException(
             status_code=500,
             detail="ValueError: timeframe cannot exceed 14 days",
@@ -89,11 +99,13 @@ def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None
 
     return start_time_in_s, end_time_in_s, resolution_in_s
 
+
 def load_node_infos() -> dict[str, any]:
     global NODE_INFOS
     dbi = DBManager.get_database()
     NODE_INFOS = _get_nodeinfo(None, dbi)
     return NODE_INFOS
+
 
 @api_router.get("/jobs", response_model=None)
 @cache(expire=30)
@@ -114,8 +126,8 @@ async def nodes():
 
 
 @api_router.get("/nodes/{nodename}/info", response_model=None)
-@cache(expire=3600*24)
-async def nodes_nodename_info(nodename: str, dbi = Depends(DBManager.get_database)):
+@cache(expire=3600 * 24)
+async def nodes_nodename_info(nodename: str, dbi=Depends(DBManager.get_database)):
     global NODE_INFOS
 
     if not NODE_INFOS:
@@ -125,44 +137,48 @@ async def nodes_nodename_info(nodename: str, dbi = Depends(DBManager.get_databas
 
 
 @api_router.get("/nodes/{nodename}/topology", response_model=None)
-def nodes_nodename_topology(nodename: str, output_format: str = 'svg'):
-    filename = Path(tempfile.gettempdir()) / f"slurm-monitor-lstopo-{nodename}.{output_format}"
+def nodes_nodename_topology(nodename: str, output_format: str = "svg"):
+    filename = (
+        Path(tempfile.gettempdir()) / f"slurm-monitor-lstopo-{nodename}.{output_format}"
+    )
     if not Path(filename).exists():
         user = Command.get_user()
 
-        decode = None if output_format == 'png' else 'UTF-8'
-        write = "wb" if output_format == 'png' else 'w'
+        decode = None if output_format == "png" else "UTF-8"
+        write = "wb" if output_format == "png" else "w"
 
         # system setup for user must ensure that lstopo is available, e.g., adding
         #     module load hwloc
         # into ~/.profile
         try:
             data = Command.run(
-                    f"ssh {user}@{nodename} \"bash -l -c 'lstopo --output-format {output_format} -v'\"",
-                    decode=decode
-                   )
+                f"ssh {user}@{nodename} \"bash -l -c 'lstopo --output-format {output_format} -v'\"",
+                decode=decode,
+            )
         except Exception as e:
             logger.warning(e)
 
             raise HTTPException(
-                status_code=503, # Service unavailable
-                detail=f"Internal Error: the 'lstopo' command did not succeed for node '{nodename}'."
+                status_code=503,  # Service unavailable
+                detail=f"Internal Error: the 'lstopo' command did not succeed for node '{nodename}'.",
             )
 
-        if output_format == 'svg':
+        if output_format == "svg":
             # fixing viewport - should not have units
-            data = re.sub(r"viewBox='0 0 ([0-9]+)px ([0-9]+)px'", "viewBox='0 0 \\1 \\2'", data)
+            data = re.sub(
+                r"viewBox='0 0 ([0-9]+)px ([0-9]+)px'", "viewBox='0 0 \\1 \\2'", data
+            )
 
         with open(filename, write) as f:
             f.write(data)
 
-    if output_format == 'png':
+    if output_format == "png":
         return FileResponse(filename)
 
     with open(filename, "r") as f:
         data = f.read()
 
-    if output_format == 'svg':
+    if output_format == "svg":
         return Response(content=data, media_type="image/svg+xml")
     else:
         return data
@@ -178,24 +194,29 @@ async def partitions():
 
 
 @api_router.get("/nodes/info", response_model=None)
-@cache(expire=3600*24)
-async def nodes_info(nodes: list[str] | None = None, dbi=Depends(DBManager.get_database)):
+@cache(expire=3600 * 24)
+async def nodes_info(
+    nodes: list[str] | None = None, dbi=Depends(DBManager.get_database)
+):
     global NODE_INFOS
 
     if not NODE_INFOS:
         load_node_infos()
 
-    return {'nodes': NODE_INFOS}
+    return {"nodes": NODE_INFOS}
+
 
 @api_router.get("/nodes/refresh_info", response_model=None)
 async def nodes_refreshinfo():
     load_node_infos()
-    return {'nodes': NODE_INFOS}
+    return {"nodes": NODE_INFOS}
+
 
 @api_router.get("/nodes/last_probe_timestamp", response_model=None)
 async def nodes_last_probe_timestamp():
     dbi = DBManager.get_database()
     return await dbi.get_last_probe_timestamp()
+
 
 @api_router.get("/nodes/{nodename}/gpu_status")
 @api_router.get("/nodes/gpustatus")
@@ -208,13 +229,13 @@ async def gpustatus(
     dbi=Depends(DBManager.get_database),
 ):
     start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s
+        start_time_in_s=start_time_in_s,
+        end_time_in_s=end_time_in_s,
+        resolution_in_s=resolution_in_s,
     )
 
     if local_indices is not None:
-        local_indices = [int(x) for x in local_indices.split(',')]
+        local_indices = [int(x) for x in local_indices.split(",")]
 
     nodes = [] if nodename is None else [nodename]
     return {
@@ -227,6 +248,7 @@ async def gpustatus(
         )
     }
 
+
 @api_router.get("/nodes/{nodename}/cpu_status")
 @api_router.get("/nodes/cpu_status")
 async def cpu_status(
@@ -237,9 +259,9 @@ async def cpu_status(
     dbi=Depends(DBManager.get_database),
 ):
     start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s
+        start_time_in_s=start_time_in_s,
+        end_time_in_s=end_time_in_s,
+        resolution_in_s=resolution_in_s,
     )
 
     nodes = [] if nodename is None else [nodename]
@@ -252,6 +274,7 @@ async def cpu_status(
         )
     }
 
+
 @api_router.get("/nodes/{nodename}/memory_status")
 @api_router.get("/nodes/memory_status")
 async def memory_status(
@@ -262,9 +285,9 @@ async def memory_status(
     dbi=Depends(DBManager.get_database),
 ):
     start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s
+        start_time_in_s=start_time_in_s,
+        end_time_in_s=end_time_in_s,
+        resolution_in_s=resolution_in_s,
     )
 
     nodes = [] if nodename is None else [nodename]
@@ -276,6 +299,7 @@ async def memory_status(
             resolution_in_s=resolution_in_s,
         )
     }
+
 
 @api_router.get("/jobs/query")
 async def jobs_query(
@@ -293,21 +317,23 @@ async def jobs_query(
     limit: int = 100,
 ):
     dbi = DBManager.get_database()
-    return {"jobs": await dbi.get_jobs(
-        user=user,
-        user_id=user_id,
-        job_id=job_id,
-        start_before_in_s=start_before_in_s,
-        start_after_in_s=start_after_in_s,
-        end_before_in_s=end_before_in_s,
-        end_after_in_s=end_after_in_s,
-        submit_before_in_s=submit_before_in_s,
-        submit_after_in_s=submit_after_in_s,
-        min_duration_in_s=min_duration_in_s,
-        max_duration_in_s=max_duration_in_s,
-        limit=limit
+    return {
+        "jobs": await dbi.get_jobs(
+            user=user,
+            user_id=user_id,
+            job_id=job_id,
+            start_before_in_s=start_before_in_s,
+            start_after_in_s=start_after_in_s,
+            end_before_in_s=end_before_in_s,
+            end_after_in_s=end_after_in_s,
+            submit_before_in_s=submit_before_in_s,
+            submit_after_in_s=submit_after_in_s,
+            min_duration_in_s=min_duration_in_s,
+            max_duration_in_s=max_duration_in_s,
+            limit=limit,
         )
     }
+
 
 @api_router.get("/job/{job_id}")
 @api_router.get("/jobs/{job_id}/info")
@@ -318,7 +344,7 @@ async def job_status(
     resolution_in_s: int | None = None,
     dbi=Depends(DBManager.get_database),
 ):
-    return {"job_status": await dbi.get_job(job_id=job_id) }
+    return {"job_status": await dbi.get_job(job_id=job_id)}
 
 
 @api_router.get("/jobs/{job_id}/system_status")
@@ -331,28 +357,25 @@ async def job_system_status(
     dbi=Depends(DBManager.get_database),
 ):
     start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s
+        start_time_in_s=start_time_in_s,
+        end_time_in_s=end_time_in_s,
+        resolution_in_s=resolution_in_s,
     )
 
     data = {}
     timeseries_per_node = await dbi.get_job_status_timeseries_list(
-            job_id=job_id,
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s,
-            detailed=detailed
+        job_id=job_id,
+        start_time_in_s=start_time_in_s,
+        end_time_in_s=end_time_in_s,
+        resolution_in_s=resolution_in_s,
+        detailed=detailed,
     )
     data["nodes"] = timeseries_per_node
     return data
 
 
 @api_router.get("/jobs/{job_id}/export")
-async def job_export(
-        job_id: int,
-        refresh: bool = False
-) -> FileResponse:
+async def job_export(job_id: int, refresh: bool = False) -> FileResponse:
     dbi = DBManager.get_database()
     zip_filename = Path(f"{dbi.get_export_data_dirname(job_id=job_id)}.zip")
     if refresh or not zip_filename.exists():
@@ -370,7 +393,7 @@ async def queries(
     end_time_in_s: float | None = None,
 ):
     if query_name is None:
-        return { 'queries': QueryMaker.list_available() }
+        return {"queries": QueryMaker.list_available()}
 
     try:
         query_maker = QueryMaker(DBManager.get_database())
@@ -380,8 +403,7 @@ async def queries(
         return df.to_dict(orient="records")
     except Exception as e:
         raise HTTPException(
-                status_code=404,
-                detail=f"Failed to execute query: '{query_name}' -- {e}"
+            status_code=404, detail=f"Failed to execute query: '{query_name}' -- {e}"
         )
 
 
@@ -397,5 +419,5 @@ def benchmarks(benchmark_name: str = "lambdal"):
 
     df = pd.read_csv(str(path))
     df = df.fillna(-1)
-    del df['Unnamed: 0']
+    del df["Unnamed: 0"]
     return df.to_dict(orient="records")

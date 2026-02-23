@@ -12,41 +12,38 @@ class DBParser(BaseParser):
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
 
-        parser.add_argument("--db-schema-version",
-                            choices=["v1", "v2"],
-                            default="v2",
-                            help="Database schema version to use (default is 'v2')"
-                            )
-
-        parser.add_argument("--db-uri",
-                            type=str,
-                            help="Database uri"
-                            )
-
-        parser.add_argument("--init",
-                            action="store_true",
-                            help="Initialize the database, i.e., create schemas etc"
-                            )
-
-        parser.add_argument("--apply-changes",
-                            action="store_true",
-                            help="Apply changes to the table of the current database"
-                            )
-
-        parser.add_argument("--diff",
-                            action="store_true",
-                            help="Show only diff lines"
-                            )
-
-        parser.add_argument("--insert-test-samples",
-                            metavar="CLUSTER",
-                            nargs="+",
-                            type=str,
-                            required=False,
-                            default=None,
-                            help="Insert test data for a given cluster"
+        parser.add_argument(
+            "--db-schema-version",
+            choices=["v1", "v2"],
+            default="v2",
+            help="Database schema version to use (default is 'v2')",
         )
 
+        parser.add_argument("--db-uri", type=str, help="Database uri")
+
+        parser.add_argument(
+            "--init",
+            action="store_true",
+            help="Initialize the database, i.e., create schemas etc",
+        )
+
+        parser.add_argument(
+            "--apply-changes",
+            action="store_true",
+            help="Apply changes to the table of the current database",
+        )
+
+        parser.add_argument("--diff", action="store_true", help="Show only diff lines")
+
+        parser.add_argument(
+            "--insert-test-samples",
+            metavar="CLUSTER",
+            nargs="+",
+            type=str,
+            required=False,
+            default=None,
+            help="Insert test data for a given cluster",
+        )
 
     def execute(self, args):
         super().execute(args)
@@ -59,6 +56,7 @@ class DBParser(BaseParser):
 
         if args.insert_test_samples:
             from slurm_monitor.db.v2.db_testing import TestDBConfig, create_test_db
+
             test_db_config = TestDBConfig(cluster_names=args.insert_test_samples)
             create_test_db(uri=app_settings.database.uri, config=test_db_config)
 

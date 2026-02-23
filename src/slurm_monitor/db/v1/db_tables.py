@@ -27,28 +27,32 @@ from sqlalchemy.ext.compiler import compiles
 
 import slurm_monitor.timescaledb as timescaledb
 
-__all__ = [ "timescaledb" ]
+__all__ = ["timescaledb"]
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
+
 class EpochFn(GenericFunction):
     type = DateTime()
     inherit_cache = True
 
+
 # For PostgreSQL, we will use the `EXTRACT(EPOCH FROM <datetime>)` syntax
-@compiles(EpochFn, 'postgresql')
+@compiles(EpochFn, "postgresql")
 def compile_postgresql(expr, compiler, **kwargs):
     return f"EXTRACT(EPOCH FROM {compiler.process(expr.clauses.clauses[0], **kwargs)})"
 
+
 # For TimeScaledb
-@compiles(EpochFn, 'timescaledb')
+@compiles(EpochFn, "timescaledb")
 def compile_timescaledb(expr, compiler, **kwargs):
     return f"EXTRACT(EPOCH FROM {compiler.process(expr.clauses.clauses[0], **kwargs)})"
 
+
 # For SQLite, we use `strftime('%s', datetime_column)` to get epoch
-@compiles(EpochFn, 'sqlite')
+@compiles(EpochFn, "sqlite")
 def compile_sqlite(expr, compiler, **kwargs):
     return f"strftime('%s', {compiler.process(expr.clauses.clauses[0], **kwargs)})"
 
@@ -84,33 +88,44 @@ class TableBase:
     @classmethod
     def primary_key_columns(cls):
         if not cls._primary_key_columns:
-            cls._primary_key_columns = [x.name for x in cls.__table__.columns if x.primary_key]
+            cls._primary_key_columns = [
+                x.name for x in cls.__table__.columns if x.primary_key
+            ]
         return cls._primary_key_columns
 
     @classmethod
     def non_primary_key_columns(cls):
         if not cls._non_primary_key_columns:
-            cls._non_primary_key_columns = [x.name for x in cls.__table__.columns if not x.primary_key]
+            cls._non_primary_key_columns = [
+                x.name for x in cls.__table__.columns if not x.primary_key
+            ]
         return cls._non_primary_key_columns
 
     def get_timeseries_id(self) -> str:
         """
         Get the id for the timeseries - so excluding the timestamp field
         """
-        return '.'.join([str(getattr(self, x)) for x in self.primary_key_columns() if x != "timestamp"])
+        return ".".join(
+            [
+                str(getattr(self, x))
+                for x in self.primary_key_columns()
+                if x != "timestamp"
+            ]
+        )
 
     @classmethod
-    def merge(cls,
-            samples: list[T],
-            merge_op: Callable[list[int | float]] | None = np.mean) -> T:
+    def merge(
+        cls, samples: list[T], merge_op: Callable[list[int | float]] | None = np.mean
+    ) -> T:
         values = {}
 
         reference_sample = samples[-1]
         reference_sample_timeseries_id = reference_sample.get_timeseries_id()
         for sample in samples:
             timeseries_id = sample.get_timeseries_id()
-            assert timeseries_id == reference_sample_timeseries_id, \
-                    f"sample id {timeseries_id} does not match reference_sample {reference_sample_timeseries_id}"
+            assert (
+                timeseries_id == reference_sample_timeseries_id
+            ), f"sample id {timeseries_id} does not match reference_sample {reference_sample_timeseries_id}"
 
             for attribute in cls.non_primary_key_columns():
                 value = getattr(sample, attribute)
@@ -134,13 +149,17 @@ class TableBase:
                     if column.nullable or column.type.python_type is str:
                         kwargs[column_name] = getattr(reference_sample, column_name)
                     else:
-                        raise RuntimeError(f"Merging failed for column: '{column_name}'") from e
+                        raise RuntimeError(
+                            f"Merging failed for column: '{column_name}'"
+                        ) from e
 
         return cls(**kwargs)
 
     @classmethod
     def apply_resolution(
-            cls, data: list[TableBase], resolution_in_s: int,
+        cls,
+        data: list[TableBase],
+        resolution_in_s: int,
     ) -> list[TableBase]:
         smoothed_data = []
         samples_in_window = {}
@@ -154,8 +173,8 @@ class TableBase:
 
         if not hasattr(data[0], "timestamp"):
             raise ValueError(
-                    "TableBase.apply_resolution can only be applied to "
-                    "types with a 'timestamp' column"
+                "TableBase.apply_resolution can only be applied to "
+                "types with a 'timestamp' column"
             )
 
         # requiring ordered list (oldest first)
@@ -174,9 +193,7 @@ class TableBase:
                 window_start_time = base_time
                 window_index = 0
 
-            if (
-                sample_timestamp - window_start_time
-            ).total_seconds() < resolution_in_s:
+            if (sample_timestamp - window_start_time).total_seconds() < resolution_in_s:
                 if timeseries_id not in samples_in_window:
                     samples_in_window[timeseries_id] = [sample]
                 else:
@@ -186,8 +203,9 @@ class TableBase:
                 window_index += 1
 
                 samples_in_window[timeseries_id] = [sample]
-                window_start_time = base_time + dt.timedelta(seconds=window_index*resolution_in_s)
-
+                window_start_time = base_time + dt.timedelta(
+                    seconds=window_index * resolution_in_s
+                )
 
         for _, values in samples_in_window.items():
             if values:
@@ -239,10 +257,12 @@ class GPUIdList(types.TypeDecorator):
                 gpu_logical_ids.append(int(idx_range))
         return gpu_logical_ids
 
-    def transform_input(self, value: list[str|int]):
+    def transform_input(self, value: list[str | int]):
         if len(set(value)) > 1:
             if type(value[0]) is str:
-                raise RuntimeError(f"Assuming maximum length of 1 for GPU details, but found: {value}")
+                raise RuntimeError(
+                    f"Assuming maximum length of 1 for GPU details, but found: {value}"
+                )
             elif type(value[0]) is int:
                 return value
             else:
@@ -280,6 +300,7 @@ class GPUs(TableBase):
     model = Column(String(255))
     memory_total = Column(BigInteger)
 
+
 class LocalIndexedGPUs(TableBase):
     __tablename__ = "local_indexed_gpus"
 
@@ -289,8 +310,9 @@ class LocalIndexedGPUs(TableBase):
     local_id = Column(Integer, primary_key=True)
 
     # Validity
-    start_time = Column(DateTime, primary_key=True, default=dt.datetime(2024,6,1))
-    end_time = Column(DateTime, default=dt.datetime(2050,5,31))
+    start_time = Column(DateTime, primary_key=True, default=dt.datetime(2024, 6, 1))
+    end_time = Column(DateTime, default=dt.datetime(2050, 5, 31))
+
 
 class JobStatus(TableBase):
     __tablename__ = "job_status"
@@ -302,7 +324,7 @@ class JobStatus(TableBase):
     start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime, nullable=True)
 
-    account = Column(String(100), default='')
+    account = Column(String(100), default="")
     accrue_time = Column(BigInteger, default=0)
     admin_comment = Column(String(255), default="")
     array_job_id = Column(Integer, nullable=True)  # 244843
@@ -312,7 +334,7 @@ class JobStatus(TableBase):
     association_id = Column(Integer, default=0)  # ": 0,
     # batch_features": "",
     # batch_flag": true,
-    batch_host = Column(String(50), default='')
+    batch_host = Column(String(50), default="")
     # flags": [],
     # burst_buffer": "",
     # burst_buffer_state": "",
@@ -369,7 +391,7 @@ class JobStatus(TableBase):
     # mcs_label": "",
     # memory_per_tres": "",
     # name": "seidr",
-    nodes = Column(String(128), default='')  # "n042",
+    nodes = Column(String(128), default="")  # "n042",
     # nice": null,
     # tasks_per_core": null,
     # tasks_per_node": 0,
@@ -405,8 +427,8 @@ class JobStatus(TableBase):
     # ,
     # sockets_per_board": 0,
     # sockets_per_node": null,
-    state_description = Column(String(255), default='')  # "",
-    state_reason = Column(String(255), default='')  # "None",
+    state_description = Column(String(255), default="")  # "",
+    state_reason = Column(String(255), default="")  # "None",
     # standard_error": "/home/.../scripts/logs/%j-stderr.txt",
     # standard_input": "/dev/null",
     # standard_output": "/home/.../scripts/logs/%j-stdout.txt",
@@ -425,7 +447,7 @@ class JobStatus(TableBase):
     # tres_req_str": "cpu=1,node=1,billing=1",
     # tres_alloc_str": "cpu=1,billing=1",
     user_id = Column(Integer, default=0)  # 6500,
-    user_name = Column(String(64), default='', nullable=True)
+    user_name = Column(String(64), default="", nullable=True)
     # wckey": "",
     # current_working_directory": "/global/D1/homes/..."
     # id = Column(Integer) # 244843
@@ -443,6 +465,7 @@ class JobStatus(TableBase):
 
         return cls(**mapped_data)
 
+
 class ProcessStatus(TableBase):
     __tablename__ = "process_status"
 
@@ -452,13 +475,15 @@ class ProcessStatus(TableBase):
     node = Column(String(255), ForeignKey("nodes.name"), primary_key=True, index=True)
 
     __table_args__ = (
-        ForeignKeyConstraint([job_id, job_submit_time], [JobStatus.job_id, JobStatus.submit_time]),
+        ForeignKeyConstraint(
+            [job_id, job_submit_time], [JobStatus.job_id, JobStatus.submit_time]
+        ),
         {
-        'timescaledb_hypertable': {
-            'time_column_name': 'timestamp',
-            'chunk_time_interval': '24 hours',
+            "timescaledb_hypertable": {
+                "time_column_name": "timestamp",
+                "chunk_time_interval": "24 hours",
             }
-        }
+        },
     )
 
     cpu_percent = Column(Float)
@@ -479,12 +504,12 @@ class Nodes(TableBase):
 
 class CPUStatus(TableBase):
     __tablename__ = "cpu_status"
-    __table_args__ = ({
-        'timescaledb_hypertable': {
-            'time_column_name': 'timestamp',
-            'chunk_time_interval': '24 hours',
+    __table_args__ = {
+        "timescaledb_hypertable": {
+            "time_column_name": "timestamp",
+            "chunk_time_interval": "24 hours",
         }
-    })
+    }
 
     node = Column(String(255), ForeignKey("nodes.name"), primary_key=True)
     local_id = Column(Integer, primary_key=True)
@@ -492,14 +517,15 @@ class CPUStatus(TableBase):
 
     timestamp = Column(DateTime(), default=dt.datetime.now, primary_key=True)
 
+
 class MemoryStatus(TableBase):
     __tablename__ = "memory_status"
-    __table_args__ = ({
-        'timescaledb_hypertable': {
-            'time_column_name': 'timestamp',
-            'chunk_time_interval': '24 hours',
+    __table_args__ = {
+        "timescaledb_hypertable": {
+            "time_column_name": "timestamp",
+            "chunk_time_interval": "24 hours",
         }
-    })
+    }
 
     node = Column(String(255), ForeignKey("nodes.name"), primary_key=True)
 
@@ -520,12 +546,12 @@ class MemoryStatus(TableBase):
 
 class GPUStatus(TableBase):
     __tablename__ = "gpu_status"
-    __table_args__ = ({
-        'timescaledb_hypertable': {
-            'time_column_name': 'timestamp',
-            'chunk_time_interval': '24 hours',
+    __table_args__ = {
+        "timescaledb_hypertable": {
+            "time_column_name": "timestamp",
+            "chunk_time_interval": "24 hours",
         }
-    })
+    }
     uuid = Column(String(64), ForeignKey("gpus.uuid"), index=True, primary_key=True)
 
     temperature_gpu = Column(Float)
@@ -550,29 +576,32 @@ class GPUProcess(TableBase):
     job_submit_time = Column(DateTime, nullable=True, index=True)
 
     __table_args__ = (
-        ForeignKeyConstraint([job_id, job_submit_time], [JobStatus.job_id, JobStatus.submit_time]),
+        ForeignKeyConstraint(
+            [job_id, job_submit_time], [JobStatus.job_id, JobStatus.submit_time]
+        ),
         {
-        'timescaledb_hypertable': {
-            'time_column_name': 'start_time',
-            'chunk_time_interval': '24 hours',
+            "timescaledb_hypertable": {
+                "time_column_name": "start_time",
+                "chunk_time_interval": "24 hours",
             }
-        }
+        },
     )
+
 
 class GPUProcessStatus(TableBase):
     __tablename__ = "gpu_process_status"
-    __table_args__ = (
-        {
-        'timescaledb_hypertable': {
-            'time_column_name': 'timestamp',
-            'chunk_time_interval': '24 hours',
-            }
+    __table_args__ = {
+        "timescaledb_hypertable": {
+            "time_column_name": "timestamp",
+            "chunk_time_interval": "24 hours",
         }
-    )
+    }
 
     uuid = Column(String(64), ForeignKey("gpus.uuid"), index=True, primary_key=True)
     pid = Column(Integer, index=True, primary_key=True)
 
-    utilization_sm = Column(Float, default=0) # in percent (streaming multiprocessor usage)
-    used_memory = Column(Float) # in bytes
+    utilization_sm = Column(
+        Float, default=0
+    )  # in percent (streaming multiprocessor usage)
+    used_memory = Column(Float)  # in bytes
     timestamp = Column(DateTime(), default=dt.datetime.now, primary_key=True)

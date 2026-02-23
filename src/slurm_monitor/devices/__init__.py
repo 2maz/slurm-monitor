@@ -9,6 +9,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 def detect_gpus() -> tuple[GPUInfo, GPU]:
     for gpu_class in [Nvidia, ROCM, Habana, XPU]:
         try:

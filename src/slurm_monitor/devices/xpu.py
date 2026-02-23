@@ -7,19 +7,15 @@ import json
 
 from slurm_monitor.utils.command import Command
 from slurm_monitor.utils import utcnow, ensure_float
-from slurm_monitor.devices.gpu import (
-    GPU,
-    GPUInfo,
-    GPUProcessStatus,
-    GPUStatus
-)
+from slurm_monitor.devices.gpu import GPU, GPUInfo, GPUProcessStatus, GPUStatus
 
 import logging
 
 logger = logging.getLogger(__name__)
 
+
 class XPU(GPU):
-    devices: dict[str,any]
+    devices: dict[str, any]
 
     def __init__(self):
         super().__init__()
@@ -32,7 +28,12 @@ class XPU(GPU):
     @classmethod
     def detect(cls) -> GPUInfo:
         versions = {}
-        response = subprocess.run("command -v xpu-smi", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        response = subprocess.run(
+            "command -v xpu-smi",
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
         if response.returncode != 0:
             raise RuntimeError("xpu-smi is not available")
 
@@ -43,11 +44,13 @@ class XPU(GPU):
 
         device_data = list(devices.values())[0]
         return GPUInfo(
-                model=device_data['device_name'],
-                count=len(devices),
-                memory_total=ensure_float(device_data, 'memory_physical_size_byte', 0), # in bytes
-                framework=GPUInfo.Framework.XPU,
-                versions=versions
+            model=device_data["device_name"],
+            count=len(devices),
+            memory_total=ensure_float(
+                device_data, "memory_physical_size_byte", 0
+            ),  # in bytes
+            framework=GPUInfo.Framework.XPU,
+            versions=versions,
         )
 
     @classmethod
@@ -71,7 +74,7 @@ class XPU(GPU):
             #     "vendor_name": "Intel(R) Corporation"
             # },
             for device_data in devices_data["device_list"]:
-                device_id = device_data['device_id']
+                device_id = device_data["device_id"]
 
                 device_json = Command.run(f"xpu-smi discovery -d {device_id} -j")
                 devices[device_id] = json.loads(device_json)
@@ -99,15 +102,15 @@ class XPU(GPU):
             "GPU Core Temperature (Celsius Degree)",
             "GPU Memory Temperature (Celsius Degree)",
             "GPU Memory Utilization (%)",
-            "GPU Memory Used (MiB)"
+            "GPU Memory Used (MiB)",
         ]
 
     def transform(self, response: str) -> list[GPUStatus]:
         df = pd.read_csv(StringIO(response.strip()))
-        column_names = { x: x.strip() for x in df.columns }
-        df.rename(columns = column_names, inplace = True)
+        column_names = {x: x.strip() for x in df.columns}
+        df.rename(columns=column_names, inplace=True)
 
-        records = df.to_dict('records')
+        records = df.to_dict("records")
 
         samples = []
         timestamp = utcnow()
@@ -119,10 +122,14 @@ class XPU(GPU):
                 local_id=idx,
                 node=self.node,
                 power_draw=ensure_float(value, "GPU Power (W)", 0),
-                temperature_gpu=ensure_float(value, "GPU Core Temperature (Celsius Degree)", 0),
+                temperature_gpu=ensure_float(
+                    value, "GPU Core Temperature (Celsius Degree)", 0
+                ),
                 utilization_memory=ensure_float(value, "GPU Memory Utilization (%)", 0),
                 utilization_gpu=ensure_float(value, "GPU Utilization (%)", 0),
-                memory_total=ensure_float(device_data, "memory_physical_size_byte", 0), # in bytes
+                memory_total=ensure_float(
+                    device_data, "memory_physical_size_byte", 0
+                ),  # in bytes
                 timestamp=timestamp,
             )
             samples.append(sample)

@@ -13,21 +13,20 @@ class ImportParser(BaseParser):
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
 
-        parser.add_argument("--db-uri",
-            type=str,
-            default=None,
-            help="Database uri"
-        )
-        parser.add_argument("--fake-timeseries",
+        parser.add_argument("--db-uri", type=str, default=None, help="Database uri")
+        parser.add_argument(
+            "--fake-timeseries",
             default=False,
             action="store_true",
-            help="Fake timeseries data - to have recent samples"
+            help="Fake timeseries data - to have recent samples",
         )
 
-        parser.add_argument("-f", "--file",
+        parser.add_argument(
+            "-f",
+            "--file",
             type=str,
             default=None,
-            help="Sample data (in json format) to import"
+            help="Sample data (in json format) to import",
         )
 
     def execute(self, args):
@@ -43,7 +42,7 @@ class ImportParser(BaseParser):
             if not Path(args.file).exists():
                 raise FileNotFoundError(f"Could not find file: {args.file}")
 
-            with open(args.file, 'r') as f:
+            with open(args.file, "r") as f:
                 data = json.load(f)
 
             importer = DBJsonImporter(db)

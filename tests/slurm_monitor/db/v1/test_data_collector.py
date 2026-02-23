@@ -2,31 +2,40 @@ import pytest
 import time
 
 from slurm_monitor.db.v0.data_collector import (
-        Observer, Observable, GPUStatusCollector, GPUStatusCollectorPool,
-        NvidiaInfoCollector, ROCMInfoCollector, HabanaInfoCollector
+    Observer,
+    Observable,
+    GPUStatusCollector,
+    GPUStatusCollectorPool,
+    NvidiaInfoCollector,
+    ROCMInfoCollector,
+    HabanaInfoCollector,
 )
 from slurm_monitor.db.v0.db_tables import GPUStatus
 from slurm_monitor.db.v0.db import DatabaseSettings, SlurmMonitorDB
 from pathlib import Path
 from slurm_monitor.utils import utcnow
 
+
 @pytest.fixture
 def db_path(tmp_path):
     return Path(tmp_path) / "slurm-monitor-db.sqlite"
+
 
 @pytest.fixture
 def db_settings(db_path):
     return DatabaseSettings(uri=f"sqlite:///{db_path}")
 
+
 def test_Observer_Observable():
     observer = Observer[int]()
     observable = Observable[int](observers=[observer])
 
-    for i in range(0,100):
+    for i in range(0, 100):
         observable.notify_all([i])
         assert observer._samples.get() == i
 
-NVIDIA_SMI_RESPONSE=[
+
+NVIDIA_SMI_RESPONSE = [
     "Tesla V100-SXM3-32GB, GPU-ad466f2f-575d-d949-35e0-9a7d912d974e, 48.99, 30, 0, 0, 5, 32495",
     "Tesla V100-SXM3-32GB, GPU-3410aa41-502b-5cf1-d8c4-58dc1c22fbc9, 383.55, 62, 98, 35, 11149, 21351",
     "Tesla V100-SXM3-32GB, GPU-eb3c30c2-a906-1551-1c60-f0a3e3221001, 56.10, 51, 0, 0, 7, 32493",
@@ -45,7 +54,7 @@ NVIDIA_SMI_RESPONSE=[
     "Tesla V100-SXM3-32GB, GPU-25ed1520-6fbc-ae62-814d-64ea9098b047, 51.17, 37, 0, 0, 5, 32495",
 ]
 
-ROCM_SMI_RESPONSE_V1=[
+ROCM_SMI_RESPONSE_V1 = [
     "device,Unique ID,"
     "Temperature (Sensor edge) (C),Temperature (Sensor junction) (C),Temperature (Sensor memory) (C),"
     "Temperature (Sensor HBM 0) (C),Temperature (Sensor HBM 1) (C),Temperature (Sensor HBM 2) (C),"
@@ -54,10 +63,10 @@ ROCM_SMI_RESPONSE_V1=[
     "GPU memory use (%),Memory Activity,Voltage (mV),VRAM Total Memory (B),VRAM Total Used Memory (B),"
     "Card series,Card model,Card vendor,Card SKU",
     "card0,0x2490210172fc1a88,33.0,34.0,32.0,0.0,0.0,0.0,0.0,19.0,0,0,0,0,762,17163091968,10854400,"
-    "Vega 20 [Radeon Pro VII/Radeon Instinct MI50 32GB],0x081e,Advanced Micro Devices Inc. [AMD/ATI],D1640600"
+    "Vega 20 [Radeon Pro VII/Radeon Instinct MI50 32GB],0x081e,Advanced Micro Devices Inc. [AMD/ATI],D1640600",
 ]
 
-ROCM_SMI_RESPONSE_V2=[
+ROCM_SMI_RESPONSE_V2 = [
     "WARNING: Unlocked monitor_devices lock; it should have already been unlocked.",
     "device,Unique ID,Temperature (Sensor edge) (C),Temperature (Sensor junction) (C),Temperature (Sensor memory) (C),"
     "Temperature (Sensor HBM 0) (C),Temperature (Sensor HBM 1) (C),Temperature (Sensor HBM 2) (C),"
@@ -71,7 +80,7 @@ ROCM_SMI_RESPONSE_V2=[
     "Instinct MI210,0x0c34,Advanced Micro Devices Inc. [AMD/ATI],D67301",
 ]
 
-HL_SMI_RESPONSE=[
+HL_SMI_RESPONSE = [
     "HL-205, 00P1-HL2000A1-14-P64W99-13-05-03, 103, 36, 15, 512, 32768",
     "HL-205, 00P1-HL2000A1-14-P64W99-02-08-05, 105, 34, 15, 512, 32768",
     "HL-205, 00P1-HL2000A1-14-P64X78-02-07-10, 96, 33, 12, 512, 32768",
@@ -82,25 +91,27 @@ HL_SMI_RESPONSE=[
     "HL-205, 00P1-HL2000A1-14-P64X00-08-05-09, 103, 38, 14, 512, 32768",
 ]
 
+
 @pytest.mark.parametrize(
-        "cls,response,gpu_count",
-        [
-            [NvidiaInfoCollector, NVIDIA_SMI_RESPONSE, 16],
-            [ROCMInfoCollector, ROCM_SMI_RESPONSE_V1, 1],
-            [ROCMInfoCollector, ROCM_SMI_RESPONSE_V2, 2],
-            [HabanaInfoCollector, HL_SMI_RESPONSE, 8],
-        ]
+    "cls,response,gpu_count",
+    [
+        [NvidiaInfoCollector, NVIDIA_SMI_RESPONSE, 16],
+        [ROCMInfoCollector, ROCM_SMI_RESPONSE_V1, 1],
+        [ROCMInfoCollector, ROCM_SMI_RESPONSE_V2, 2],
+        [HabanaInfoCollector, HL_SMI_RESPONSE, 8],
+    ],
 )
-def test_GPUStatusCollector(cls: GPUStatusCollector, response: list[str], gpu_count: int, monkeypatch):
+def test_GPUStatusCollector(
+    cls: GPUStatusCollector, response: list[str], gpu_count: int, monkeypatch
+):
     observer = Observer[GPUStatus]()
-    response = '\n'.join(response)
+    response = "\n".join(response)
 
     def mock_send_request(self, nodename: str, user: str) -> str:
         return response
 
-
     sampling_interval_in_s = 30
-    collector = cls(nodename='gpu_node', sampling_interval_in_s=sampling_interval_in_s)
+    collector = cls(nodename="gpu_node", sampling_interval_in_s=sampling_interval_in_s)
     assert collector.sampling_interval_in_s == sampling_interval_in_s
 
     collector.parse_response(response)
@@ -113,38 +124,43 @@ def test_GPUStatusCollector(cls: GPUStatusCollector, response: list[str], gpu_co
     collector.stop()
 
     assert observer._samples.qsize() == gpu_count
-    for i in range(0,gpu_count):
+    for i in range(0, gpu_count):
         sample = observer._samples.get()
         assert type(sample) is GPUStatus
+
 
 def test_GPUStatusCollector_StressTest(db_settings, monkeypatch):
     db = SlurmMonitorDB(db_settings=db_settings)
 
-    gpu_pool = GPUStatusCollectorPool(db=db, name='gpu status')
+    gpu_pool = GPUStatusCollectorPool(db=db, name="gpu status")
 
     save_orig = gpu_pool.save
+
     def gpu_pool_save(sample) -> str:
         save_orig(sample)
 
     monkeypatch.setattr(gpu_pool, "save", gpu_pool_save)
 
     def nvidia_send_request(self, nodename: str, user: str) -> str:
-        return '\n'.join(NVIDIA_SMI_RESPONSE)
+        return "\n".join(NVIDIA_SMI_RESPONSE)
 
     def rocm_send_request(self, nodename: str, user: str) -> str:
-        return '\n'.join(ROCM_SMI_RESPONSE_V2)
+        return "\n".join(ROCM_SMI_RESPONSE_V2)
 
     def hl_send_request(self, nodename: str, user: str) -> str:
-        return '\n'.join(HL_SMI_RESPONSE)
+        return "\n".join(HL_SMI_RESPONSE)
 
     sampling_interval_in_s = 1
-    for cls, request_fn in [(NvidiaInfoCollector, nvidia_send_request),
-            (HabanaInfoCollector, hl_send_request),
-            (ROCMInfoCollector, rocm_send_request)]:
-
+    for cls, request_fn in [
+        (NvidiaInfoCollector, nvidia_send_request),
+        (HabanaInfoCollector, hl_send_request),
+        (ROCMInfoCollector, rocm_send_request),
+    ]:
         monkeypatch.setattr(cls, "send_request", request_fn)
-        for i in range(0,200):
-            collector = cls(nodename='gpu_node', sampling_interval_in_s=sampling_interval_in_s)
+        for i in range(0, 200):
+            collector = cls(
+                nodename="gpu_node", sampling_interval_in_s=sampling_interval_in_s
+            )
             assert collector.sampling_interval_in_s == sampling_interval_in_s
 
             gpu_pool.add_collector(collector)
@@ -161,9 +177,12 @@ def test_GPUStatusCollector_StressTest(db_settings, monkeypatch):
     while (utcnow() - start_time).total_seconds() < seconds_to_run:
         results = db.fetch_all(GPUStatus)
         current_number_of_results = len(results)
-        #assert current_number_of_results > number_of_results
-        print(f"{(utcnow() - start_time).total_seconds():.2f} number of samples in db:"
-              f" {current_number_of_results} queue_size: {gpu_pool._samples.qsize()}\r", end="")
+        # assert current_number_of_results > number_of_results
+        print(
+            f"{(utcnow() - start_time).total_seconds():.2f} number of samples in db:"
+            f" {current_number_of_results} queue_size: {gpu_pool._samples.qsize()}\r",
+            end="",
+        )
     print("\n")
 
     gpu_pool.stop()

@@ -6,16 +6,16 @@ import datetime as dt
 
 from slurm_monitor.db.v1.db import SlurmMonitorDB
 from slurm_monitor.db.v1.db_tables import (
-        CPUStatus,
-        GPUs,
-        GPUProcess,
-        GPUProcessStatus,
-        GPUStatus,
-        LocalIndexedGPUs,
-        JobStatus,
-        MemoryStatus,
-        Nodes,
-        ProcessStatus
+    CPUStatus,
+    GPUs,
+    GPUProcess,
+    GPUProcessStatus,
+    GPUStatus,
+    LocalIndexedGPUs,
+    JobStatus,
+    MemoryStatus,
+    Nodes,
+    ProcessStatus,
 )
 from slurm_monitor.db.v1.data_publisher import KAFKA_NODE_STATUS_TOPIC
 
@@ -51,7 +51,7 @@ class MessageHandler:
 
         timestamp = None
         if "timestamp" in sample:
-            timestamp = dt.datetime.fromisoformat(sample['timestamp'])
+            timestamp = dt.datetime.fromisoformat(sample["timestamp"])
 
         cpu_samples = []
         cpu_model = ""
@@ -60,15 +60,15 @@ class MessageHandler:
                 timestamp = dt.datetime.fromisoformat(x["timestamp"])
 
             cpu_samples.append(
-                    CPUStatus(
-                        node=nodename,
-                        local_id=x['local_id'],
-                        cpu_percent=x['cpu_percent'],
-                        timestamp=timestamp,
-                    )
+                CPUStatus(
+                    node=nodename,
+                    local_id=x["local_id"],
+                    cpu_percent=x["cpu_percent"],
+                    timestamp=timestamp,
+                )
             )
-            if 'cpu_model' in x:
-                cpu_model = x['cpu_model']
+            if "cpu_model" in x:
+                cpu_model = x["cpu_model"]
 
         memory_status = None
         memory_total = 0
@@ -87,10 +87,11 @@ class MessageHandler:
             logger.warning(f"No memory status received from {nodename} {' '*80}")
 
         if nodename not in self.nodes:
-            nodes_update[nodename] = Nodes(name=nodename,
-                    cpu_count=len(cpu_samples),
-                    cpu_model=cpu_model,
-                    memory_total=memory_total
+            nodes_update[nodename] = Nodes(
+                name=nodename,
+                cpu_count=len(cpu_samples),
+                cpu_model=cpu_model,
+                memory_total=memory_total,
             )
 
         if nodes_update:
@@ -101,82 +102,90 @@ class MessageHandler:
         if memory_status:
             self.database.insert(memory_status)
 
-
         gpus = {}
         gpu_samples = []
         if "gpus" in sample:
             timestamp = None
 
             for x in sample["gpus"]:
-                uuid = x['uuid']
-                timestamp=dt.datetime.fromisoformat(x['timestamp'])
+                uuid = x["uuid"]
+                timestamp = dt.datetime.fromisoformat(x["timestamp"])
                 gpu_status = GPUStatus(
                     uuid=uuid,
-                    temperature_gpu=x['temperature_gpu'],
-                    power_draw=x['power_draw'],
-                    utilization_gpu=x['utilization_gpu'],
-                    utilization_memory=x['utilization_memory'],
-                    pstate=x['pstate'],
-                    timestamp=timestamp
+                    temperature_gpu=x["temperature_gpu"],
+                    power_draw=x["power_draw"],
+                    utilization_gpu=x["utilization_gpu"],
+                    utilization_memory=x["utilization_memory"],
+                    pstate=x["pstate"],
+                    timestamp=timestamp,
                 )
                 gpu_samples.append(gpu_status)
 
-
-                local_indexed_gpus = self.database.fetch_all(LocalIndexedGPUs,
-                                (LocalIndexedGPUs.uuid==uuid)
-                                & (LocalIndexedGPUs.end_time > timestamp)
+                local_indexed_gpus = self.database.fetch_all(
+                    LocalIndexedGPUs,
+                    (LocalIndexedGPUs.uuid == uuid)
+                    & (LocalIndexedGPUs.end_time > timestamp),
                 )
                 if local_indexed_gpus:
                     local_indexed_gpu = local_indexed_gpus[0]
 
-                    if local_indexed_gpu.local_id != x['local_id']:
-                        logger.warning(f"Local id of gpu '{uuid}' changed from:"
-                                       f"{local_indexed_gpu.local_id} to {x['local_id']}")
+                    if local_indexed_gpu.local_id != x["local_id"]:
+                        logger.warning(
+                            f"Local id of gpu '{uuid}' changed from:"
+                            f"{local_indexed_gpu.local_id} to {x['local_id']}"
+                        )
 
                         local_indexed_gpu.end_time = timestamp
-                        new_index = x['local_id']
-                        new_local_indexed_gpu = LocalIndexedGPUs(uuid=uuid,
-                             node=x['node'],
-                             local_id=new_index,
-                             start_time=timestamp
+                        new_index = x["local_id"]
+                        new_local_indexed_gpu = LocalIndexedGPUs(
+                            uuid=uuid,
+                            node=x["node"],
+                            local_id=new_index,
+                            start_time=timestamp,
                         )
 
                         # check other uuids that held the local_id before and deactivate
-                        replaced_gpus = self.database.fetch_all(LocalIndexedGPUs,
-                                (LocalIndexedGPUs.node == nodename)
-                                & (LocalIndexedGPUs.local_id == local_indexed_gpu.local_id)
-                                & (LocalIndexedGPUs.uuid != uuid)
+                        replaced_gpus = self.database.fetch_all(
+                            LocalIndexedGPUs,
+                            (LocalIndexedGPUs.node == nodename)
+                            & (LocalIndexedGPUs.local_id == local_indexed_gpu.local_id)
+                            & (LocalIndexedGPUs.uuid != uuid),
                         )
                         if replaced_gpus:
-                           replaced_gpu = replaced_gpus[0]
-                           replaced_gpu.end_time = timestamp
+                            replaced_gpu = replaced_gpus[0]
+                            replaced_gpu.end_time = timestamp
 
-                        self.database.insert_or_update([local_indexed_gpu, new_local_indexed_gpu, replaced_gpu])
+                        self.database.insert_or_update(
+                            [local_indexed_gpu, new_local_indexed_gpu, replaced_gpu]
+                        )
                 else:
-                    end_times = self.database.fetch_all(LocalIndexedGPUs,
-                            (LocalIndexedGPUs.uuid==uuid)
+                    end_times = self.database.fetch_all(
+                        LocalIndexedGPUs, (LocalIndexedGPUs.uuid == uuid)
                     )
 
                     start_time = None
                     if end_times:
                         start_time = timestamp
 
-                    self.database.insert_or_update(LocalIndexedGPUs(uuid=uuid,
-                        node=x['node'],
-                        local_id=x['local_id'],
-                        start_time=start_time
-                    ))
+                    self.database.insert_or_update(
+                        LocalIndexedGPUs(
+                            uuid=uuid,
+                            node=x["node"],
+                            local_id=x["local_id"],
+                            start_time=start_time,
+                        )
+                    )
 
-                gpus[uuid] = GPUs(uuid=uuid,
-                     node=x['node'],
-                     model=x['model'],
-                     local_id=x['local_id'],
-                     memory_total=x['memory_total'] # in bytes
+                gpus[uuid] = GPUs(
+                    uuid=uuid,
+                    node=x["node"],
+                    model=x["model"],
+                    local_id=x["local_id"],
+                    memory_total=x["memory_total"],  # in bytes
                 )
 
             self.database.insert_or_update([x for x in gpus.values()])
             self.database.insert(gpu_samples)
-
 
         # map process_id to job_id
         process2job = {}
@@ -186,7 +195,9 @@ class MessageHandler:
                 jobs = self.database.fetch_all(JobStatus, JobStatus.job_id == job_id)
                 if not jobs:
                     if job_id not in self._unknown_jobs:
-                        logger.warning(f"Slurm Job {job_id} is not registered yet -- skipping recording")
+                        logger.warning(
+                            f"Slurm Job {job_id} is not registered yet -- skipping recording"
+                        )
                         self._unknown_jobs.add(job_id)
                     continue
                 elif len(jobs) > 1:
@@ -199,13 +210,13 @@ class MessageHandler:
                 processes_status = []
                 for process in processes:
                     status = ProcessStatus(
-                            node=nodename,
-                            job_id=job.job_id,
-                            job_submit_time=job.submit_time,
-                            pid=process['pid'],
-                            cpu_percent=process['cpu_percent'],
-                            memory_percent=process['memory_percent'],
-                            timestamp=timestamp
+                        node=nodename,
+                        job_id=job.job_id,
+                        job_submit_time=job.submit_time,
+                        pid=process["pid"],
+                        cpu_percent=process["cpu_percent"],
+                        memory_percent=process["memory_percent"],
+                        timestamp=timestamp,
                     )
                     process2job[status.pid] = job.job_id, job.submit_time
 
@@ -218,7 +229,9 @@ class MessageHandler:
             for gpu_process_stats in sample["gpu_processes"]:
                 try:
                     pid = gpu_process_stats["pid"]
-                    results = self.database.fetch_all(GPUProcess, where=(GPUProcess.pid == pid))
+                    results = self.database.fetch_all(
+                        GPUProcess, where=(GPUProcess.pid == pid)
+                    )
                     if not results:
                         job_id, job_submit_time = process2job.get(pid, (None, None))
                         gpu_process = GPUProcess(
@@ -226,15 +239,17 @@ class MessageHandler:
                             process_name=gpu_process_stats["process_name"],
                             start_time=timestamp,
                             job_id=job_id,
-                            job_submit_time=job_submit_time
+                            job_submit_time=job_submit_time,
                         )
                         self.database.insert(gpu_process)
                     gpu_process_status = GPUProcessStatus(
-                        uuid=gpu_process_stats['uuid'],
+                        uuid=gpu_process_stats["uuid"],
                         pid=pid,
-                        utilization_sm=gpu_process_stats['utilization_sm'], # in percent
-                        used_memory=gpu_process_stats['used_memory'], # in bytes
-                        timestamp=timestamp
+                        utilization_sm=gpu_process_stats[
+                            "utilization_sm"
+                        ],  # in percent
+                        used_memory=gpu_process_stats["used_memory"],  # in bytes
+                        timestamp=timestamp,
                     )
                 except Exception as e:
                     logger.warning(e)
@@ -246,13 +261,14 @@ class MessageHandler:
         return cpu_samples[0].node, timestamp
 
 
-def main(*,
-        host: str, port: int,
-        database: SlurmMonitorDB,
-        topic: str = KAFKA_NODE_STATUS_TOPIC,
-        retry_timeout_in_s: int = 5,
-        ):
-
+def main(
+    *,
+    host: str,
+    port: int,
+    database: SlurmMonitorDB,
+    topic: str = KAFKA_NODE_STATUS_TOPIC,
+    retry_timeout_in_s: int = 5,
+):
     msg_handler = MessageHandler(database=database)
     while True:
         try:
@@ -263,8 +279,11 @@ def main(*,
                     try:
                         node, timestamp = msg_handler.process(msg.value.decode("UTF-8"))
                         print(
-                                f"{dt.datetime.now(dt.timezone.utc)} messages consumed: {idx} since {start_time}"
-                                f"-- last received at {timestamp} from {node}      \r", flush=True, end='')
+                            f"{dt.datetime.now(dt.timezone.utc)} messages consumed: {idx} since {start_time}"
+                            f"-- last received at {timestamp} from {node}      \r",
+                            flush=True,
+                            end="",
+                        )
                     except Exception as e:
                         logger.warning(f"Message processing failed: {e}")
 

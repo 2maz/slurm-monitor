@@ -1,7 +1,5 @@
-from pydantic import (
-    BaseModel,
-    NonNegativeInt
-)
+from pydantic import BaseModel, NonNegativeInt
+
 
 class ProcessStats(BaseModel):
     # actual os process id

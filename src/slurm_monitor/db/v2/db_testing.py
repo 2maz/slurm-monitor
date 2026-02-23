@@ -4,19 +4,19 @@ from pathlib import Path
 import slurm_monitor.timescaledb as timescaledb
 from slurm_monitor.db.v2.db import ClusterDB, DatabaseSettings
 from slurm_monitor.db.v2.db_tables import (
-        Cluster,
-        Partition,
-        Node,
-        NodeState,
-        SampleDisk,
-        SampleGpu,
-        SampleProcess,
-        SampleProcessGpu,
-        SampleSlurmJob,
-        SampleSlurmJobAcc,
-        SysinfoAttributes,
-        SysinfoGpuCard,
-        SysinfoGpuCardConfig,
+    Cluster,
+    Partition,
+    Node,
+    NodeState,
+    SampleDisk,
+    SampleGpu,
+    SampleProcess,
+    SampleProcessGpu,
+    SampleSlurmJob,
+    SampleSlurmJobAcc,
+    SysinfoAttributes,
+    SysinfoGpuCard,
+    SysinfoGpuCardConfig,
 )
 import datetime as dt
 from slurm_monitor.utils import utcnow
@@ -29,6 +29,7 @@ __all__ = ["timescaledb"]
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
 
 class TestDBConfig(BaseModel):
     cluster_names: list = []
@@ -43,15 +44,16 @@ class TestDBConfig(BaseModel):
     number_of_samples: int = 25
     sampling_interval_in_s: int = 30
 
+
 def start_timescaledb_container(
-        port: int = 7000,
-        password: str = "test",
-        user: str = "test",
-        db_name: str = "test",
-        container_name: str = "timescaledb-test",
-        image: str = "timescale/timescaledb:latest-pg17",
-        stats: bool = False
-    ):
+    port: int = 7000,
+    password: str = "test",
+    user: str = "test",
+    db_name: str = "test",
+    container_name: str = "timescaledb-test",
+    image: str = "timescale/timescaledb:latest-pg17",
+    stats: bool = False,
+):
     container = Command.run(f"docker ps -f name={container_name} -q").strip()
     if container != "":
         Command.run(f"docker stop {container_name}")
@@ -61,14 +63,16 @@ def start_timescaledb_container(
     if stats:
         path = Path(__file__).parent / "postgresql.conf"
         if path.exists():
-            conf_dir="/var/lib/postgresql/conf"
+            conf_dir = "/var/lib/postgresql/conf"
             volumes += f" -v {path.resolve()}:{conf_dir}/postgresql.conf -e POSTGRESQL_CONF_DIR={conf_dir}"
-            start_postgres = f"postgres -c \"config_file={conf_dir}/postgresql.conf\""
+            start_postgres = f'postgres -c "config_file={conf_dir}/postgresql.conf"'
         else:
             raise RuntimeError(f"Could not file config file {path=}")
 
-    cmd = f"docker run -d --rm --name {container_name} {volumes} " \
+    cmd = (
+        f"docker run -d --rm --name {container_name} {volumes} "
         f"-p {port}:5432 -e POSTGRES_DB=test -e POSTGRES_PASSWORD={password} -e POSTGRES_USER={user} {image}"
+    )
     if start_postgres:
         cmd += f" {start_postgres}"
 
@@ -84,18 +88,17 @@ def start_timescaledb_container(
     sleep(5)
     logger.info(f"{container_name=} is ready")
     if stats:
-        Command.run(f"docker exec -it {container_name} psql -U {user} -c 'CREATE EXTENSION pg_stat_statements'")
+        Command.run(
+            f"docker exec -it {container_name} psql -U {user} -c 'CREATE EXTENSION pg_stat_statements'"
+        )
         logging.info("pg_stat_statements - enabled")
 
     return f"timescaledb://{user}:{password}@localhost:{port}/{db_name}"
 
 
 def create_test_db(
-        uri: str,
-        config: TestDBConfig = TestDBConfig(),
-        clear_existing: bool = True
-    ) -> ClusterDB:
-
+    uri: str, config: TestDBConfig = TestDBConfig(), clear_existing: bool = True
+) -> ClusterDB:
     db_settings = DatabaseSettings(uri=uri)
     dbi = ClusterDB(db_settings)
 
@@ -104,30 +107,36 @@ def create_test_db(
 
     time = utcnow()
     if not config.cluster_names:
-        config.cluster_names = [f"cluster-{x}" for x in range(0, config.number_of_clusters)]
+        config.cluster_names = [
+            f"cluster-{x}" for x in range(0, config.number_of_clusters)
+        ]
 
     for cluster_name in config.cluster_names:
-
-        partitions = [ f"{cluster_name}-partition-{p}" for p in range(0, config.number_of_partitions) ]
-        nodes = [ f"{cluster_name}-node-{n}" for n in range(0, config.number_of_nodes) ]
+        partitions = [
+            f"{cluster_name}-partition-{p}"
+            for p in range(0, config.number_of_partitions)
+        ]
+        nodes = [f"{cluster_name}-node-{n}" for n in range(0, config.number_of_nodes)]
 
         # Ensure multiple (timeseries entries) exist with
         # a smaller set of nodes
-        dbi.insert(Cluster(
+        dbi.insert(
+            Cluster(
                 cluster=cluster_name,
                 slurm=True,
                 partitions=partitions,
                 nodes=[nodes[0]],
-                time=time - dt.timedelta(days=1)
+                time=time - dt.timedelta(days=1),
             )
         )
 
-        dbi.insert(Cluster(
+        dbi.insert(
+            Cluster(
                 cluster=cluster_name,
                 slurm=True,
                 partitions=partitions,
                 nodes=nodes,
-                time=time
+                time=time,
             )
         )
 
@@ -138,48 +147,42 @@ def create_test_db(
                     partition=p,
                     # just add all nodes
                     nodes=nodes,
-                    nodes_compact=[f"{cluster_name}-node-[0,{config.number_of_nodes-1}]"],
-                    time=time
+                    nodes_compact=[
+                        f"{cluster_name}-node-[0,{config.number_of_nodes-1}]"
+                    ],
+                    time=time,
+                )
             )
-        )
 
         for nIdx, n in enumerate(nodes):
-            dbi.insert(Node(
-                    cluster=cluster_name,
-                    node=n,
-                    architecture="x86_64"
-                )
-            )
+            dbi.insert(Node(cluster=cluster_name, node=n, architecture="x86_64"))
 
             dbi.insert(
-                NodeState(
-                    cluster=cluster_name,
-                    node=n,
-                    states=["IDLE"],
-                    time=time
-                )
+                NodeState(cluster=cluster_name, node=n, states=["IDLE"], time=time)
             )
 
             major = 100
-            stats = [x*100 for x in range(17)]
+            stats = [x * 100 for x in range(17)]
 
             for minor in range(0, config.number_of_disks):
                 disk_name = f"disk-{major}-{minor}"
-                dbi.insert(SampleDisk.create(
+                dbi.insert(
+                    SampleDisk.create(
                         cluster=cluster_name,
                         node=n,
                         name=disk_name,
                         major=major,
                         minor=minor,
                         stats=stats,
-                        time=utcnow()
+                        time=utcnow(),
                     )
                 )
 
             cards = []
             for gpu in range(0, config.number_of_gpus):
                 uuid = f"gpu-uuid-{n}-{gpu}"
-                dbi.insert(SysinfoGpuCard(
+                dbi.insert(
+                    SysinfoGpuCard(
                         uuid=uuid,
                         manufacturer="NVIDIA",
                         model="Tesla V100-SMX3-32GB",
@@ -188,7 +191,8 @@ def create_test_db(
                     )
                 )
 
-                dbi.insert(SysinfoGpuCardConfig(
+                dbi.insert(
+                    SysinfoGpuCardConfig(
                         cluster=cluster_name,
                         node=n,
                         uuid=uuid,
@@ -206,7 +210,9 @@ def create_test_db(
                 )
                 cards.append(uuid)
 
-                start_time = time - dt.timedelta(seconds=config.number_of_samples*config.sampling_interval_in_s)
+                start_time = time - dt.timedelta(
+                    seconds=config.number_of_samples * config.sampling_interval_in_s
+                )
                 sample_time = start_time
                 for s in range(0, config.number_of_samples):
                     dbi.insert(
@@ -218,18 +224,17 @@ def create_test_db(
                             compute_mode="P",
                             performance_state=1,
                             memory=278656,
-                            ce_util=100.0/config.number_of_jobs,
-                            memory_util=100.0/config.number_of_jobs,
+                            ce_util=100.0 / config.number_of_jobs,
+                            memory_util=100.0 / config.number_of_jobs,
                             temperature=52,
                             power=41,
                             power_limit=350,
                             ce_clock=135,
                             memory_clock=958,
-                            time=sample_time
+                            time=sample_time,
                         )
                     )
                     sample_time += dt.timedelta(seconds=config.sampling_interval_in_s)
-
 
             dbi.insert(
                 SysinfoAttributes(
@@ -243,84 +248,84 @@ def create_test_db(
                     cores_per_socket=24,
                     threads_per_core=2,
                     cpu_model="Intel Xeon",
-                    memory=256*1024**2,
+                    memory=256 * 1024**2,
                     topo_svg=None,
-                    cards=cards
-
+                    cards=cards,
                 )
             )
 
-            for j in range(1, config.number_of_jobs+1):
-                jobId = nIdx*len(nodes)*config.number_of_jobs + j
-                start_time = time - dt.timedelta(seconds=config.number_of_samples*config.sampling_interval_in_s)
+            for j in range(1, config.number_of_jobs + 1):
+                jobId = nIdx * len(nodes) * config.number_of_jobs + j
+                start_time = time - dt.timedelta(
+                    seconds=config.number_of_samples * config.sampling_interval_in_s
+                )
                 sample_time = start_time
                 for s in range(0, config.number_of_samples):
                     dbi.insert(
-                            SampleSlurmJob(
-                                cluster=cluster_name,
-                                job_id=jobId,
-                                job_step="",
-                                job_name=f"job-{jobId}-on-{n}",
-                                job_state="RUNNING",
-                                array_job_id=None,
-                                array_task_id=None,
-
-                                het_job_id=0,
-                                het_job_offset=0,
-                                user_name="any-user",
-                                account="any-account",
-
-                                start_time=start_time,
-                                suspend_time=0,
-                                submit_time=start_time - dt.timedelta(seconds=100*60),
-                                time_limit=604801,
-                                end_time=None,
-                                exit_code=None,
-
-                                partition=f"{cluster_name}-partition-0",
-                                reservation="",
-                                nodes=[n],
-                                priority=1,
-                                distribution="",
-                                gres_detail=None,
-                                requested_cpus = 10,
-                                requested_memory_per_node = 10*1024**2,
-                                requested_node_count=1,
-                                requested_resources="cpu=1,gres/gpu=1,mem=0,node=1",
-                                allocated_resources="cpu=1,gres/gpu=1,mem=0,node=1",
-                                time=sample_time
-                            )
+                        SampleSlurmJob(
+                            cluster=cluster_name,
+                            job_id=jobId,
+                            job_step="",
+                            job_name=f"job-{jobId}-on-{n}",
+                            job_state="RUNNING",
+                            array_job_id=None,
+                            array_task_id=None,
+                            het_job_id=0,
+                            het_job_offset=0,
+                            user_name="any-user",
+                            account="any-account",
+                            start_time=start_time,
+                            suspend_time=0,
+                            submit_time=start_time - dt.timedelta(seconds=100 * 60),
+                            time_limit=604801,
+                            end_time=None,
+                            exit_code=None,
+                            partition=f"{cluster_name}-partition-0",
+                            reservation="",
+                            nodes=[n],
+                            priority=1,
+                            distribution="",
+                            gres_detail=None,
+                            requested_cpus=10,
+                            requested_memory_per_node=10 * 1024**2,
+                            requested_node_count=1,
+                            requested_resources="cpu=1,gres/gpu=1,mem=0,node=1",
+                            allocated_resources="cpu=1,gres/gpu=1,mem=0,node=1",
+                            time=sample_time,
+                        )
                     )
                     dbi.insert(
-                            SampleSlurmJobAcc(
-                                cluster=cluster_name,
-                                job_id=jobId,
-                                job_step="",
-                                AllocTRES="cpu=5,gres/gpu=1,mem=0,node=1",
-                                ElapsedRaw=config.number_of_samples*config.sampling_interval_in_s,
-                                AveRSS=25863946240,
-                                AveVMSize=119095128064,
-                                MaxRSS=25863946240,
-                                MaxVMSize=119095128064,
-                                MinCPU=15692,
-                                time=sample_time
-                            )
+                        SampleSlurmJobAcc(
+                            cluster=cluster_name,
+                            job_id=jobId,
+                            job_step="",
+                            AllocTRES="cpu=5,gres/gpu=1,mem=0,node=1",
+                            ElapsedRaw=config.number_of_samples
+                            * config.sampling_interval_in_s,
+                            AveRSS=25863946240,
+                            AveVMSize=119095128064,
+                            MaxRSS=25863946240,
+                            MaxVMSize=119095128064,
+                            MinCPU=15692,
+                            time=sample_time,
+                        )
                     )
-                    dbi.insert(SampleProcess(
+                    dbi.insert(
+                        SampleProcess(
                             cluster=cluster_name,
                             node=n,
                             job=jobId,
                             epoch=0,
                             user="any-user",
-                            resident_memory=8*1024*2,
-                            virtual_memory=2*1024*2,
-                            cmd='test-command',
+                            resident_memory=8 * 1024 * 2,
+                            virtual_memory=2 * 1024 * 2,
+                            cmd="test-command",
                             pid=jobId,
                             ppid=0,
                             cpu_avg=20,
                             cpu_util=70,
-                            cpu_time=10*s,
-                            time=sample_time
+                            cpu_time=10 * s,
+                            time=sample_time,
                         )
                     )
 
@@ -334,10 +339,10 @@ def create_test_db(
                                 user="any-user",
                                 pid=jobId,
                                 uuid=card,
-                                gpu_util=100.0/config.number_of_jobs,
-                                gpu_memory=80*32*1024**2,
-                                gpu_memory_util=100.0/config.number_of_jobs,
-                                time=sample_time
+                                gpu_util=100.0 / config.number_of_jobs,
+                                gpu_memory=80 * 32 * 1024**2,
+                                gpu_memory_util=100.0 / config.number_of_jobs,
+                                time=sample_time,
                             )
                         )
                     sample_time += dt.timedelta(seconds=config.sampling_interval_in_s)

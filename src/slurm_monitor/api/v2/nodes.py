@@ -16,7 +16,7 @@ from slurm_monitor.api.v2.routes import (
     create_custom_page,
     validate_interval,
     get_token_payload,
-    TokenPayload
+    TokenPayload,
 )
 
 from slurm_monitor.api.v2.response_models import (
@@ -34,63 +34,71 @@ logger = logging.getLogger(__name__)
 
 NodesPage = create_custom_page("nodes")
 
-@api_router.get("/cluster/{cluster}/nodes",
-        summary="Nodes available in a given cluster",
-        tags=["cluster"],
-        response_model=list[str]
+
+@api_router.get(
+    "/cluster/{cluster}/nodes",
+    summary="Nodes available in a given cluster",
+    tags=["cluster"],
+    response_model=list[str],
 )
 @cache(expire=3600)
 async def nodes(
-        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
-        cluster: str,
-        time_in_s: int | None = None,
-        dbi: ClusterDB = Depends(DBManager.get_database),
-    ):
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    cluster: str,
+    time_in_s: int | None = None,
+    dbi: ClusterDB = Depends(DBManager.get_database),
+):
     """
     Get the list of node names in a cluster
     """
     return await dbi.get_nodes(cluster, time_in_s)
 
-@api_router.get("/cluster/{cluster}/error_messages",
-        summary="Error messages collected for the entire cluster",
-        tags=["cluster"],
-        response_model=dict[str,ErrorMessageResponse]
+
+@api_router.get(
+    "/cluster/{cluster}/error_messages",
+    summary="Error messages collected for the entire cluster",
+    tags=["cluster"],
+    response_model=dict[str, ErrorMessageResponse],
 )
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/error_messages",
-        summary="Node-specific error messages",
-        tags=["node"],
-        response_model=dict[str, ErrorMessageResponse]
+@api_router.get(
+    "/cluster/{cluster}/nodes/{nodename}/error_messages",
+    summary="Node-specific error messages",
+    tags=["node"],
+    response_model=dict[str, ErrorMessageResponse],
 )
 async def error_messages(
-        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
-        cluster: str,
-        nodename: str | None = None,
-        time_in_s: int | None = None,
-        dbi: ClusterDB = Depends(DBManager.get_database),
-        ):
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    cluster: str,
+    nodename: str | None = None,
+    time_in_s: int | None = None,
+    dbi: ClusterDB = Depends(DBManager.get_database),
+):
     """
     Get error_message of a cluster (for a specific time point) (or nodes)
     """
     return await dbi.get_error_messages(cluster, nodename, time_in_s)
 
 
-@api_router.get("/cluster/{cluster}/nodes/info",
-        summary="Detailed information about nodes in a cluster",
-        tags=["cluster"],
-        response_model=dict[str, NodeInfoResponse]
+@api_router.get(
+    "/cluster/{cluster}/nodes/info",
+    summary="Detailed information about nodes in a cluster",
+    tags=["cluster"],
+    response_model=dict[str, NodeInfoResponse],
 )
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/info",
-        summary="Detailed information about a single node in a cluster",
-        tags=["node"],
-        response_model=dict[str, NodeInfoResponse]
+@api_router.get(
+    "/cluster/{cluster}/nodes/{nodename}/info",
+    summary="Detailed information about a single node in a cluster",
+    tags=["node"],
+    response_model=dict[str, NodeInfoResponse],
 )
 @cache(expire=90)
-async def nodes_sysinfo(cluster: str,
-        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
-        nodename: str | None = None,
-        time_in_s: int | None = None,
-        dbi: ClusterDB = Depends(DBManager.get_database),
-    ):
+async def nodes_sysinfo(
+    cluster: str,
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    nodename: str | None = None,
+    time_in_s: int | None = None,
+    dbi: ClusterDB = Depends(DBManager.get_database),
+):
     """
     Get available information about nodes in a cluster
 
@@ -100,20 +108,23 @@ async def nodes_sysinfo(cluster: str,
     """
     return await dbi.get_nodes_sysinfo(cluster, nodename, time_in_s)
 
-@api_router.get("/cluster/{cluster}/nodes/info/pages",
-        summary="Detailed information about nodes in a cluster",
-        tags=["cluster"],
-        response_model=NodesPage[NodeInfoResponse]
+
+@api_router.get(
+    "/cluster/{cluster}/nodes/info/pages",
+    summary="Detailed information about nodes in a cluster",
+    tags=["cluster"],
+    response_model=NodesPage[NodeInfoResponse],
 )
 @cache(expire=90)
-async def nodes_sysinfo_pages(cluster: str,
-        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
-        time_in_s: int | None = None,
-        limit: int = 100,
-        page: int = 1 ,
-        page_size: int = 50,
-        dbi: ClusterDB = Depends(DBManager.get_database),
-    ):
+async def nodes_sysinfo_pages(
+    cluster: str,
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    time_in_s: int | None = None,
+    limit: int = 100,
+    page: int = 1,
+    page_size: int = 50,
+    dbi: ClusterDB = Depends(DBManager.get_database),
+):
     """
     Get available information about nodes in a cluster
 
@@ -122,68 +133,80 @@ async def nodes_sysinfo_pages(cluster: str,
     yet.  To check - compare with the complete node list /cluster/{cluster}/nodes
     """
 
-    result = await dbi.get_nodes_sysinfo(cluster=cluster, time_in_s=time_in_s, limit=limit)
-    nodes = sorted(result.values(), key=lambda x: x['node'])
+    result = await dbi.get_nodes_sysinfo(
+        cluster=cluster, time_in_s=time_in_s, limit=limit
+    )
+    nodes = sorted(result.values(), key=lambda x: x["node"])
 
-    return fastapi_pagination.paginate(nodes, params=fastapi_pagination.Params(page=page, size=page_size))
+    return fastapi_pagination.paginate(
+        nodes, params=fastapi_pagination.Params(page=page, size=page_size)
+    )
 
 
-
-@api_router.get("/cluster/{cluster}/nodes/states",
-        summary="Information about the states of all nodes in a cluster",
-        tags=["cluster"],
-        response_model=list[NodeStateResponse]
+@api_router.get(
+    "/cluster/{cluster}/nodes/states",
+    summary="Information about the states of all nodes in a cluster",
+    tags=["cluster"],
+    response_model=list[NodeStateResponse],
 )
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/states",
-        summary="Information about the state(s) of a specific nodes in a cluster",
-        tags=["node"],
-        response_model=list[NodeStateResponse]
+@api_router.get(
+    "/cluster/{cluster}/nodes/{nodename}/states",
+    summary="Information about the state(s) of a specific nodes in a cluster",
+    tags=["node"],
+    response_model=list[NodeStateResponse],
 )
 async def nodes_states(
-        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
-        cluster: str,
-        nodename: str | None = None,
-        time_in_s: int | None = None,
-        dbi: ClusterDB = Depends(DBManager.get_database),
-        ):
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    cluster: str,
+    nodename: str | None = None,
+    time_in_s: int | None = None,
+    dbi: ClusterDB = Depends(DBManager.get_database),
+):
     """
     Get the state(s) of nodes in a given cluster
     """
     return await dbi.get_nodes_states(cluster, nodename, time_in_s)
 
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/topology",
-        summary="Topology information (as image/svg+xml) for a specific node in a cluster",
-        tags=["node"],
-        response_model=None)
+
+@api_router.get(
+    "/cluster/{cluster}/nodes/{nodename}/topology",
+    summary="Topology information (as image/svg+xml) for a specific node in a cluster",
+    tags=["node"],
+    response_model=None,
+)
 async def nodes_nodename_topology(
-        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
-        cluster: str,
-        nodename: str,
-        dbi: ClusterDB = Depends(DBManager.get_database),
-    ):
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    cluster: str,
+    nodename: str,
+    dbi: ClusterDB = Depends(DBManager.get_database),
+):
     """
     Get the topology information for a node (if available)
     """
     node_config = await dbi.get_nodes_sysinfo(cluster, nodename, fields=["topo_svg"])
-    encoded_data = node_config[nodename].get('topo_svg', None)
+    encoded_data = node_config[nodename].get("topo_svg", None)
     if encoded_data:
-        data = base64.b64decode(encoded_data).decode('utf-8')
+        data = base64.b64decode(encoded_data).decode("utf-8")
         return Response(content=data, media_type="image/svg+xml")
     else:
-        raise HTTPException(status_code=204, # No Content
-                detail=f"No topology information available for {nodename=} {cluster=}")
+        raise HTTPException(
+            status_code=204,  # No Content
+            detail=f"No topology information available for {nodename=} {cluster=}",
+        )
 
 
-@api_router.get("/cluster/{cluster}/nodes/last_probe_timestamp",
-        summary="Get the timestamp of the last message received for each node in the given cluster",
-        tags=["cluster"],
-        response_model=dict[str, dt.datetime | None])
+@api_router.get(
+    "/cluster/{cluster}/nodes/last_probe_timestamp",
+    summary="Get the timestamp of the last message received for each node in the given cluster",
+    tags=["cluster"],
+    response_model=dict[str, dt.datetime | None],
+)
 async def nodes_last_probe_timestamp(
-        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
-        cluster: str,
-        time_in_s: int = None,
-        dbi: ClusterDB = Depends(DBManager.get_database),
-        ):
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    cluster: str,
+    time_in_s: int = None,
+    dbi: ClusterDB = Depends(DBManager.get_database),
+):
     """
     Retrieve the last known timestamps of records added for nodes in the cluster
 
@@ -193,13 +216,15 @@ async def nodes_last_probe_timestamp(
     return await dbi.get_last_probe_timestamp(cluster=cluster, time_in_s=time_in_s)
 
 
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/process/gpu/util",
-        tags=["node"],
-        response_model=NodeSampleProcessGpuAccResponse
+@api_router.get(
+    "/cluster/{cluster}/nodes/{nodename}/process/gpu/util",
+    tags=["node"],
+    response_model=NodeSampleProcessGpuAccResponse,
 )
-@api_router.get("/cluster/{cluster}/nodes/process/gpu/util",
-        tags=["cluster"],
-        response_model=NodeSampleProcessGpuAccResponse
+@api_router.get(
+    "/cluster/{cluster}/nodes/process/gpu/util",
+    tags=["cluster"],
+    response_model=NodeSampleProcessGpuAccResponse,
 )
 async def nodes_process_gpu_util(
     token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
@@ -215,28 +240,33 @@ async def nodes_process_gpu_util(
     nodes = [nodename] if nodename else (await dbi.get_nodes(cluster))
     tasks = {}
     for node in nodes:
-        tasks[node] = asyncio.create_task(dbi.get_node_sample_process_gpu_util(
+        tasks[node] = asyncio.create_task(
+            dbi.get_node_sample_process_gpu_util(
                 cluster=cluster,
                 node=node,
                 reference_time_in_s=reference_time_in_s,
-                window_in_s=window_in_s
+                window_in_s=window_in_s,
             ),
-            name=f"nodes_process_gpu_util-{node}"
+            name=f"nodes_process_gpu_util-{node}",
         )
-    return { x: (await task) for x, task in tasks.items()}
+    return {x: (await task) for x, task in tasks.items()}
 
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/process/gpu/timeseries",
-        tags=["node"],
-        response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse
+
+@api_router.get(
+    "/cluster/{cluster}/nodes/{nodename}/process/gpu/timeseries",
+    tags=["node"],
+    response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse,
 )
-@api_router.get("/cluster/{cluster}/nodes/process/gpu/timeseries",
-        tags=["cluster"],
-        response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse
+@api_router.get(
+    "/cluster/{cluster}/nodes/process/gpu/timeseries",
+    tags=["cluster"],
+    response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse,
 )
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/jobs/{job_id}/process/gpu/timeseries",
-        summary="Get **node**-related and **job**-related timeseries of GPU samples",
-        tags=["node"],
-        response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse
+@api_router.get(
+    "/cluster/{cluster}/nodes/{nodename}/jobs/{job_id}/process/gpu/timeseries",
+    summary="Get **node**-related and **job**-related timeseries of GPU samples",
+    tags=["node"],
+    response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse,
 )
 async def nodes_sample_process_gpu(
     token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
@@ -247,48 +277,52 @@ async def nodes_sample_process_gpu(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi: ClusterDB = Depends(DBManager.get_database)
+    dbi: ClusterDB = Depends(DBManager.get_database),
 ):
     """
     Get node-related timeseries for processes running on gpu
     """
     start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s
+        start_time_in_s=start_time_in_s,
+        end_time_in_s=end_time_in_s,
+        resolution_in_s=resolution_in_s,
     )
 
     nodes = None if nodename is None else [nodename]
     return await dbi.get_nodes_sample_process_gpu_timeseries(
-            cluster=cluster,
-            nodes=nodes,
-            job_id=job_id,
-            epoch=epoch,
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s
-        )
+        cluster=cluster,
+        nodes=nodes,
+        job_id=job_id,
+        epoch=epoch,
+        start_time_in_s=start_time_in_s,
+        end_time_in_s=end_time_in_s,
+        resolution_in_s=resolution_in_s,
+    )
 
 
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/cpu/timeseries",
-        summary="Get **node**-specific timeseries data of CPU samples",
-        tags=["node"],
-        response_model=dict[str, list[SampleProcessAccResponse]]
+@api_router.get(
+    "/cluster/{cluster}/nodes/{nodename}/cpu/timeseries",
+    summary="Get **node**-specific timeseries data of CPU samples",
+    tags=["node"],
+    response_model=dict[str, list[SampleProcessAccResponse]],
 )
-@api_router.get("/cluster/{cluster}/nodes/cpu/timeseries",
-        summary="Get timeseries data of CPU samples for all nodes in a given cluster",
-        tags=["cluster"],
-        response_model=dict[str, list[SampleProcessAccResponse]]
+@api_router.get(
+    "/cluster/{cluster}/nodes/cpu/timeseries",
+    summary="Get timeseries data of CPU samples for all nodes in a given cluster",
+    tags=["cluster"],
+    response_model=dict[str, list[SampleProcessAccResponse]],
 )
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/memory/timeseries",
-        summary="Get **node**-specific timeseries data of Memory samples",
-        tags=["node"],
-        response_model=dict[str, list[SampleProcessAccResponse]]
+@api_router.get(
+    "/cluster/{cluster}/nodes/{nodename}/memory/timeseries",
+    summary="Get **node**-specific timeseries data of Memory samples",
+    tags=["node"],
+    response_model=dict[str, list[SampleProcessAccResponse]],
 )
-@api_router.get("/cluster/{cluster}/nodes/memory/timeseries",
-        summary="Get timeseries data of Memory samples for all nodes in a given cluster",
-        tags=["cluster"],
-        response_model=dict[str, list[SampleProcessAccResponse]]
+@api_router.get(
+    "/cluster/{cluster}/nodes/memory/timeseries",
+    summary="Get timeseries data of Memory samples for all nodes in a given cluster",
+    tags=["cluster"],
+    response_model=dict[str, list[SampleProcessAccResponse]],
 )
 async def nodes_process_cpu_memory_timeseries(
     token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
@@ -303,39 +337,45 @@ async def nodes_process_cpu_memory_timeseries(
     Get node-related timeseries data for processes running on memory
     """
     start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s
+        start_time_in_s=start_time_in_s,
+        end_time_in_s=end_time_in_s,
+        resolution_in_s=resolution_in_s,
     )
     try:
-        nodes = await dbi.get_nodes(cluster=cluster, time_in_s=start_time_in_s) if nodename is None else [nodename]
+        nodes = (
+            await dbi.get_nodes(cluster=cluster, time_in_s=start_time_in_s)
+            if nodename is None
+            else [nodename]
+        )
         tasks = {}
         for node in nodes:
-            tasks[node] = asyncio.create_task(dbi.get_node_sample_process_timeseries(
+            tasks[node] = asyncio.create_task(
+                dbi.get_node_sample_process_timeseries(
                     cluster=cluster,
                     node=node,
                     start_time_in_s=start_time_in_s,
                     end_time_in_s=end_time_in_s,
                     resolution_in_s=resolution_in_s,
                 ),
-                name=f"nodes_process_cpu_memory_timeseries-{node}"
+                name=f"nodes_process_cpu_memory_timeseries-{node}",
             )
-        return { node : (await tasks[node]) for node in nodes}
+        return {node: (await tasks[node]) for node in nodes}
     except Exception as e:
-        raise HTTPException(status_code=500,
-                detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/gpu/timeseries",
-        summary="Get **node**-specific timeseries data of GPU samples",
-        tags=["node"],
-        response_model=NodeGpuTimeseriesResponse,
-        )
-@api_router.get("/cluster/{cluster}/nodes/gpu/timeseries",
-        summary="Get timeseries data of GPU samples for all nodes in a given cluster",
-        tags=["cluster"],
-        response_model=NodeGpuTimeseriesResponse,
-        )
+@api_router.get(
+    "/cluster/{cluster}/nodes/{nodename}/gpu/timeseries",
+    summary="Get **node**-specific timeseries data of GPU samples",
+    tags=["node"],
+    response_model=NodeGpuTimeseriesResponse,
+)
+@api_router.get(
+    "/cluster/{cluster}/nodes/gpu/timeseries",
+    summary="Get timeseries data of GPU samples for all nodes in a given cluster",
+    tags=["cluster"],
+    response_model=NodeGpuTimeseriesResponse,
+)
 async def nodes_sample_gpu(
     token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
     cluster: str,
@@ -343,42 +383,49 @@ async def nodes_sample_gpu(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi: ClusterDB = Depends(DBManager.get_database)
+    dbi: ClusterDB = Depends(DBManager.get_database),
 ):
     try:
         start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
-                start_time_in_s=start_time_in_s,
-                end_time_in_s=end_time_in_s,
-                resolution_in_s=resolution_in_s
+            start_time_in_s=start_time_in_s,
+            end_time_in_s=end_time_in_s,
+            resolution_in_s=resolution_in_s,
         )
 
-        nodes = await dbi.get_nodes(cluster=cluster, time_in_s=start_time_in_s) if nodename is None else [nodename]
+        nodes = (
+            await dbi.get_nodes(cluster=cluster, time_in_s=start_time_in_s)
+            if nodename is None
+            else [nodename]
+        )
         tasks = {}
         for node in nodes:
-            tasks[node] = asyncio.create_task(dbi.get_node_sample_gpu_timeseries(
+            tasks[node] = asyncio.create_task(
+                dbi.get_node_sample_gpu_timeseries(
                     cluster=cluster,
                     node=node,
                     start_time_in_s=start_time_in_s,
                     end_time_in_s=end_time_in_s,
                     resolution_in_s=resolution_in_s,
                 ),
-                name=f"nodes_sample_gpu-{node}"
+                name=f"nodes_sample_gpu-{node}",
             )
-        return { node : (await tasks[node]) for node in nodes}
+        return {node: (await tasks[node]) for node in nodes}
     except Exception as e:
-        raise HTTPException(status_code=500,
-                detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
-@api_router.get("/cluster/{cluster}/nodes/{nodename}/diskstats/timeseries",
-        summary="Get **node**-specific timeseries data of DiskStat samples",
-        tags=["node"],
-        response_model=NodeDiskTimeseriesResponse,
-        )
-@api_router.get("/cluster/{cluster}/nodes/diskstats/timeseries",
-        summary="Get timeseries data of GPU samples for all nodes in a given cluster",
-        tags=["cluster"],
-        response_model=NodeDiskTimeseriesResponse,
-        )
+
+@api_router.get(
+    "/cluster/{cluster}/nodes/{nodename}/diskstats/timeseries",
+    summary="Get **node**-specific timeseries data of DiskStat samples",
+    tags=["node"],
+    response_model=NodeDiskTimeseriesResponse,
+)
+@api_router.get(
+    "/cluster/{cluster}/nodes/diskstats/timeseries",
+    summary="Get timeseries data of GPU samples for all nodes in a given cluster",
+    tags=["cluster"],
+    response_model=NodeDiskTimeseriesResponse,
+)
 async def nodes_sample_disk(
     token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
     cluster: str,
@@ -386,29 +433,33 @@ async def nodes_sample_disk(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = 300,
-    dbi: ClusterDB = Depends(DBManager.get_database)
+    dbi: ClusterDB = Depends(DBManager.get_database),
 ):
     try:
         start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
-                start_time_in_s=start_time_in_s,
-                end_time_in_s=end_time_in_s,
-                resolution_in_s=resolution_in_s
+            start_time_in_s=start_time_in_s,
+            end_time_in_s=end_time_in_s,
+            resolution_in_s=resolution_in_s,
         )
 
-        nodes = await dbi.get_nodes(cluster=cluster, time_in_s=start_time_in_s) if nodename is None else [nodename]
+        nodes = (
+            await dbi.get_nodes(cluster=cluster, time_in_s=start_time_in_s)
+            if nodename is None
+            else [nodename]
+        )
         tasks = {}
         for idx, node in enumerate(nodes, 1):
             logger.info(f"Start querying diskstats for {node=} ({idx}/{len(nodes)})")
-            tasks[node] = asyncio.create_task(dbi.get_node_sample_disk_rates_timeseries(
+            tasks[node] = asyncio.create_task(
+                dbi.get_node_sample_disk_rates_timeseries(
                     cluster=cluster,
                     node=node,
                     start_time_in_s=start_time_in_s,
                     end_time_in_s=end_time_in_s,
                     resolution_in_s=resolution_in_s,
                 ),
-                name=f"nodes_sample_disk-{node}"
+                name=f"nodes_sample_disk-{node}",
             )
-        return { node : (await tasks[node]) for node in nodes}
+        return {node: (await tasks[node]) for node in nodes}
     except Exception as e:
-        raise HTTPException(status_code=500,
-                detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))

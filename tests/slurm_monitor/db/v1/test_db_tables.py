@@ -21,31 +21,35 @@ def test_GPUs():
         "node": "node1",
         "model": "Tesla V100",
         "local_id": 0,
-        "memory_total": 1E6
+        "memory_total": 1e6,
     }
 
     gpu = GPUs(**args)
     assert args == dict(gpu)
 
-def test_GPUStatus_merge():
 
+def test_GPUStatus_merge():
     now = dt.datetime.now(dt.timezone.utc)
     uuid = "gpu-1"
 
-    status_a = GPUStatus(uuid=uuid,
-            temperature_gpu=5,
-            power_draw=10,
-            utilization_gpu=20,
-            utilization_memory=30,
-            timestamp=now)
+    status_a = GPUStatus(
+        uuid=uuid,
+        temperature_gpu=5,
+        power_draw=10,
+        utilization_gpu=20,
+        utilization_memory=30,
+        timestamp=now,
+    )
 
-    status_b = GPUStatus(uuid=uuid,
-            temperature_gpu=10,
-            power_draw=20,
-            utilization_gpu=30,
-            utilization_memory=40,
-            pstate=1,
-            timestamp=now)
+    status_b = GPUStatus(
+        uuid=uuid,
+        temperature_gpu=10,
+        power_draw=20,
+        utilization_gpu=30,
+        utilization_memory=40,
+        pstate=1,
+        timestamp=now,
+    )
 
     status_ab = GPUStatus.merge([status_a, status_b])
 
@@ -56,30 +60,29 @@ def test_GPUStatus_merge():
     assert status_ab.utilization_memory == 35
     assert status_ab.pstate == 1
 
-def test_ProcessStatus_merge():
 
+def test_ProcessStatus_merge():
     now = dt.datetime.now(dt.timezone.utc)
 
     status_a = ProcessStatus(
-            pid=1,
-            job_id=1,
-            job_submit_time=now,
-            node="node-1",
-            cpu_percent=100,
-            memory_percent=50,
-            timestamp=now
+        pid=1,
+        job_id=1,
+        job_submit_time=now,
+        node="node-1",
+        cpu_percent=100,
+        memory_percent=50,
+        timestamp=now,
     )
 
     status_b = ProcessStatus(
-            pid=1,
-            job_id=1,
-            job_submit_time=now,
-            node="node-1",
-            cpu_percent=50,
-            memory_percent=20,
-            timestamp=now
+        pid=1,
+        job_id=1,
+        job_submit_time=now,
+        node="node-1",
+        cpu_percent=50,
+        memory_percent=20,
+        timestamp=now,
     )
-
 
     status_ab = ProcessStatus.merge([status_a, status_b])
 

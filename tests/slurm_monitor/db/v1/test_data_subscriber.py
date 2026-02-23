@@ -5,21 +5,19 @@ import signal
 
 import slurm_monitor.devices.gpu as gpu
 
-from slurm_monitor.db.v1.data_publisher import (
-        NodeStatus,
-        NodeStatusCollector
-)
+from slurm_monitor.db.v1.data_publisher import NodeStatus, NodeStatusCollector
 from slurm_monitor.db.v1.db_tables import (
-        CPUStatus,
-        MemoryStatus,
-        JobStatus,
-        ProcessStatus,
-        GPUs,
-        GPUProcess,
-        GPUProcessStatus
+    CPUStatus,
+    MemoryStatus,
+    JobStatus,
+    ProcessStatus,
+    GPUs,
+    GPUProcess,
+    GPUProcessStatus,
 )
 from slurm_monitor.db.v1.data_subscriber import main
 from slurm_monitor.utils.slurm import Slurm
+
 
 def test_get_node_status(test_db, mocker, mock_slurm_command_hint):
     Slurm._BIN_HINTS = [mock_slurm_command_hint]
@@ -35,30 +33,35 @@ def test_get_node_status(test_db, mocker, mock_slurm_command_hint):
             self.value = data.encode()
 
     node_status_collector = NodeStatusCollector()
+
     def mock_messages(self):
         time.sleep(1)
 
         node_status = node_status_collector.get_node_status()
-        node_status.gpus = [gpu.GPUStatus(
-            uuid="aaaa-aaaa-aaaa-aaaa",
-            node=node_status.node,
-            model='Nvidia A100',
-            local_id=0,
-            memory_total=40*1024**3,
-            temperature_gpu=28,
-            power_draw=30,
-            utilization_gpu=10,
-            utilization_memory=50,
-            pstate=None,
-            timestamp=node_status.timestamp
-            )]
-        node_status.gpu_processes = [gpu.GPUProcessStatus(
-            uuid="aaaa-aaaa-aaaa-aaaa",
-            pid="100",
-            process_name="/home/user/ml-test/run_test.sh -- 100 200",
-            utilization_sm=23,
-            used_memory=10,
-            )]
+        node_status.gpus = [
+            gpu.GPUStatus(
+                uuid="aaaa-aaaa-aaaa-aaaa",
+                node=node_status.node,
+                model="Nvidia A100",
+                local_id=0,
+                memory_total=40 * 1024**3,
+                temperature_gpu=28,
+                power_draw=30,
+                utilization_gpu=10,
+                utilization_memory=50,
+                pstate=None,
+                timestamp=node_status.timestamp,
+            )
+        ]
+        node_status.gpu_processes = [
+            gpu.GPUProcessStatus(
+                uuid="aaaa-aaaa-aaaa-aaaa",
+                pid="100",
+                process_name="/home/user/ml-test/run_test.sh -- 100 200",
+                utilization_sm=23,
+                used_memory=10,
+            )
+        ]
 
         return iter([TestMessage(node_status)])
 
@@ -79,11 +82,12 @@ def test_get_node_status(test_db, mocker, mock_slurm_command_hint):
     number_of_gpu_processes = len(test_db.fetch_all(GPUProcess))
 
     with pytest.raises(TimeoutError):
-        main(host="localhost",
+        main(
+            host="localhost",
             port=11111,
             database=test_db,
             topic="test-subscriber-topic",
-            retry_timeout_in_s=5
+            retry_timeout_in_s=5,
         )
 
     # ensure that db is collecting

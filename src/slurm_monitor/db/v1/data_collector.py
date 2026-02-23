@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
+
 class Observer(Generic[T]):
     _samples: Queue
 
@@ -118,7 +119,7 @@ class CollectorPool(Generic[T], Observer[T]):
     _stop: bool = False
     verbose: bool = True
 
-    def __init__(self, db: Database, name: str = ''):
+    def __init__(self, db: Database, name: str = ""):
         super().__init__()
 
         self.name = name
@@ -137,16 +138,21 @@ class CollectorPool(Generic[T], Observer[T]):
         [x.start() for x in self._collectors]
         if self.verbose:
             while not self._stop:
-                print(f"{self.name} queue size: {self._samples.qsize()} {utcnow()} (UTC)\r", end="")
+                print(
+                    f"{self.name} queue size: {self._samples.qsize()} {utcnow()} (UTC)\r",
+                    end="",
+                )
                 time.sleep(5)
         [x.thread.join() for x in self._collectors]
 
     def save(self, samples):
         prep_samples = []
         for s in samples:
-            if isinstance(s, JobStatus) and s.job_state != 'RUNNING':
-                job_status = self.db.fetch_first(JobStatus,
-                        where=(JobStatus.job_id == s.job_id) & (JobStatus.submit_time == s.submit_time)
+            if isinstance(s, JobStatus) and s.job_state != "RUNNING":
+                job_status = self.db.fetch_first(
+                    JobStatus,
+                    where=(JobStatus.job_id == s.job_id)
+                    & (JobStatus.submit_time == s.submit_time),
                 )
                 if job_status is not None:
                     s.gres_detail = job_status.gres_detail
@@ -196,6 +202,7 @@ class CollectorPool(Generic[T], Observer[T]):
         self.monitor_thread.join()
         self.save_thread.join()
 
+
 class JobStatusCollector(DataCollector[JobStatus], Observable[JobStatus]):
     user: str = None
 
@@ -214,9 +221,12 @@ class JobStatusCollector(DataCollector[JobStatus], Observable[JobStatus]):
 
         return [JobStatus.from_json(x) for x in response["jobs"]]
 
-def start_jobs_collection(database: SlurmMonitorDB | None = None) -> CollectorPool[JobStatus]:
+
+def start_jobs_collection(
+    database: SlurmMonitorDB | None = None,
+) -> CollectorPool[JobStatus]:
     job_status_collector = JobStatusCollector()
-    jobs_pool = CollectorPool[JobStatus](db=database, name='job status')
+    jobs_pool = CollectorPool[JobStatus](db=database, name="job status")
     jobs_pool.add_collector(job_status_collector)
     jobs_pool.start()
     return jobs_pool

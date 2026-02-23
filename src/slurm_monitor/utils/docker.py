@@ -13,15 +13,16 @@ from slurm_monitor.utils.stats_types import ProcessStats
 
 logger = logging.getLogger(__name__)
 
+
 class Docker:
     argument_parser: ArgumentParser
 
     DOCKER_BIN = "docker"
     _BIN_HINTS: ClassVar[list[str]] = [
-            "/cm/shared/apps/docker/current/sbin/",
-            "/cm/shared/apps/docker/current/bin/",
-            "/cm/local/apps/docker/current/sbin/",
-            "/cm/local/apps/docker/current/bin/",
+        "/cm/shared/apps/docker/current/sbin/",
+        "/cm/shared/apps/docker/current/bin/",
+        "/cm/local/apps/docker/current/sbin/",
+        "/cm/local/apps/docker/current/bin/",
     ]
     _ensured_docker: ClassVar[str] = None
 
@@ -31,21 +32,37 @@ class Docker:
         self.argument_parser.add_argument("main", default=None, help="main command")
         self.argument_parser.add_argument("subparser", default=None, help="subparser")
 
-        self.argument_parser.add_argument("-d", "--detach", action='store_true', default=False)
-        self.argument_parser.add_argument("-e", "--env", action='extend', nargs=1, metavar=('env'))
-        self.argument_parser.add_argument("-i", "--interactive", action='store_true', default=False)
-        self.argument_parser.add_argument("--gpus", default=None, help='gpus')
+        self.argument_parser.add_argument(
+            "-d", "--detach", action="store_true", default=False
+        )
+        self.argument_parser.add_argument(
+            "-e", "--env", action="extend", nargs=1, metavar=("env")
+        )
+        self.argument_parser.add_argument(
+            "-i", "--interactive", action="store_true", default=False
+        )
+        self.argument_parser.add_argument("--gpus", default=None, help="gpus")
         self.argument_parser.add_argument("--name", default=None)
         self.argument_parser.add_argument("--network", default=None)
-        self.argument_parser.add_argument("--privileged", action='store_true', default=False)
-        self.argument_parser.add_argument("--rm", action='store_true', default=None)
+        self.argument_parser.add_argument(
+            "--privileged", action="store_true", default=False
+        )
+        self.argument_parser.add_argument("--rm", action="store_true", default=None)
         self.argument_parser.add_argument("--shm-size", default=None)
-        self.argument_parser.add_argument("-t", "--tty", action='store_true', default=False)
+        self.argument_parser.add_argument(
+            "-t", "--tty", action="store_true", default=False
+        )
         self.argument_parser.add_argument("-u", "--user", default=None)
-        self.argument_parser.add_argument("-v", "--volume", action='extend', nargs=1, metavar=('map'))
+        self.argument_parser.add_argument(
+            "-v", "--volume", action="extend", nargs=1, metavar=("map")
+        )
         self.argument_parser.add_argument("-w", "--workdir", default=None)
-        self.argument_parser.add_argument("-p", "--expose", action='extend', nargs=1, metavar=('ports'))
-        self.argument_parser.add_argument("-P", "--publish-all", action='store_true', default=False)
+        self.argument_parser.add_argument(
+            "-p", "--expose", action="extend", nargs=1, metavar=("ports")
+        )
+        self.argument_parser.add_argument(
+            "-P", "--publish-all", action="store_true", default=False
+        )
 
         self.argument_parser.add_argument("image", default=None, help="image")
 
@@ -60,7 +77,9 @@ class Docker:
     @classmethod
     def ensure_docker(cls):
         if cls._ensured_docker is None:
-            setattr(cls, "DOCKER_BIN", Command.find(command="docker", hints=cls._BIN_HINTS))
+            setattr(
+                cls, "DOCKER_BIN", Command.find(command="docker", hints=cls._BIN_HINTS)
+            )
             cls._ensured_docker = "docker"
         return getattr(cls, "DOCKER_BIN")
 
@@ -108,33 +127,33 @@ class Docker:
 
     def get_process_stats_by_container(self, container_id: str) -> ProcessStats:
         # see https://docs.docker.com/reference/cli/docker/container/stats/
-        response = Command.run(f"{self.DOCKER_BIN} stats {container_id} "
-                    "--no-stream --format "
-                    "'table "
-                    "{{.Name}},"
-                    "{{.CPUPerc}},"
-                    "{{.MemPerc}},"
-                    "{{.MemUsage}},"
-                    "{{.NetIO}},"
-                    "{{.BlockIO}},"
-                    "{{.PIDs}}'"
-                    )
+        response = Command.run(
+            f"{self.DOCKER_BIN} stats {container_id} "
+            "--no-stream --format "
+            "'table "
+            "{{.Name}},"
+            "{{.CPUPerc}},"
+            "{{.MemPerc}},"
+            "{{.MemUsage}},"
+            "{{.NetIO}},"
+            "{{.BlockIO}},"
+            "{{.PIDs}}'"
+        )
         df = pd.read_csv(StringIO(response.strip()))
-        column_names = { x: x.strip() for x in df.columns }
-        df.rename(columns = column_names, inplace = True)
+        column_names = {x: x.strip() for x in df.columns}
+        df.rename(columns=column_names, inplace=True)
 
-        cpu_percent = float(df['CPU %'][0].replace('%',''))
-        mem_percent = float(df['MEM %'][0].replace('%',''))
+        cpu_percent = float(df["CPU %"][0].replace("%", ""))
+        mem_percent = float(df["MEM %"][0].replace("%", ""))
 
         return ProcessStats(pid=0, cpu_percent=cpu_percent, memory_percent=mem_percent)
-
 
     def get_process_stats(self, job_id: int) -> list[ProcessStats]:
         stats = []
         containers = self.find_associated_to_job(job_id)
         for container_id, info in containers.items():
             process_stats = self.get_process_stats_by_container(container_id)
-            process_stats.pid = int(info['State']['Pid'])
+            process_stats.pid = int(info["State"]["Pid"])
 
             stats.append(process_stats)
         return stats
@@ -142,10 +161,12 @@ class Docker:
     def find_associated(self, pid: int) -> dict[str, any]:
         cmdline = self.get_commandline(pid=pid)
 
-        args, options = self.argument_parser.parse_known_args(args=cmdline.split(' '))
+        args, options = self.argument_parser.parse_known_args(args=cmdline.split(" "))
 
         if args.subparser != "run":
-            raise RuntimeError("Docker.find_associated: this is not a docker run command")
+            raise RuntimeError(
+                "Docker.find_associated: this is not a docker run command"
+            )
 
         volumes = []
         for x in args.volume:
@@ -162,8 +183,8 @@ class Docker:
                 break
 
             for mount in info["Mounts"]:
-                source = mount['Source']
-                destination = mount['Destination']
+                source = mount["Source"]
+                destination = mount["Destination"]
                 expected = f"{source}:{destination}"
 
                 if expected in volumes:
@@ -172,13 +193,14 @@ class Docker:
                     is_match = False
                     break
 
-
             if is_match:
-                return { container_id: running_containers[container_id] }
+                return {container_id: running_containers[container_id]}
             return {}
+
 
 if __name__ == "__main__":
     import sys
+
     docker = Docker()
     job_id = int(sys.argv[1])
     print(f"Finding {job_id}")

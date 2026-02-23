@@ -7,6 +7,6 @@ from .v1.db_tables import GPUStatus as GPUStatus
 from .v1.db_tables import GPUs as GPUs
 from .v1.db_tables import Nodes as Nodes
 
-import slurm_monitor.timescaledb # noqa
+import slurm_monitor.timescaledb  # noqa
 
-__all__ = [ "timescaledb" ]
+__all__ = ["timescaledb"]

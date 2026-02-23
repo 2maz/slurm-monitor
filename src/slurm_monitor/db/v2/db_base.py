@@ -4,33 +4,32 @@ from sqlalchemy.orm import sessionmaker
 from contextlib import contextmanager, asynccontextmanager
 from sqlalchemy.engine.url import URL, make_url
 from sqlalchemy import (
-        MetaData,
-        create_engine,
-        event,
-        select,
-        text,
+    MetaData,
+    create_engine,
+    event,
+    select,
+    text,
 )
 from sqlalchemy.ext.asyncio import (
-        AsyncSession,
-        async_sessionmaker,
-        create_async_engine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
 )
 import logging
 
-from slurm_monitor.db.v2.db_tables import (
-    TableBase
-)
+from slurm_monitor.db.v2.db_tables import TableBase
 from slurm_monitor.db.v2.validation import Specification
 
 logger = logging.getLogger(__name__)
 
 # For performance reasons using half day as default history interval
-INTERVAL_12H = 3600*12
-INTERVAL_1DAY = 2*INTERVAL_12H
-INTERVAL_1WEEK = 7*INTERVAL_1DAY
-INTERVAL_2WEEKS = 14*INTERVAL_1DAY
+INTERVAL_12H = 3600 * 12
+INTERVAL_1DAY = 2 * INTERVAL_12H
+INTERVAL_1WEEK = 7 * INTERVAL_1DAY
+INTERVAL_2WEEKS = 14 * INTERVAL_1DAY
 
 DEFAULT_HISTORY_INTERVAL_IN_S = INTERVAL_12H
+
 
 def create_url(url_str: str, username: str | None, password: str | None) -> URL:
     url = make_url(url_str)
@@ -52,8 +51,10 @@ class DatabaseSettings(BaseModel):
 
     create_missing: bool = True
 
+
 def _listify(obj_or_list):
     return obj_or_list if isinstance(obj_or_list, (tuple, list)) else [obj_or_list]
+
 
 class Database:
     def __init__(self, db_settings: DatabaseSettings):
@@ -71,6 +72,7 @@ class Database:
         )
 
         if db_url.get_dialect().name == "timescaledb":
+
             @event.listens_for(self.engine.pool, "connect")
             def _set_sqlite_params(dbapi_connection, *args):
                 cursor = dbapi_connection.cursor()
@@ -78,7 +80,6 @@ class Database:
                 cursor.close()
 
         self.session_factory = sessionmaker(self.engine, expire_on_commit=False)
-
 
         self._metadata = MetaData()
         self._metadata.tables = {}
@@ -97,25 +98,29 @@ class Database:
         async_db_url = db_url
         if db_settings.uri.startswith("timescaledb://"):
             async_db_url = create_url(
-                    db_settings.uri.replace("timescaledb:","timescaledb+asyncpg:"),
-                    db_settings.user,
-                    db_settings.password
+                db_settings.uri.replace("timescaledb:", "timescaledb+asyncpg:"),
+                db_settings.user,
+                db_settings.password,
             )
 
-        self.async_engine = create_async_engine(async_db_url, pool_size=10, **engine_kwargs)
-        self.async_session_factory = async_sessionmaker(self.async_engine, expire_on_commit=False)
+        self.async_engine = create_async_engine(
+            async_db_url, pool_size=10, **engine_kwargs
+        )
+        self.async_session_factory = async_sessionmaker(
+            self.async_engine, expire_on_commit=False
+        )
 
-        #from sqlalchemy_schemadisplay import create_schema_graph
+        # from sqlalchemy_schemadisplay import create_schema_graph
         ## create the pydot graph object by autoloading all tables via a bound metadata object
-        #graph = create_schema_graph(
+        # graph = create_schema_graph(
         #   engine=self.engine,
         #   metadata=self._metadata,
         #   show_datatypes=True, # The image would get nasty big if we'd show the datatypes
         #   show_indexes=False, # ditto for indexes
         #   rankdir='LR', # From left to right (instead of top to bottom)
         #   concentrate=True # Don't try to join the relation lines together
-        #)
-        #graph.write_png('/tmp/dbschema.png') # write out the file
+        # )
+        # graph.write_png('/tmp/dbschema.png') # write out the file
 
     def get_column_description(self, table, column) -> str | None:
         """
@@ -143,7 +148,6 @@ class Database:
             if description:
                 return description[0][0]
             return None
-
 
     def insert(self, db_obj):
         with self.make_writeable_session() as session:
@@ -208,11 +212,15 @@ class Database:
         finally:
             await session.close()
 
-    async def _fetch_async(self, db_cls,
-            where=None,
-            limit: int | None = None,
-            order_by=None,
-            _reduce=None, _unpack=True):
+    async def _fetch_async(
+        self,
+        db_cls,
+        where=None,
+        limit: int | None = None,
+        order_by=None,
+        _reduce=None,
+        _unpack=True,
+    ):
         query = select(*_listify(db_cls))
         if where is not None:
             query = query.where(where)
@@ -224,7 +232,11 @@ class Database:
         async with self.make_async_session() as session:
             query_results = await session.execute(query)
 
-            result = [x for x in query_results.all()] if _reduce is None else _reduce(query_results)
+            result = (
+                [x for x in query_results.all()]
+                if _reduce is None
+                else _reduce(query_results)
+            )
             if _unpack and not isinstance(db_cls, (tuple, list)):
                 result = [r[0] for r in result]
 
@@ -250,4 +262,6 @@ class Database:
                 raise RuntimeError("No entries. Could not pick first")
 
     async def fetch_latest_async(self, db_cls, where=None):
-       return await self.fetch_first_async(db_cls=db_cls, where=where, order_by=db_cls.time.desc())
+        return await self.fetch_first_async(
+            db_cls=db_cls, where=where, order_by=db_cls.time.desc()
+        )

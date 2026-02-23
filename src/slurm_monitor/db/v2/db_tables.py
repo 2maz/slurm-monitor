@@ -27,18 +27,16 @@ from sqlalchemy import (
 )
 
 from sqlalchemy.orm import as_declarative, class_mapper
+
 # https://pydoc.dev/sqlalchemy/latest/sqlalchemy.dialects.postgresql.ARRAY.html
 # https://docs.sqlalchemy.org/en/14/dialects/postgresql.html#sqlalchemy.dialects.postgresql.hstore
-from sqlalchemy.dialects.postgresql import (
-    HSTORE,
-    ARRAY
-)
+from sqlalchemy.dialects.postgresql import HSTORE, ARRAY
 
 from sqlalchemy.sql.functions import GenericFunction
 from sqlalchemy.ext.compiler import compiles
-import slurm_monitor.timescaledb as timescaledb # noqa
+import slurm_monitor.timescaledb as timescaledb  # noqa
 
-__all__ = [ "timescaledb" ]
+__all__ = ["timescaledb"]
 
 
 logger = logging.getLogger(__name__)
@@ -47,7 +45,7 @@ T = TypeVar("T")
 Xint = BigInteger
 DateTimeTZAware = DateTime(timezone=True)
 
-ExtraIndexPrefix : str = "ix_"
+ExtraIndexPrefix: str = "ix_"
 
 
 # Ensure consistent time handling
@@ -55,27 +53,32 @@ class EpochFn(GenericFunction):
     type = DateTime()
     inherit_cache = True
 
+
 # For PostgreSQL, we will use the `EXTRACT(EPOCH FROM <datetime>)` syntax
-@compiles(EpochFn, 'postgresql')
+@compiles(EpochFn, "postgresql")
 def compile_epoch_fn_postgresql(expr, compiler, **kwargs):
     return f"EXTRACT(EPOCH FROM {compiler.process(expr.clauses.clauses[0], **kwargs)})"
 
+
 # For TimeScaledb
-@compiles(EpochFn, 'timescaledb')
+@compiles(EpochFn, "timescaledb")
 def compile_epoch_fn_timescaledb(expr, compiler, **kwargs):
     return f"EXTRACT(EPOCH FROM {compiler.process(expr.clauses.clauses[0], **kwargs)})"
 
+
 # For SQLite, we use `strftime('%s', datetime_column)` to get epoch
-@compiles(EpochFn, 'sqlite')
+@compiles(EpochFn, "sqlite")
 def compile_epoch_fn_sqlite(expr, compiler, **kwargs):
     return f"strftime('%s', {compiler.process(expr.clauses.clauses[0], **kwargs)})"
+
 
 class time_bucket(GenericFunction):
     type = TIMESTAMP()
     inherit_cache = True
 
+
 # For TimeScaledb
-@compiles(time_bucket, 'timescaledb')
+@compiles(time_bucket, "timescaledb")
 def compile_time_bucket_timescaledb(expr, compiler, **kwargs):
     time_window = expr.clauses.clauses[0].value
     time_column = f"{compiler.process(expr.clauses.clauses[1], **kwargs)}"
@@ -91,20 +94,20 @@ def Column(*args, **kwargs):
         kwargs.setdefault("nullable", False)
 
     column_type = args[0]
-    if 'default' not in kwargs:
+    if "default" not in kwargs:
         if column_type in [Integer, BigInteger, Float]:
-            kwargs.setdefault('default', 0)
+            kwargs.setdefault("default", 0)
         elif column_type in [Text, String]:
-            kwargs.setdefault('default', '')
+            kwargs.setdefault("default", "")
 
     comment = {}
     if "desc" in kwargs:
-        comment["desc"] = kwargs['desc'].strip()
-        del kwargs['desc']
+        comment["desc"] = kwargs["desc"].strip()
+        del kwargs["desc"]
 
     if "unit" in kwargs:
-        comment["unit"] = kwargs['unit'].strip()
-        del kwargs['unit']
+        comment["unit"] = kwargs["unit"].strip()
+        del kwargs["unit"]
 
     if comment:
         kwargs["comment"] = json.dumps(comment)
@@ -114,7 +117,7 @@ def Column(*args, **kwargs):
 
 def ensure_non_negative(*column_names) -> list[CheckConstraint]:
     return [
-       CheckConstraint(f"{x} >= 0", name=f"{x}_is_not_negative") for x in column_names
+        CheckConstraint(f"{x} >= 0", name=f"{x}_is_not_negative") for x in column_names
     ]
 
 
@@ -134,12 +137,16 @@ class HStoreModel(types.TypeDecorator):
 
         for key in self.required:
             if key not in value:
-                raise KeyError(f"{self.__class__}: value misses the required key '{key}'")
+                raise KeyError(
+                    f"{self.__class__}: value misses the required key '{key}'"
+                )
 
         for key in value:
             if key not in self.allowed:
-                raise KeyError(f"{self.__class__}: value contains an invalid key '{key}'."
-                    " Permitted are {','.join(allowed)}")
+                raise KeyError(
+                    f"{self.__class__}: value contains an invalid key '{key}'."
+                    " Permitted are {','.join(allowed)}"
+                )
         return value
 
     def process_result_value(self, value, dialect):
@@ -152,7 +159,7 @@ class TableBase:
     __tablename__: ClassVar[str]
     metadata: ClassVar[Any]
 
-    __extra_values__: ClassVar[pydantic.config.ExtraValues] =  'allow'
+    __extra_values__: ClassVar[pydantic.config.ExtraValues] = "allow"
 
     _primary_key_columns: ClassVar[list[str]] = None
     _non_primary_key_columns: ClassVar[list[str]] = None
@@ -170,7 +177,7 @@ class TableBase:
 
     @classmethod
     def create(cls, **kwargs):
-        if cls.__extra_values__ == 'forbid':
+        if cls.__extra_values__ == "forbid":
             return cls(**kwargs)
         else:
             return cls(**cls.known_columns(**kwargs))
@@ -180,45 +187,52 @@ class TableBase:
         """
         Filter out all unknown arguments that cannot be mapped to columns
         """
-        return {x:y for x,y in kwargs.items() if x not in cls.__table__.columns}
+        return {x: y for x, y in kwargs.items() if x not in cls.__table__.columns}
 
     @classmethod
     def known_columns(cls, **kwargs) -> dict[str, Column]:
         """
         Filter out all arguments that cannot be mapped to columns
         """
-        return {x:y for x,y in kwargs.items() if x in cls.__table__.columns}
+        return {x: y for x, y in kwargs.items() if x in cls.__table__.columns}
 
     @classmethod
     def primary_key_columns(cls):
         if not cls._primary_key_columns:
-            cls._primary_key_columns = [x.name for x in cls.__table__.columns if x.primary_key]
+            cls._primary_key_columns = [
+                x.name for x in cls.__table__.columns if x.primary_key
+            ]
         return cls._primary_key_columns
 
     @classmethod
     def non_primary_key_columns(cls):
         if not cls._non_primary_key_columns:
-            cls._non_primary_key_columns = [x.name for x in cls.__table__.columns if not x.primary_key]
+            cls._non_primary_key_columns = [
+                x.name for x in cls.__table__.columns if not x.primary_key
+            ]
         return cls._non_primary_key_columns
 
     def get_timeseries_id(self) -> str:
         """
         Get the id for the timeseries - so excluding the timestamp field
         """
-        return '.'.join([str(getattr(self, x)) for x in self.primary_key_columns() if x != "time"])
+        return ".".join(
+            [str(getattr(self, x)) for x in self.primary_key_columns() if x != "time"]
+        )
 
     @classmethod
-    def merge(cls,
-            samples: list[T],
-            merge_op: Callable[list[int | float]] | None = np.mean) -> T:
+    def merge(
+        cls, samples: list[T], merge_op: Callable[list[int | float]] | None = np.mean
+    ) -> T:
         values = {}
 
         reference_sample = samples[-1]
         reference_sample_timeseries_id = reference_sample.get_timeseries_id()
         for sample in samples:
             timeseries_id = sample.get_timeseries_id()
-            assert timeseries_id == reference_sample_timeseries_id, \
-                    f"sample id {timeseries_id} does not match reference_sample {reference_sample_timeseries_id}"
+            assert (
+                timeseries_id == reference_sample_timeseries_id
+            ), f"sample id {timeseries_id} does not match reference_sample {reference_sample_timeseries_id}"
 
             for attribute in cls.non_primary_key_columns():
                 value = getattr(sample, attribute)
@@ -242,9 +256,12 @@ class TableBase:
                     if column.nullable or column.type.python_type is str:
                         kwargs[column_name] = getattr(reference_sample, column_name)
                     else:
-                        raise RuntimeError(f"Merging failed for column: '{column_name}'") from e
+                        raise RuntimeError(
+                            f"Merging failed for column: '{column_name}'"
+                        ) from e
 
         return cls(**kwargs)
+
 
 # Define a custom column type to process logical ids from text using
 # transform
@@ -286,10 +303,12 @@ class GPUIdList(types.TypeDecorator):
                 gpu_logical_ids.append(int(idx_range))
         return gpu_logical_ids
 
-    def transform_input(self, value: list[str|int]):
+    def transform_input(self, value: list[str | int]):
         if len(set(value)) > 1:
             if type(value[0]) is str:
-                raise RuntimeError(f"Assuming maximum length of 1 for GPU details, but found: {value}")
+                raise RuntimeError(
+                    f"Assuming maximum length of 1 for GPU details, but found: {value}"
+                )
             elif type(value[0]) is int:
                 return value
             else:
@@ -316,9 +335,11 @@ class GPUIdList(types.TypeDecorator):
             logger.error(f"Processing result value failed: {value} -- {e}")
             raise
 
+
 class UUID(types.TypeDecorator):
     impl = String
     cache_ok = True
+
 
 class Cluster(TableBase):
     __tablename__ = "cluster_attributes"
@@ -330,21 +351,32 @@ class Cluster(TableBase):
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
     __table_args__ = (
-        Index(f"{ExtraIndexPrefix}cluster_attributes__cluster_nodes_time","cluster", "nodes", time.desc()),
-        Index(f"{ExtraIndexPrefix}cluster_attributes__cluster_partitions_time", "cluster", "partitions", time.desc()),
+        Index(
+            f"{ExtraIndexPrefix}cluster_attributes__cluster_nodes_time",
+            "cluster",
+            "nodes",
+            time.desc(),
+        ),
+        Index(
+            f"{ExtraIndexPrefix}cluster_attributes__cluster_partitions_time",
+            "cluster",
+            "partitions",
+            time.desc(),
+        ),
         {
-            'info': { 'sonar_spec': 'ClusterAttributes' },
-            'timescaledb_hypertable': {
-                'time_column_name': 'time',
-                'chunk_time_interval': '24 hours',
-                'compression': {
-                    'segmentby': 'cluster',
-                    'orderby': 'time',
-                    'interval': '7 days'
-                }
-            }
-        }
+            "info": {"sonar_spec": "ClusterAttributes"},
+            "timescaledb_hypertable": {
+                "time_column_name": "time",
+                "chunk_time_interval": "24 hours",
+                "compression": {
+                    "segmentby": "cluster",
+                    "orderby": "time",
+                    "interval": "7 days",
+                },
+            },
+        },
     )
+
 
 class Node(TableBase):
     __tablename__ = "node"
@@ -354,9 +386,12 @@ class Node(TableBase):
 
     architecture = Column(String)
 
-    __table_args__ = (
-            { 'info': { 'comment': 'Auxiliary class to permit foreign key constraints on cluster/node' } }
-    )
+    __table_args__ = {
+        "info": {
+            "comment": "Auxiliary class to permit foreign key constraints on cluster/node"
+        }
+    }
+
 
 class NodeState(TableBase):
     __tablename__ = "node_state"
@@ -370,43 +405,40 @@ class NodeState(TableBase):
     __table_args__ = (
         ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
         {
-            'info': { 'sonar_spec' : "ClusterAttributes.nodes" },
-            'timescaledb_hypertable': {
-                'time_column_name': 'time',
-                'chunk_time_interval': '24 hours',
-                'compression': {
-                    'segmentby': 'cluster, node',
-                    'orderby': 'time',
-                    'interval': '7 days'
-                }
-            }
-        }
+            "info": {"sonar_spec": "ClusterAttributes.nodes"},
+            "timescaledb_hypertable": {
+                "time_column_name": "time",
+                "chunk_time_interval": "24 hours",
+                "compression": {
+                    "segmentby": "cluster, node",
+                    "orderby": "time",
+                    "interval": "7 days",
+                },
+            },
+        },
     )
+
 
 class Partition(TableBase):
     __tablename__ = "partition"
-    __table_args__ = (
-        {
-            'info' : {
-                      'sonar_spec' : "ClusterAttributes.partitions"
-                     }
-            ,
-            'timescaledb_hypertable': {
-                'time_column_name': 'time',
-                'chunk_time_interval': '24 hours',
-                'compression': {
-                    'segmentby': 'cluster',
-                    'orderby': 'time',
-                    'interval': '7 days'
-                }
-            }
-        }
-    )
+    __table_args__ = {
+        "info": {"sonar_spec": "ClusterAttributes.partitions"},
+        "timescaledb_hypertable": {
+            "time_column_name": "time",
+            "chunk_time_interval": "24 hours",
+            "compression": {
+                "segmentby": "cluster",
+                "orderby": "time",
+                "interval": "7 days",
+            },
+        },
+    }
     cluster = Column(String, primary_key=True, index=True)
     partition = Column(String, primary_key=True, index=True)
     nodes = Column(ARRAY(String))
     nodes_compact = Column(ARRAY(String))
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
+
 
 class SysinfoAttributes(TableBase):
     __tablename__ = "sysinfo_attributes"
@@ -435,22 +467,28 @@ class SysinfoAttributes(TableBase):
     cards = Column(ARRAY(UUID), desc="Array of gpu-card uuid", default=[])
 
     __table_args__ = (
-        *ensure_non_negative("sockets", "cores_per_socket", "threads_per_core", "memory"),
-        CheckConstraint("numa_nodes is NULL or numa_nodes >= 0", name="numa_nodes_is_null_or_not_negative"),
+        *ensure_non_negative(
+            "sockets", "cores_per_socket", "threads_per_core", "memory"
+        ),
+        CheckConstraint(
+            "numa_nodes is NULL or numa_nodes >= 0",
+            name="numa_nodes_is_null_or_not_negative",
+        ),
         ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
         {
-            'info': { 'sonar_spec': 'SysinfoAttributes' },
-            'timescaledb_hypertable': {
-                'time_column_name': 'time',
-                'chunk_time_interval': '24 hours',
-                'compression': {
-                    'segmentby': 'cluster, node',
-                    'orderby': 'time',
-                    'interval': '7 days'
-                }
-            }
-        }
+            "info": {"sonar_spec": "SysinfoAttributes"},
+            "timescaledb_hypertable": {
+                "time_column_name": "time",
+                "chunk_time_interval": "24 hours",
+                "compression": {
+                    "segmentby": "cluster, node",
+                    "orderby": "time",
+                    "interval": "7 days",
+                },
+            },
+        },
     )
+
 
 class SysinfoSoftwareVersion(TableBase):
     __tablename__ = "sysinfo_software_version"
@@ -463,38 +501,47 @@ class SysinfoSoftwareVersion(TableBase):
 
     __table_args__ = (
         ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
-        {}
+        {},
     )
+
 
 class SysinfoGpuCard(TableBase):
     """
     Collect static properties of the GPU in this table
     """
+
     __tablename__ = "sysinfo_gpu_card"
     __table_args__ = (
-        *ensure_non_negative('memory'),
-        { 'info': { 'sonar_spec': 'SysinfoGpuCard', 'requires_tables': ['sysinfo_gpu_card_config'] } }
+        *ensure_non_negative("memory"),
+        {
+            "info": {
+                "sonar_spec": "SysinfoGpuCard",
+                "requires_tables": ["sysinfo_gpu_card_config"],
+            }
+        },
     )
 
     uuid = Column(UUID, primary_key=True)
 
     # permit to create stub entries
-    manufacturer = Column(String, default='')
-    model = Column(String, default='')
-    architecture = Column(String, default='')
+    manufacturer = Column(String, default="")
+    model = Column(String, default="")
+    architecture = Column(String, default="")
     memory = Column(BigInteger, default=0)
+
 
 class SysinfoGpuCardConfig(TableBase):
     """
     Collect dynamic properties of the GPU in this table
     """
+
     __tablename__ = "sysinfo_gpu_card_config"
 
     # node name the card is attached to
     cluster = Column(String)
     node = Column(String)
 
-    uuid = Column(UUID, ForeignKey('sysinfo_gpu_card.uuid'), primary_key=True)
+    uuid = Column(UUID, ForeignKey("sysinfo_gpu_card.uuid"), primary_key=True)
 
     # Card local index
     index = Column(Integer, index=True)
@@ -511,33 +558,41 @@ class SysinfoGpuCardConfig(TableBase):
 
     # Validity - since the card might not be present for some intervals
     # TDB: do we need to consider this
-    #start_time = Column(DateTime(timezone=True), primary_key=True, default=dt.datetime(2025,1,1))
-    #end_time = Column(DateTime(timezone=True), default=dt.datetime(2100,12,31))
+    # start_time = Column(DateTime(timezone=True), primary_key=True, default=dt.datetime(2025,1,1))
+    # end_time = Column(DateTime(timezone=True), default=dt.datetime(2100,12,31))
 
     time = Column(DateTimeTZAware, primary_key=True)
 
     __table_args__ = (
         *ensure_non_negative(
-            'index',
-            'power_limit',
-            'max_power_limit',
-            'min_power_limit',
-            'max_ce_clock',
-            'max_memory_clock',
+            "index",
+            "power_limit",
+            "max_power_limit",
+            "min_power_limit",
+            "max_ce_clock",
+            "max_memory_clock",
         ),
-        Index(f"{ExtraIndexPrefix}sysinfo_gpu_card_config__cluster_node","cluster", "node", time.desc()),
+        Index(
+            f"{ExtraIndexPrefix}sysinfo_gpu_card_config__cluster_node",
+            "cluster",
+            "node",
+            time.desc(),
+        ),
         ForeignKeyConstraint([cluster, node], [Node.cluster, Node.node]),
         {
-            'info': { 'sonar_spec': 'SysinfoGpuCard', 'requires_tables': ['sysinfo_gpu_card'] },
-            'timescaledb_hypertable': {
-                'time_column_name': 'time',
-                'chunk_time_interval': '24 hours',
-                'compression': {
-                    'segmentby': 'cluster, node, uuid',
-                    'orderby': 'time',
-                    'interval': '7 days'
-                }
-            }
+            "info": {
+                "sonar_spec": "SysinfoGpuCard",
+                "requires_tables": ["sysinfo_gpu_card"],
+            },
+            "timescaledb_hypertable": {
+                "time_column_name": "time",
+                "chunk_time_interval": "24 hours",
+                "compression": {
+                    "segmentby": "cluster, node, uuid",
+                    "orderby": "time",
+                    "interval": "7 days",
+                },
+            },
         },
     )
 
@@ -546,36 +601,38 @@ class SampleGpu(TableBase):
     __tablename__ = "sample_gpu"
     __table_args__ = (
         *ensure_non_negative(
-            'index',
-            'fan',
-            'failing',
-            'memory',
-            'ce_util',
-            'ce_clock',
-            'memory_util',
-            'memory_clock',
-            'power',
-            'power_limit',
+            "index",
+            "fan",
+            "failing",
+            "memory",
+            "ce_util",
+            "ce_clock",
+            "memory_util",
+            "memory_clock",
+            "power",
+            "power_limit",
         ),
         {
-            'info': { 'sonar_spec': 'SampleSystem.gpus' },
-            'timescaledb_hypertable': {
-                'time_column_name': 'time',
-                'chunk_time_interval': '24 hours',
-                'compression': {
-                    'segmentby': 'uuid, index',
-                    'orderby': 'time',
-                    'interval': '7 days'
-                }
-            }
-        }
+            "info": {"sonar_spec": "SampleSystem.gpus"},
+            "timescaledb_hypertable": {
+                "time_column_name": "time",
+                "chunk_time_interval": "24 hours",
+                "compression": {
+                    "segmentby": "uuid, index",
+                    "orderby": "time",
+                    "interval": "7 days",
+                },
+            },
+        },
     )
 
     # local card index, may change at boot
     index = Column(Integer, nullable=True)
 
     # Card UUI
-    uuid = Column(UUID, ForeignKey("sysinfo_gpu_card.uuid"), index=True, primary_key=True)
+    uuid = Column(
+        UUID, ForeignKey("sysinfo_gpu_card.uuid"), index=True, primary_key=True
+    )
 
     # Indicate a failure condition, true meaning failure
     failing = Column(BigInteger)
@@ -590,27 +647,21 @@ class SampleGpu(TableBase):
     performance_state = Column(Xint)
 
     # kB of memory used
-    memory = Column(BigInteger,
-            desc="Memory used",
-            unit='kilobyte'
-            )
+    memory = Column(BigInteger, desc="Memory used", unit="kilobyte")
 
-    ce_util = Column(BigInteger,
-            desc="""
+    ce_util = Column(
+        BigInteger,
+        desc="""
             percent of computing element capability used
             """,
-            unit='percent'
+        unit="percent",
     )
 
     # percent of memory used
-    memory_util = Column(BigInteger,
-            unit='percent'
-            )
+    memory_util = Column(BigInteger, unit="percent")
 
     # degree C card temperature at primary sensor
-    temperature = Column(Integer,
-            unit='deg Celsius'
-            )
+    temperature = Column(Integer, unit="deg Celsius")
 
     # current power usage in W
     power = Column(BigInteger)
@@ -623,6 +674,7 @@ class SampleGpu(TableBase):
 
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
+
 class SampleProcessGpu(TableBase):
     __tablename__ = "sample_process_gpu"
 
@@ -630,15 +682,19 @@ class SampleProcessGpu(TableBase):
     node = Column(String, primary_key=True)
 
     job = Column(BigInteger, index=True, primary_key=True)
-    epoch = Column(BigInteger,
-            desc="Bootcycle presentation of node - continuously increasing number",
-            primary_key=True)
+    epoch = Column(
+        BigInteger,
+        desc="Bootcycle presentation of node - continuously increasing number",
+        primary_key=True,
+    )
     user = Column(String)
 
     pid = Column(BigInteger, primary_key=True)
 
     # Card UUID
-    uuid = Column(UUID, ForeignKey('sysinfo_gpu_card.uuid'), index=True, primary_key=True)
+    uuid = Column(
+        UUID, ForeignKey("sysinfo_gpu_card.uuid"), index=True, primary_key=True
+    )
     index = Column(Integer)
 
     gpu_util = Column(Float)
@@ -650,24 +706,34 @@ class SampleProcessGpu(TableBase):
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
     __table_args__ = (
-        Index(f"{ExtraIndexPrefix}sample_process_gpu__cluster_node","cluster", "node", time.desc()),
-        Index(f"{ExtraIndexPrefix}sample_process_gpu__cluster_job_time","cluster", "job", time.desc()),
+        Index(
+            f"{ExtraIndexPrefix}sample_process_gpu__cluster_node",
+            "cluster",
+            "node",
+            time.desc(),
+        ),
+        Index(
+            f"{ExtraIndexPrefix}sample_process_gpu__cluster_job_time",
+            "cluster",
+            "job",
+            time.desc(),
+        ),
         Index(f"{ExtraIndexPrefix}sample_process_gpu__uuid_time", "uuid", "time"),
         ForeignKeyConstraint(["cluster", "node"], [Node.cluster, Node.node]),
         {
-            'info': {'sonar_spec': 'SampleProcess.gpus'},
-            'timescaledb_hypertable': {
-                'time_column_name': 'time',
-                'chunk_time_interval': '24 hours',
-                'compression': {
-                    'segmentby': 'cluster, job, epoch',
-                    'orderby': 'time',
-                    'interval': '7 days'
-                }
-            }
-
-        }
+            "info": {"sonar_spec": "SampleProcess.gpus"},
+            "timescaledb_hypertable": {
+                "time_column_name": "time",
+                "chunk_time_interval": "24 hours",
+                "compression": {
+                    "segmentby": "cluster, job, epoch",
+                    "orderby": "time",
+                    "interval": "7 days",
+                },
+            },
+        },
     )
+
 
 class SampleProcess(TableBase):
     """
@@ -681,118 +747,140 @@ class SampleProcess(TableBase):
 
     job = Column(BigInteger, primary_key=True)
     # Slurm jobs will have epoch = 0
-    epoch = Column(BigInteger,
-            desc="Bootcycle presentation of node - continuously increasing number",
-            primary_key=True)
+    epoch = Column(
+        BigInteger,
+        desc="Bootcycle presentation of node - continuously increasing number",
+        primary_key=True,
+    )
 
     user = Column(String)
 
     # private resident memory
-    resident_memory = Column(BigInteger, unit='kilobyte')
+    resident_memory = Column(BigInteger, unit="kilobyte")
     # virtual data+stack memory
-    virtual_memory = Column(BigInteger, unit='kilobyte')
+    virtual_memory = Column(BigInteger, unit="kilobyte")
     # command (not the command line) - '_unknown_' for zombie processes
-    cmd = Column(Text,
-            desc="""
+    cmd = Column(
+        Text,
+        desc="""
             The command (not the command line), zombie processes get an extra annotation at the end, a la ps.
-            """)
+            """,
+    )
 
     # rest of process sample
-    pid = Column(BigInteger,
-            desc="""
+    pid = Column(
+        BigInteger,
+        desc="""
             Process ID, zero is used for rolled-up samples
             """,
-            primary_key=True)
-    ppid = Column(BigInteger,
-            desc="""
+        primary_key=True,
+    )
+    ppid = Column(
+        BigInteger,
+        desc="""
             Parent-process ID
-            """)
+            """,
+    )
 
-    num_threads = Column(BigInteger,
-            desc="""
+    num_threads = Column(
+        BigInteger,
+        desc="""
             The number of threads in the process, minus 1 - we don't count the
             process's main thread (allowing this fields to be omitted in
             transmission for most processes).
-            """
-            )
+            """,
+    )
 
-    cpu_avg = Column(Float,
-            desc="""
+    cpu_avg = Column(
+        Float,
+        desc="""
             The running average CPU percentage over the true lifetime of the process
             as reported by the operating system. 100.0 corresponds to 'one full core's
             worth of computation'
             """,
-            unit='percent'
-            )
-    cpu_util = Column(Float,
-            desc="""
+        unit="percent",
+    )
+    cpu_util = Column(
+        Float,
+        desc="""
             The current  cpu utilization of the process, 100.0 corresponds
             to 'one full core's worth of computation'
             """,
-            unit='percent'
-            )
-    cpu_time = Column(BigInteger,
-            desc="""
+        unit="percent",
+    )
+    cpu_time = Column(
+        BigInteger,
+        desc="""
             The number of additional process with the same job and cmd and
             no child processes that have been rolled into this one. That is,
             if the value is 1, the record represents the sum of the data for two processes
             """,
-            unit='seconds')
+        unit="seconds",
+    )
 
-    data_read = Column(BigInteger,
-            desc="""
+    data_read = Column(
+        BigInteger,
+        desc="""
             Kilobytes read with all sorts of read calls (rounded up).
             """,
-            unit='kilobyte')
+        unit="kilobyte",
+    )
 
-    data_written = Column(BigInteger,
-            desc="""
+    data_written = Column(
+        BigInteger,
+        desc="""
             Kilobytes written with all sorts of write calls (rounded up).
             """,
-            unit='kilobyte')
+        unit="kilobyte",
+    )
 
-    data_cancelled = Column(BigInteger,
-            desc="""
+    data_cancelled = Column(
+        BigInteger,
+        desc="""
             Kilobytes written but never flushed to physical media (i.e., held in RAM but then made
             obsolete by overwriting or file deletion or similar) (rounded up).
             """,
-            unit='kilebyte')
+        unit="kilebyte",
+    )
 
     # gpus implemented in separate table
-    rolledup = Column(Integer,
-                      desc="""
+    rolledup = Column(
+        Integer,
+        desc="""
                       The number of additional samples for processes that are
                       "the same" that have been rolled into this one. That is,
                       if the value is 1, the record represents the sum of the
-                      sample data for two processes."""
-               )
+                      sample data for two processes.""",
+    )
 
-    in_container = Column(Boolean,
-                          desc="True if deemed part of a container.",
-                          nullable=True)
+    in_container = Column(
+        Boolean, desc="True if deemed part of a container.", nullable=True
+    )
 
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
     __table_args__ = (
-        Index(f"{ExtraIndexPrefix}sample_process_job_epoch", "job", "epoch", time.desc()),
+        Index(
+            f"{ExtraIndexPrefix}sample_process_job_epoch", "job", "epoch", time.desc()
+        ),
         ForeignKeyConstraint(["cluster", "node"], [Node.cluster, Node.node]),
         CheckConstraint("job != 0 or epoch != 0", "job_or_epoch_non_zero"),
         CheckConstraint("job >= 0 and epoch >= 0", "job_or_epoch_non_negative"),
-        *ensure_non_negative("pid","ppid"),
+        *ensure_non_negative("pid", "ppid"),
         {
-            'info': { 'sonar_spec': 'SampleProcess' },
-            'timescaledb_hypertable': {
-                'time_column_name': 'time',
-                'chunk_time_interval': '24 hours',
-                'compression': {
-                    'segmentby': 'cluster, job, epoch',
-                    'orderby': 'time',
-                    'interval': '7 days'
-                }
-            }
-
-        }
+            "info": {"sonar_spec": "SampleProcess"},
+            "timescaledb_hypertable": {
+                "time_column_name": "time",
+                "chunk_time_interval": "24 hours",
+                "compression": {
+                    "segmentby": "cluster, job, epoch",
+                    "orderby": "time",
+                    "interval": "7 days",
+                },
+            },
+        },
     )
+
 
 class SampleSystem(TableBase):
     __tablename__ = "sample_system"
@@ -802,52 +890,48 @@ class SampleSystem(TableBase):
 
     boot = Column(DateTimeTZAware, default=None, nullable=True)
 
-    cpus = Column(ARRAY(BigInteger),
-                  desc="The state of individual cores"
-           )
+    cpus = Column(ARRAY(BigInteger), desc="The state of individual cores")
 
-    used_memory = Column(BigInteger,
-                         desc="The amount of primary memory in use in kilobytes",
-                         unit="kilobyte"
-                  )
+    used_memory = Column(
+        BigInteger,
+        desc="The amount of primary memory in use in kilobytes",
+        unit="kilobyte",
+    )
 
-    load1 = Column(Float,
-                   desc="One-minute load average"
-            )
+    load1 = Column(Float, desc="One-minute load average")
 
-    load5 = Column(Float,
-                   desc="Five-minute load average"
-            )
+    load5 = Column(Float, desc="Five-minute load average")
 
-    load15 = Column(Float,
-                   desc="Fivteen-minute load average"
-            )
+    load15 = Column(Float, desc="Fivteen-minute load average")
 
-    runnable_entities = Column(BigInteger,
-                            desc="Number of currently runnable scheduling entities (processes, threads)"
-                        )
-    existing_entities = Column(BigInteger,
-                            desc="Number of currently existing scheduling entities (processes, threads)"
-                        )
+    runnable_entities = Column(
+        BigInteger,
+        desc="Number of currently runnable scheduling entities (processes, threads)",
+    )
+    existing_entities = Column(
+        BigInteger,
+        desc="Number of currently existing scheduling entities (processes, threads)",
+    )
 
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
     __table_args__ = (
         ForeignKeyConstraint(["cluster", "node"], [Node.cluster, Node.node]),
-        *ensure_non_negative("runnable_entities","existing_entities", "used_memory"),
+        *ensure_non_negative("runnable_entities", "existing_entities", "used_memory"),
         {
-            'info': { 'sonar_spec': 'SampleSystem' },
-            'timescaledb_hypertable': {
-                'time_column_name': 'time',
-                'chunk_time_interval': '24 hours',
-                'compression': {
-                    'segmentby': 'cluster, node',
-                    'orderby': 'time',
-                    'interval': '7 days'
-                }
-            }
-        }
+            "info": {"sonar_spec": "SampleSystem"},
+            "timescaledb_hypertable": {
+                "time_column_name": "time",
+                "chunk_time_interval": "24 hours",
+                "compression": {
+                    "segmentby": "cluster, node",
+                    "orderby": "time",
+                    "interval": "7 days",
+                },
+            },
+        },
     )
+
 
 class SampleDisk(TableBase):
     __tablename__ = "sample_disk"
@@ -874,30 +958,31 @@ class SampleDisk(TableBase):
             "sectors_discarded": 14,
             "ms_spent_discarding": 15,
             "flush_requests_completed": 16,
-            "ms_spent_flushing": 17
+            "ms_spent_flushing": 17,
         }
 
     @classmethod
     def create(cls, **kwargs):
         if "stats" in kwargs:
-            stats = kwargs['stats']
+            stats = kwargs["stats"]
             for field, idx in cls.diskstats().items():
-                kwargs[field] = stats[idx-1]
-            del kwargs['stats']
+                kwargs[field] = stats[idx - 1]
+            del kwargs["stats"]
 
         return super().create(**kwargs)
 
     cluster = Column(String, primary_key=True)
     node = Column(String, primary_key=True)
 
-    name = Column(String, primary_key=True,
-                  desc="Disk's local name. This must never be empty (and unique per node)")
+    name = Column(
+        String,
+        primary_key=True,
+        desc="Disk's local name. This must never be empty (and unique per node)",
+    )
 
-    major = Column(BigInteger,
-                   desc="Disk's local major device number")
+    major = Column(BigInteger, desc="Disk's local major device number")
 
-    minor = Column(BigInteger,
-                   desc="Disk's local minor device number")
+    minor = Column(BigInteger, desc="Disk's local minor device number")
 
     # Field from /proc/diskstats
     reads_completed = Column(BigInteger)
@@ -939,20 +1024,21 @@ class SampleDisk(TableBase):
     __table_args__ = (
         ForeignKeyConstraint(["cluster", "node"], [Node.cluster, Node.node]),
         {
-            'info': { 'sonar_spec': 'SampleSystem.disks' },
-            'timescaledb_hypertable': {
-                'time_column_name': 'time',
-                'chunk_time_interval': '24 hours',
-                'compression': {
-                    'segmentby': 'cluster, node, name',
-                    'orderby': 'time',
-                    'interval': '7 days'
-                }
-            }
-        }
+            "info": {"sonar_spec": "SampleSystem.disks"},
+            "timescaledb_hypertable": {
+                "time_column_name": "time",
+                "chunk_time_interval": "24 hours",
+                "compression": {
+                    "segmentby": "cluster, node, name",
+                    "orderby": "time",
+                    "interval": "7 days",
+                },
+            },
+        },
     )
 
-#class JobStatus(TableBase):
+
+# class JobStatus(TableBase):
 #    __tablename__ = "job_status"
 #    __table_args__ = (
 #        CheckConstraint("job != 0 or epoch != 0", "job_or_epoch_non_zero"),
@@ -987,20 +1073,21 @@ class SlurmJobState(enum.Enum):
     Slurm job states
     see also https://slurm.schedmd.com/job_state_codes.html
     """
+
     # The key names are relevant here, not the values
 
-    BOOT_FAIL = 'BOOT_FAIL'
-    CANCELLED = 'CANCELLED'
-    COMPLETED = 'COMPLETED'
-    DEADLINE = 'DEADLINE'
-    FAILED = 'FAILED'
-    NODE_FAIL = 'NODE_FAIL'
-    OUT_OF_MEMORY = 'OUT_OF_MEMORY'
-    PENDING = 'PENDING'
-    PREMPTED = 'PREMPTED'
-    RUNNING = 'RUNNING'
-    SUSPENDED = 'SUSPENDED'
-    TIMEOUT = 'TIMEOUT'
+    BOOT_FAIL = "BOOT_FAIL"
+    CANCELLED = "CANCELLED"
+    COMPLETED = "COMPLETED"
+    DEADLINE = "DEADLINE"
+    FAILED = "FAILED"
+    NODE_FAIL = "NODE_FAIL"
+    OUT_OF_MEMORY = "OUT_OF_MEMORY"
+    PENDING = "PENDING"
+    PREMPTED = "PREMPTED"
+    RUNNING = "RUNNING"
+    SUSPENDED = "SUSPENDED"
+    TIMEOUT = "TIMEOUT"
 
 
 class SampleSlurmJob(TableBase):
@@ -1015,7 +1102,7 @@ class SampleSlurmJob(TableBase):
     job_id = Column(BigInteger, primary_key=True)  # ": 244843,
     job_step = Column(String, primary_key=True)
     job_name = Column(String)
-#    job_state = Column(Enum(SlurmJobState))
+    #    job_state = Column(Enum(SlurmJobState))
     job_state = Column(String)
 
     array_job_id = Column(BigInteger, nullable=True)  # 244843
@@ -1038,12 +1125,16 @@ class SampleSlurmJob(TableBase):
     partition = Column(String)
     reservation = Column(String)
 
-    nodes = Column(ARRAY(String), nullable=True) # null for PENDING jobs for instance
+    nodes = Column(ARRAY(String), nullable=True)  # null for PENDING jobs for instance
     priority = Column(Xint)
     distribution = Column(String)
 
     # deprecated: substituted by requested_resources and allocated_resources
-    gres_detail = Column(ARRAY(String), nullable=True, desc="Deprecated: use requested_resource and allocated_resources")
+    gres_detail = Column(
+        ARRAY(String),
+        nullable=True,
+        desc="Deprecated: use requested_resource and allocated_resources",
+    )
 
     # GRES extraction
     requested_resources = Column(String, nullable=True)
@@ -1054,39 +1145,59 @@ class SampleSlurmJob(TableBase):
     requested_node_count = Column(Integer)
 
     # deprecated: use requested_cpu
-    minimum_cpus_per_node = Column(Integer, desc="Deprecated: use requested_cpus", nullable=True)
+    minimum_cpus_per_node = Column(
+        Integer, desc="Deprecated: use requested_cpus", nullable=True
+    )
 
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
     __table_args__ = (
         *ensure_non_negative(
-            'job_id',
-            'array_job_id',
-            'array_task_id',
-            'het_job_id',
-            'het_job_offset',
-            'requested_cpus',
-            'requested_memory_per_node',
-            'requested_node_count',
-            'suspend_time',
-            'exit_code',
+            "job_id",
+            "array_job_id",
+            "array_task_id",
+            "het_job_id",
+            "het_job_offset",
+            "requested_cpus",
+            "requested_memory_per_node",
+            "requested_node_count",
+            "suspend_time",
+            "exit_code",
         ),
-        Index(f"{ExtraIndexPrefix}sample_slurm_job__cluster_nodes_time","cluster", "nodes", time.desc()),
-        Index(f"{ExtraIndexPrefix}sample_slurm_job__cluster_job_id_job_step_time","cluster", "job_id", "job_step", time.desc()),
-        Index(f"{ExtraIndexPrefix}sample_slurm_job__cluster_partition_job_state_time", "cluster", "partition", "job_state", time.desc()),
+        Index(
+            f"{ExtraIndexPrefix}sample_slurm_job__cluster_nodes_time",
+            "cluster",
+            "nodes",
+            time.desc(),
+        ),
+        Index(
+            f"{ExtraIndexPrefix}sample_slurm_job__cluster_job_id_job_step_time",
+            "cluster",
+            "job_id",
+            "job_step",
+            time.desc(),
+        ),
+        Index(
+            f"{ExtraIndexPrefix}sample_slurm_job__cluster_partition_job_state_time",
+            "cluster",
+            "partition",
+            "job_state",
+            time.desc(),
+        ),
         {
-            'info': { 'sonar_spec': 'JobsAttributes.slurm_jobs' },
-            'timescaledb_hypertable': {
-                'time_column_name': 'time',
-                'chunk_time_interval': '24 hours',
-                'compression': {
-                    'segmentby': 'cluster, job_id',
-                    'orderby': 'time',
-                    'interval': '7 days'
-                }
-            }
-        }
+            "info": {"sonar_spec": "JobsAttributes.slurm_jobs"},
+            "timescaledb_hypertable": {
+                "time_column_name": "time",
+                "chunk_time_interval": "24 hours",
+                "compression": {
+                    "segmentby": "cluster, job_id",
+                    "orderby": "time",
+                    "interval": "7 days",
+                },
+            },
+        },
     )
+
 
 class SampleSlurmJobAcc(TableBase):
     __tablename__ = "sample_slurm_job_acc"
@@ -1118,7 +1229,7 @@ class SampleSlurmJobAcc(TableBase):
 
     __table_args__ = (
         *ensure_non_negative(
-            'job_id',
+            "job_id",
             #'ElapsedRaw',
             #'SystemCPU',
             #'UserCPU',
@@ -1132,41 +1243,41 @@ class SampleSlurmJobAcc(TableBase):
             #'AveDiskWrite'
         ),
         {
-            'info': { 'sonar_spec': 'SlurmJob.sacct' },
-            'timescaledb_hypertable': {
-                'time_column_name': 'time',
-                'chunk_time_interval': '24 hours',
-                'compression': {
-                    'segmentby': 'cluster, job_id',
-                    'orderby': 'time',
-                    'interval': '7 days'
-                }
-            }
-        }
+            "info": {"sonar_spec": "SlurmJob.sacct"},
+            "timescaledb_hypertable": {
+                "time_column_name": "time",
+                "chunk_time_interval": "24 hours",
+                "compression": {
+                    "segmentby": "cluster, job_id",
+                    "orderby": "time",
+                    "interval": "7 days",
+                },
+            },
+        },
     )
 
     ## JobIDRaw
     ## In case of job array print the JobId instead of the ArrayJobId. For non
     ## job arrays the output is the JobId in the format job.jobstep.
-    #job_id_raw = Column
+    # job_id_raw = Column
 
-    #name = Column(Text)
-    #start_time = Column(DateTime, nullable=True)
-    #end_time = Column(DateTime, nullable=True)
+    # name = Column(Text)
+    # start_time = Column(DateTime, nullable=True)
+    # end_time = Column(DateTime, nullable=True)
 
-    #accrue_time = Column(BigInteger)
-    #admin_comment = Column(Text)
-    #array_max_tasks = Column(Integer)  # 20
-    #array_task_string = Column(Text)  #
-    #association_id = Column(Integer)  # ": 0,
+    # accrue_time = Column(BigInteger)
+    # admin_comment = Column(Text)
+    # array_max_tasks = Column(Integer)  # 20
+    # array_task_string = Column(Text)  #
+    # association_id = Column(Integer)  # ": 0,
     ## batch_features": "",
     ## batch_flag": true,
-    #batch_host = Column(Text)
+    # batch_host = Column(Text)
     ## flags": [],
     ## burst_buffer": "",
     ## burst_buffer_state": "",
 
-    #cluster = Column(Text)
+    # cluster = Column(Text)
 
     ## cluster_features": "",
     ## command": "/global/D1/homes/.."
@@ -1184,17 +1295,17 @@ class SampleSlurmJobAcc(TableBase):
     ## deadline": 0,
     ## delay_boot": 0,
     ## dependency": "",
-    #derived_exit_code = Column(BigInteger)  # ": 256,
-    #eligible_time = Column(Integer, nullable=True)  # ": 1720736375,
+    # derived_exit_code = Column(BigInteger)  # ": 256,
+    # eligible_time = Column(Integer, nullable=True)  # ": 1720736375,
 
     ## excluded_nodes": "",
-    #exit_code = Column(BigInteger)  # ": 0,
+    # exit_code = Column(BigInteger)  # ": 0,
     ## features": "",
     ## federation_origin": "",
     ## federation_siblings_active": "",
     ## federation_siblings_viable": "",
-    #gres_detail = Column(GPUIdList, default=[])
-    #group_id = Column(Integer, nullable=True)  # ": 5000,
+    # gres_detail = Column(GPUIdList, default=[])
+    # group_id = Column(Integer, nullable=True)  # ": 5000,
     ## job_resources": {
     ## "nodes": "n042",
     ## "allocated_cpus": 1,
@@ -1212,7 +1323,7 @@ class SampleSlurmJobAcc(TableBase):
     ##   }
     ## }
     ## ,
-    #job_state = Column(Text)  # ": "COMPLETED",
+    # job_state = Column(Text)  # ": "COMPLETED",
     ## last_sched_evaluation": 1720736375,
     ## licenses": "",
     ## max_cpus": 0,
@@ -1225,15 +1336,15 @@ class SampleSlurmJobAcc(TableBase):
     ## tasks_per_node": 0,
     ## tasks_per_socket": null,
     ## tasks_per_board": 0,
-    #cpus = Column(Integer)  # 1
-    #node_count = Column(Integer)  # 1
-    #tasks = Column(Integer)  # 1,
+    # cpus = Column(Integer)  # 1
+    # node_count = Column(Integer)  # 1
+    # tasks = Column(Integer)  # 1,
     ## het_job_id": 0,
     ## het_job_id_set": "",
     ## het_job_offset": 0,
-    #memory_per_node = Column(Integer)
-    #memory_per_cpu = Column(Integer)
-    #minimum_cpus_per_node = Column(Integer)
+    # memory_per_node = Column(Integer)
+    # memory_per_cpu = Column(Integer)
+    # minimum_cpus_per_node = Column(Integer)
     ## minimum_tmp_disk_per_node": 0,
     ## preempt_time": 0,
     ## pre_sus_time": 0,
@@ -1254,13 +1365,13 @@ class SampleSlurmJobAcc(TableBase):
     ## ,
     ## sockets_per_board": 0,
     ## sockets_per_node": null,
-    #state_description = Column(Text)  # "",
-    #state_reason = Column(Text)  # "None",
+    # state_description = Column(Text)  # "",
+    # state_reason = Column(Text)  # "None",
     ## standard_error": "/home/.../scripts/logs/%j-stderr.txt",
     ## standard_input": "/dev/null",
     ## standard_output": "/home/.../scripts/logs/%j-stdout.txt",
 
-    #suspend_time = Column(Integer)  # 0,
+    # suspend_time = Column(Integer)  # 0,
     ## system_comment": "",
     ## time_minimum": 0,
     ## threads_per_core": null,
@@ -1272,8 +1383,8 @@ class SampleSlurmJobAcc(TableBase):
     ## tres_per_task": "",
     ## tres_req_str": "cpu=1,node=1,billing=1",
     ## tres_alloc_str": "cpu=1,billing=1",
-    #user_id = Column(Integer)  # 6500,
-    #user_name = Column(Text, nullable=True)
+    # user_id = Column(Integer)  # 6500,
+    # user_name = Column(Text, nullable=True)
     ## wckey": "",
     ## current_working_directory": "/global/D1/homes/..."
     ## id = Column(Integer) # 244843
@@ -1291,22 +1402,21 @@ class SampleSlurmJobAcc(TableBase):
 
         return cls(**mapped_data)
 
+
 class ErrorMessage(TableBase):
     __tablename__ = "error_message"
-    __table_args__ = (
-        {
-            'info': { 'sonar_spec': 'ErrorObject' },
-            'timescaledb_hypertable': {
-                'time_column_name': 'time',
-                'chunk_time_interval': '24 hours',
-                'compression': {
-                    'segmentby': 'cluster, node',
-                    'orderby': 'time',
-                    'interval': '7 days'
-                }
-            }
-        }
-    )
+    __table_args__ = {
+        "info": {"sonar_spec": "ErrorObject"},
+        "timescaledb_hypertable": {
+            "time_column_name": "time",
+            "chunk_time_interval": "24 hours",
+            "compression": {
+                "segmentby": "cluster, node",
+                "orderby": "time",
+                "interval": "7 days",
+            },
+        },
+    }
     cluster = Column(String, primary_key=True, index=True)
     node = Column(String, primary_key=True, index=True)
     detail = Column(Text)

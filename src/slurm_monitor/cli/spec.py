@@ -10,12 +10,13 @@ class SpecParser(BaseParser):
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
 
-        parser.add_argument("--spec-file",
-                            required=False,
-                            type=str,
-                            help="YAML spec file of sonar-types",
-                            default=None,
-                            )
+        parser.add_argument(
+            "--spec-file",
+            required=False,
+            type=str,
+            help="YAML spec file of sonar-types",
+            default=None,
+        )
 
     def execute(self, args):
         super().execute(args)

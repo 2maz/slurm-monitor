@@ -8,16 +8,23 @@ from slurm_monitor.utils.system_info import SystemInfo
 
 logger = getLogger(__name__)
 
+
 class SystemInfoParser(BaseParser):
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
 
-        parser.add_argument("--format", default="yaml", type=str, help="Output format: yaml")
-        parser.add_argument("-o", "--output", default=None, type=str, help="Output path")
-        parser.add_argument("-q", "--query",
-                default=None,
-                type=str,
-                help="Query field: gpus.framework | gpus.model | gpus.count"
+        parser.add_argument(
+            "--format", default="yaml", type=str, help="Output format: yaml"
+        )
+        parser.add_argument(
+            "-o", "--output", default=None, type=str, help="Output path"
+        )
+        parser.add_argument(
+            "-q",
+            "--query",
+            default=None,
+            type=str,
+            help="Query field: gpus.framework | gpus.model | gpus.count",
         )
 
     def execute(self, args):
@@ -36,8 +43,9 @@ class SystemInfoParser(BaseParser):
                             value = dict(si)[label]
                         except KeyError:
                             raise RuntimeError(
-                                    f"{label} is not a key - "
-                                    f"choose from {','.join(dict(si).keys())}")
+                                f"{label} is not a key - "
+                                f"choose from {','.join(dict(si).keys())}"
+                            )
                     else:
                         if type(value) is not dict:
                             raise ValueError(f"{value} contains no dictionary")
@@ -46,10 +54,11 @@ class SystemInfoParser(BaseParser):
                             value = value[label]
                         except KeyError:
                             raise RuntimeError(
-                                    f"{label} is not a key - "
-                                    f"choose from {','.join(value.keys())}")
+                                f"{label} is not a key - "
+                                f"choose from {','.join(value.keys())}"
+                            )
                 response.append(str(value))
-            print(','.join(response))
+            print(",".join(response))
             sys.exit(0)
 
         elif args.format.lower() == "yaml":

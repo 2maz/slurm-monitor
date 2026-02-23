@@ -2,6 +2,7 @@ from cachetools import TTLCache
 from cachetools.keys import hashkey
 import functools
 
+
 def hashkey_generator(*args, **kwargs):
     """
     Generate a hash key that handles list and set
@@ -18,7 +19,7 @@ def hashkey_generator(*args, **kwargs):
             updated_args.append(x)
 
     updated_kwargs = {}
-    for k,v in kwargs.items():
+    for k, v in kwargs.items():
         if type(v) is list or type(v) is set:
             updated_kwargs[k] = hash(tuple(sorted(v)))
         else:
@@ -39,7 +40,7 @@ def ttl_cache_async(*, ttl, maxsize: int = 128, ignore_args: list[str] = []):
     def decorator(func):
         @functools.wraps(func)
         async def wrapped(*args, **kwargs):
-            relevant_kwargs = { x: y for x,y in kwargs.items() if x not in ignore_args }
+            relevant_kwargs = {x: y for x, y in kwargs.items() if x not in ignore_args}
             k = hashkey_generator(*args, **relevant_kwargs)
 
             try:
@@ -54,5 +55,7 @@ def ttl_cache_async(*, ttl, maxsize: int = 128, ignore_args: list[str] = []):
             except ValueError:
                 pass  # value too large
             return v
+
         return wrapped
+
     return decorator

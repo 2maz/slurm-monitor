@@ -2,9 +2,12 @@ from pathlib import Path
 import subprocess
 import shutil
 
+
 class Command:
     @classmethod
-    def find(cls, *, command, hints: list[str] | None = None, do_throw = True ) -> str | None:
+    def find(
+        cls, *, command, hints: list[str] | None = None, do_throw=True
+    ) -> str | None:
         search_paths = []
         if hints:
             for x in hints:
@@ -23,11 +26,10 @@ class Command:
         return None
 
     @classmethod
-    def run(cls, command: str, decode: str | None = 'utf-8') -> str:
-        response = subprocess.run(command,
-                shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE)
+    def run(cls, command: str, decode: str | None = "utf-8") -> str:
+        response = subprocess.run(
+            command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
 
         if response.returncode == 0:
             if decode is None:
@@ -36,9 +38,9 @@ class Command:
                 return response.stdout.decode(decode).strip()
 
         raise RuntimeError(
-                f"Command.run: '{command}' failed with returncode: "
-                f"{response.returncode} - {response.stderr}"
-                )
+            f"Command.run: '{command}' failed with returncode: "
+            f"{response.returncode} - {response.stderr}"
+        )
 
     @classmethod
     def get_user(cls) -> str:

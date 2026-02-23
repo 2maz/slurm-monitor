@@ -18,14 +18,17 @@ from slurm_monitor.utils.command import Command
 
 logger = logging.getLogger(__name__)
 
-SLURM_MONITOR_AUTODEPLOYER_JSON : str = "slurm-monitor.autodeployer.json"
+SLURM_MONITOR_AUTODEPLOYER_JSON: str = "slurm-monitor.autodeployer.json"
+
 
 class AutoDeployerNodeStats(BaseModel):
     last_seen: dt.datetime | None = None
     deploy: list[dt.datetime] = []
 
+
 class AutoDeployerStats(BaseSettings):
     nodes: dict[str, AutoDeployerNodeStats]
+
 
 class AutoDeployer:
     thread: Thread
@@ -40,14 +43,15 @@ class AutoDeployer:
     cluster_name: str
     deploy_command: str
 
-    def __init__(self,
-            app_settings: AppSettings | None = None,
-            sampling_interval_in_s: float = 5*60,
-            stats_filename: str | Path = SLURM_MONITOR_AUTODEPLOYER_JSON,
-            cluster_name: str | None = None,
-            deploy_command: str | None = None,
-            allow_list: list[str] | None = None
-        ):
+    def __init__(
+        self,
+        app_settings: AppSettings | None = None,
+        sampling_interval_in_s: float = 5 * 60,
+        stats_filename: str | Path = SLURM_MONITOR_AUTODEPLOYER_JSON,
+        cluster_name: str | None = None,
+        deploy_command: str | None = None,
+        allow_list: list[str] | None = None,
+    ):
         self.app_settings = app_settings
         self.dbi = DBManager.get_database(app_settings=app_settings)
 
@@ -109,13 +113,15 @@ class AutoDeployer:
 
             last_probe_timestamp = None
             if self.app_settings.db_schema_version == "v1":
-                last_probe_timestamp = loop.run_until_complete(self.dbi.get_last_probe_timestamp())
+                last_probe_timestamp = loop.run_until_complete(
+                    self.dbi.get_last_probe_timestamp()
+                )
             else:
                 if self.cluster_name is None:
                     raise ValueError("Missing cluster_name")
 
                 last_probe_timestamp = loop.run_until_complete(
-                        self.dbi.get_last_probe_timestamp(cluster=self.cluster_name)
+                    self.dbi.get_last_probe_timestamp(cluster=self.cluster_name)
                 )
                 logger.info(last_probe_timestamp)
 
@@ -146,6 +152,7 @@ class AutoDeployer:
             self.save_stats()
             start_time = utcnow()
 
+
 class AutoDeployerSonar(AutoDeployer):
     async def is_drained(self, node: str) -> bool:
         node_states = await self.dbi.get_nodes_states(
@@ -160,7 +167,6 @@ class AutoDeployerSonar(AutoDeployer):
                 return True
 
         return False
-
 
     def deploy(self, node: str) -> str:
         logger.info(f"Deploying with deploy_command={self.deploy_command}")

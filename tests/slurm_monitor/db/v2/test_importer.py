@@ -13,212 +13,250 @@ import sqlalchemy
 import json
 from pathlib import Path
 
+
 def sonar_base_message(message_type: str, **kwargs):
     return {
-        'meta': { 'producer': 'sonar', 'version': '0.16.0' },
-        'data': { 'type': message_type, 'attributes': kwargs },
-        'errors': {}
+        "meta": {"producer": "sonar", "version": "0.16.0"},
+        "data": {"type": message_type, "attributes": kwargs},
+        "errors": {},
     }
 
+
 def sonar_sample_message():
-    return sonar_base_message('sample',
-        node='c-0-n-0',
-        cluster='c-0',
+    return sonar_base_message(
+        "sample",
+        node="c-0-n-0",
+        cluster="c-0",
         system={},
         jobs=[
-          { "job": 1,
-            "user": "test-user",
-            "epoch": 1,
-            "processes": [{
-              'resident_memory': 2*1024**3,
-              'virtual_memory': 32*1024**3,
-              'cmd': "test-cmd",
-              'pid': 10000,
-              'ppid': 9999,
-              'num_threads': 1,
-              'cpu_avg': 20,
-              'cpu_util': 20,
-              'cpu_time': 1000,
-              'data_read': 0,
-              'data_written': 0,
-              'data_cancelled': 0,
-              'rolledup': 0,
-              }]
+            {
+                "job": 1,
+                "user": "test-user",
+                "epoch": 1,
+                "processes": [
+                    {
+                        "resident_memory": 2 * 1024**3,
+                        "virtual_memory": 32 * 1024**3,
+                        "cmd": "test-cmd",
+                        "pid": 10000,
+                        "ppid": 9999,
+                        "num_threads": 1,
+                        "cpu_avg": 20,
+                        "cpu_util": 20,
+                        "cpu_time": 1000,
+                        "data_read": 0,
+                        "data_written": 0,
+                        "data_cancelled": 0,
+                        "rolledup": 0,
+                    }
+                ],
             },
-            { "job": 2,
-              "user": "test-user",
-              "epoch": 2,
-              "processes": [{
-                'resident_memory': 2*1024**3,
-                'virtual_memory': 32*1024**3,
-                'cmd': "test-cmd",
-                'pid': 10000,
-                'ppid': 9999,
-                'num_threads': 1,
-                'cpu_avg': 20,
-                'cpu_util': 20,
-                'cpu_time': 1000,
-                'data_read': 0,
-                'data_written': 0,
-                'data_cancelled': 0,
-                'rolledup': 0,
-                }]
-             }
+            {
+                "job": 2,
+                "user": "test-user",
+                "epoch": 2,
+                "processes": [
+                    {
+                        "resident_memory": 2 * 1024**3,
+                        "virtual_memory": 32 * 1024**3,
+                        "cmd": "test-cmd",
+                        "pid": 10000,
+                        "ppid": 9999,
+                        "num_threads": 1,
+                        "cpu_avg": 20,
+                        "cpu_util": 20,
+                        "cpu_time": 1000,
+                        "data_read": 0,
+                        "data_written": 0,
+                        "data_cancelled": 0,
+                        "rolledup": 0,
+                    }
+                ],
+            },
         ],
-        time=str(utcnow())
+        time=str(utcnow()),
     )
+
 
 def sonar_sysinfo_message():
     si = SystemInfo()
-    return sonar_base_message('sysinfo',
-                       cluster='c-0',
-                       node='c-0-n-0',
-                       os_name=platform.uname().system,
-                       os_release=platform.uname().version,
-                       architecture=platform.machine(),
-                       sockets=2,
-                       cores_per_socket=2,
-                       threads_per_core=4,
-                       cpu_model=si.cpu_info.model,
-                       memory=psutil.virtual_memory().total / 1024, # now in KiB
-                       cards=[
-                           {
-                               'uuid': 'c-0-n-0-g-0',
-                               'manufacturer': 'Nvidia',
-                               'model': 'A100-80GB',
-                               'architecture': 'AMPERE',
-                               'memory': 80*1024**2,
-                               'index': 0,
-                               'address': 'pci:0',
-                               'driver': 'testdriver',
-                               'firmware': '1.0.1',
-                               'power_limit': 250,
-                               'max_power_limit': 350,
-                               'min_power_limit': 100,
-                               'max_ce_clock': 2500,
-                               'max_memory_clock': 2500,
-                           }
-                       ],
-                       distances=[],
-                       time=str(utcnow()),
+    return sonar_base_message(
+        "sysinfo",
+        cluster="c-0",
+        node="c-0-n-0",
+        os_name=platform.uname().system,
+        os_release=platform.uname().version,
+        architecture=platform.machine(),
+        sockets=2,
+        cores_per_socket=2,
+        threads_per_core=4,
+        cpu_model=si.cpu_info.model,
+        memory=psutil.virtual_memory().total / 1024,  # now in KiB
+        cards=[
+            {
+                "uuid": "c-0-n-0-g-0",
+                "manufacturer": "Nvidia",
+                "model": "A100-80GB",
+                "architecture": "AMPERE",
+                "memory": 80 * 1024**2,
+                "index": 0,
+                "address": "pci:0",
+                "driver": "testdriver",
+                "firmware": "1.0.1",
+                "power_limit": 250,
+                "max_power_limit": 350,
+                "min_power_limit": 100,
+                "max_ce_clock": 2500,
+                "max_memory_clock": 2500,
+            }
+        ],
+        distances=[],
+        time=str(utcnow()),
     )
 
-@pytest.mark.parametrize("sonar_msg, expected_samples",[
-    [sonar_sysinfo_message(), 4],
 
-])
+@pytest.mark.parametrize(
+    "sonar_msg, expected_samples",
+    [
+        [sonar_sysinfo_message(), 4],
+    ],
+)
 def test_DBJsonImporter_extra_attributes(sonar_msg, expected_samples, test_db_v2):
     importer = DBJsonImporter(db=test_db_v2)
     msg = importer.to_message(sonar_msg)
 
-    TableBase.__extra_values__ = 'forbid'
+    TableBase.__extra_values__ = "forbid"
     samples = importer.parse_sysinfo(copy.deepcopy(msg))
     assert len(samples) == expected_samples
 
-    TableBase.__extra_values__ = 'allow'
+    TableBase.__extra_values__ = "allow"
     msg.data.attributes["extra_attribute"] = "unknown"
     samples = importer.parse_sysinfo(copy.deepcopy(msg))
     assert len(samples) == expected_samples
 
-    TableBase.__extra_values__ = 'forbid'
+    TableBase.__extra_values__ = "forbid"
     with pytest.raises(TypeError):
         importer.parse_sysinfo(copy.deepcopy(msg))
 
 
 @pytest.mark.asyncio(loop_scope="module")
-@pytest.mark.parametrize("sonar_msg",
-    [sonar_sample_message()]
-)
+@pytest.mark.parametrize("sonar_msg", [sonar_sample_message()])
 async def test_DBJsonImporter_non_slurm(sonar_msg, test_db_v2):
     nodes = []
     for node in ["c-0-n-1", "c-0-n-2"]:
-        sonar_msg['data']['attributes']['node'] = node
-        cluster = sonar_msg['data']['attributes']['cluster']
+        sonar_msg["data"]["attributes"]["node"] = node
+        cluster = sonar_msg["data"]["attributes"]["cluster"]
         importers = []
         for i in range(0, 3):
             importers.append(DBJsonImporter(db=test_db_v2))
 
         with test_db_v2.make_session() as session:
-            results = session.execute(sqlalchemy.text(f"SELECT * from cluster_attributes WHERE cluster='{cluster}'")).all()
-            assert len(results) == len(nodes), f"Expected {len(nodes)} cluster_attributes entries got {[x.cluster for x in results]}"
+            results = session.execute(
+                sqlalchemy.text(
+                    f"SELECT * from cluster_attributes WHERE cluster='{cluster}'"
+                )
+            ).all()
+            assert len(results) == len(
+                nodes
+            ), f"Expected {len(nodes)} cluster_attributes entries got {[x.cluster for x in results]}"
 
         nodes.append(node)
-        for i in range(0,10):
+        for i in range(0, 10):
             for importer in importers:
                 await importer.insert(copy.deepcopy(sonar_msg))
 
             with test_db_v2.make_session() as session:
-                results = session.execute(sqlalchemy.text(f"SELECT * from cluster_attributes WHERE cluster='{cluster}'")).all()
-                assert len(results) == len(nodes), f"Update #{i}: expected {len(nodes)} cluster_attributes entries got {[x.cluster for x in results]}"
+                results = session.execute(
+                    sqlalchemy.text(
+                        f"SELECT * from cluster_attributes WHERE cluster='{cluster}'"
+                    )
+                ).all()
+                assert len(results) == len(
+                    nodes
+                ), f"Update #{i}: expected {len(nodes)} cluster_attributes entries got {[x.cluster for x in results]}"
+
 
 @pytest.mark.asyncio(loop_scope="function")
-@pytest.mark.parametrize("sonar_msg_files, expected_clusters",
+@pytest.mark.parametrize(
+    "sonar_msg_files, expected_clusters",
     [
-        [[ "0+sysinfo-ml1.hpc.uio.no.json", "0+sample-ml1.hpc.uio.no.json" ], {"mlx.hpc.uio.no": {"ml1"}} ],
-        [[ "0+sample-g001.ex3.simula.no.json", "0+sysinfo-g001.ex3.simula.no.json"], {"ex3.simula.no": {"g001"}}],
-        [ [
-             "0+sysinfo-ml1.hpc.uio.no.json",
-             "0+sample-ml1.hpc.uio.no.json",
-             "0+sample-g001.ex3.simula.no.json",
-             "0+sysinfo-g001.ex3.simula.no.json"
-          ],
-         { "mlx.hpc.uio.no": {"ml1"}, "ex3.simula.no": {"g001"} }
-        ],
-        [ [
-             "0+sample-g001.ex3.simula.no.json",
-             "0+sample-ml1.hpc.uio.no.json",
-             "0+sysinfo-g001.ex3.simula.no.json",
-             "0+sysinfo-ml1.hpc.uio.no.json",
-          ],
-         { "mlx.hpc.uio.no": {"ml1"}, "ex3.simula.no": {"g001"} }
-        ],
-        [ [
-             "0+sample-g001.ex3.simula.no.json",
-             "0+sample-ml1.hpc.uio.no.json",
-             "0+sample-ml2.hpc.uio.no.json",
-             "0+sample-ml3.hpc.uio.no.json",
-             "0+sysinfo-g001.ex3.simula.no.json",
-             "0+sysinfo-ml1.hpc.uio.no.json",
-             "0+sysinfo-ml2.hpc.uio.no.json",
-             "0+sysinfo-ml3.hpc.uio.no.json",
-          ],
-         { "mlx.hpc.uio.no": {"ml1", "ml2", "ml3"}, "ex3.simula.no": {"g001"}}
-        ],
-        [ [
-             "0+sample-g001.ex3.simula.no.json",
-             "0+sample-ml1.hpc.uio.no.json",
-             "0+sample-ml2.hpc.uio.no.json",
-             "0+sample-ml3.hpc.uio.no.json",
-          ],
-         { "mlx.hpc.uio.no": {"ml1", "ml2", "ml3"}, "ex3.simula.no": {"g001"}}
+        [
+            ["0+sysinfo-ml1.hpc.uio.no.json", "0+sample-ml1.hpc.uio.no.json"],
+            {"mlx.hpc.uio.no": {"ml1"}},
         ],
         [
-          [
-             "0+cluster.ex3.simula.no.json",
-             "0+sysinfo-g001.ex3.simula.no.json",
-             "0+sysinfo-g002.ex3.simula.no.json",
-             "0+cluster.ex3.simula.no.json"
-          ],
-         { "ex3.simula.no": {"g001", "g002"}}
+            ["0+sample-g001.ex3.simula.no.json", "0+sysinfo-g001.ex3.simula.no.json"],
+            {"ex3.simula.no": {"g001"}},
         ],
         [
-          [
-             "0+cluster.ex3.simula.no.json",
-             "0+sysinfo-g001.ex3.simula.no.json",
-             "0+sysinfo-g002.ex3.simula.no.json",
-             "0+cluster.ex3.simula.no.json",
-             "0+sample-g001.ex3.simula.no.json"
-          ],
-         { "ex3.simula.no": {"g001", "g002"}}
+            [
+                "0+sysinfo-ml1.hpc.uio.no.json",
+                "0+sample-ml1.hpc.uio.no.json",
+                "0+sample-g001.ex3.simula.no.json",
+                "0+sysinfo-g001.ex3.simula.no.json",
+            ],
+            {"mlx.hpc.uio.no": {"ml1"}, "ex3.simula.no": {"g001"}},
         ],
-        [[ "3+sample.fox.educloud.no.json" ], {"fox.educloud.no": {"c1-10.fox"}} ],
-    ]
+        [
+            [
+                "0+sample-g001.ex3.simula.no.json",
+                "0+sample-ml1.hpc.uio.no.json",
+                "0+sysinfo-g001.ex3.simula.no.json",
+                "0+sysinfo-ml1.hpc.uio.no.json",
+            ],
+            {"mlx.hpc.uio.no": {"ml1"}, "ex3.simula.no": {"g001"}},
+        ],
+        [
+            [
+                "0+sample-g001.ex3.simula.no.json",
+                "0+sample-ml1.hpc.uio.no.json",
+                "0+sample-ml2.hpc.uio.no.json",
+                "0+sample-ml3.hpc.uio.no.json",
+                "0+sysinfo-g001.ex3.simula.no.json",
+                "0+sysinfo-ml1.hpc.uio.no.json",
+                "0+sysinfo-ml2.hpc.uio.no.json",
+                "0+sysinfo-ml3.hpc.uio.no.json",
+            ],
+            {"mlx.hpc.uio.no": {"ml1", "ml2", "ml3"}, "ex3.simula.no": {"g001"}},
+        ],
+        [
+            [
+                "0+sample-g001.ex3.simula.no.json",
+                "0+sample-ml1.hpc.uio.no.json",
+                "0+sample-ml2.hpc.uio.no.json",
+                "0+sample-ml3.hpc.uio.no.json",
+            ],
+            {"mlx.hpc.uio.no": {"ml1", "ml2", "ml3"}, "ex3.simula.no": {"g001"}},
+        ],
+        [
+            [
+                "0+cluster.ex3.simula.no.json",
+                "0+sysinfo-g001.ex3.simula.no.json",
+                "0+sysinfo-g002.ex3.simula.no.json",
+                "0+cluster.ex3.simula.no.json",
+            ],
+            {"ex3.simula.no": {"g001", "g002"}},
+        ],
+        [
+            [
+                "0+cluster.ex3.simula.no.json",
+                "0+sysinfo-g001.ex3.simula.no.json",
+                "0+sysinfo-g002.ex3.simula.no.json",
+                "0+cluster.ex3.simula.no.json",
+                "0+sample-g001.ex3.simula.no.json",
+            ],
+            {"ex3.simula.no": {"g001", "g002"}},
+        ],
+        [["3+sample.fox.educloud.no.json"], {"fox.educloud.no": {"c1-10.fox"}}],
+    ],
 )
-async def test_DBJsonImporter_sonar_examples(sonar_msg_files,
-                                             expected_clusters,
-                                             test_db_v2__function_scope,
-                                             db_config,
-                                             test_data_dir):
+async def test_DBJsonImporter_sonar_examples(
+    sonar_msg_files,
+    expected_clusters,
+    test_db_v2__function_scope,
+    db_config,
+    test_data_dir,
+):
     db = test_db_v2__function_scope
     importer = DBJsonImporter(db=db)
 
@@ -231,49 +269,95 @@ async def test_DBJsonImporter_sonar_examples(sonar_msg_files,
 
         with open(json_filename, "r") as f:
             msg_data = json.load(f)
-            if 'cards' in msg_data['data']['attributes']:
-                in_msg_uuids.union(set([x['uuid'] for x in msg_data['data']['attributes']['cards']]))
+            if "cards" in msg_data["data"]["attributes"]:
+                in_msg_uuids.union(
+                    set([x["uuid"] for x in msg_data["data"]["attributes"]["cards"]])
+                )
 
             await importer.insert(copy.deepcopy(msg_data))
 
     with db.make_session() as session:
-        results = session.execute(sqlalchemy.text("SELECT cluster, nodes from cluster_attributes")).all()
-        clusters = { x[0]: set(x[1]) for x in results}
+        results = session.execute(
+            sqlalchemy.text("SELECT cluster, nodes from cluster_attributes")
+        ).all()
+        clusters = {x[0]: set(x[1]) for x in results}
         for expected_cluster, expected_nodes in expected_clusters.items():
-            assert clusters[expected_cluster] == expected_clusters[expected_cluster], f"Expected {expected_cluster} with nodes {expected_clusters[expected_cluster]} in cluster_attributes, but got {clusters=}"
+            assert (
+                clusters[expected_cluster] == expected_clusters[expected_cluster]
+            ), f"Expected {expected_cluster} with nodes {expected_clusters[expected_cluster]} in cluster_attributes, but got {clusters=}"
             # existing clusters of test db plus newly added ons
-            assert len(expected_clusters) + db_config.number_of_clusters == len(clusters)
+            assert len(expected_clusters) + db_config.number_of_clusters == len(
+                clusters
+            )
 
         if has_sysinfo:
-            results = session.execute(sqlalchemy.text("SELECT cluster, node, architecture from node")).all()
+            results = session.execute(
+                sqlalchemy.text("SELECT cluster, node, architecture from node")
+            ).all()
             for x in results:
-                assert x[2] != '', f"cluster {x[0]} node {x[1]} should have architecture, but was {x[2]}"
+                assert (
+                    x[2] != ""
+                ), f"cluster {x[0]} node {x[1]} should have architecture, but was {x[2]}"
 
-        results = session.execute(sqlalchemy.text("SELECT uuid from sysinfo_gpu_card")).all()
+        results = session.execute(
+            sqlalchemy.text("SELECT uuid from sysinfo_gpu_card")
+        ).all()
         in_db_uuids = [x[0] for x in results]
 
-
         for uuid in in_msg_uuids:
-            assert uuid in in_db_uuids, f"Expected uuids {in_msg_uuids} to be present, but found {in_db_uuids}"
+            assert (
+                uuid in in_db_uuids
+            ), f"Expected uuids {in_msg_uuids} to be present, but found {in_db_uuids}"
 
-            results = session.execute(sqlalchemy.text(f"SELECT memory from sysinfo_gpu_card WHERE uuid = '{uuid}'")).all()
+            results = session.execute(
+                sqlalchemy.text(
+                    f"SELECT memory from sysinfo_gpu_card WHERE uuid = '{uuid}'"
+                )
+            ).all()
             assert len(results) == 1, f"Expected 1 matching uuid entry got {results}"
             assert results[0][0] != 0, f"Expected memory > 0, but got {results[0][0]}"
 
 
-
 @pytest.mark.asyncio(loop_scope="function")
-@pytest.mark.parametrize("sonar_msg_files, expected_clusters",
+@pytest.mark.parametrize(
+    "sonar_msg_files, expected_clusters",
     [
-        [ ["0+job-srl-login3.ex3.simula.no.json"], {"ex3.simula.no": {"nodes": ['h001', 'n004', 'g001'], "partitions": ['dgx2q', 'habanaq', 'hgx2q', 'mi100q'] }}],
-        [ ["0+cluster.ex3.simula.no.json", "0+job-with-unknown-partition.ex3.simula.no.json"], {"ex3.simula.no": {"nodes": ['g001', 'g002', 'h001', 'n004'], "partitions": ['unknown-partition-0', 'dgx2q', 'habanaq', 'hgx2q', 'mi100q'] }}]
-    ]
+        [
+            ["0+job-srl-login3.ex3.simula.no.json"],
+            {
+                "ex3.simula.no": {
+                    "nodes": ["h001", "n004", "g001"],
+                    "partitions": ["dgx2q", "habanaq", "hgx2q", "mi100q"],
+                }
+            },
+        ],
+        [
+            [
+                "0+cluster.ex3.simula.no.json",
+                "0+job-with-unknown-partition.ex3.simula.no.json",
+            ],
+            {
+                "ex3.simula.no": {
+                    "nodes": ["g001", "g002", "h001", "n004"],
+                    "partitions": [
+                        "unknown-partition-0",
+                        "dgx2q",
+                        "habanaq",
+                        "hgx2q",
+                        "mi100q",
+                    ],
+                }
+            },
+        ],
+    ],
 )
-async def test_DBJsonImporter_autoupdate(sonar_msg_files,
-                                         expected_clusters,
-                                         test_db_v2__function_scope,
-                                         db_config,
-                                         test_data_dir):
+async def test_DBJsonImporter_autoupdate(
+    sonar_msg_files,
+    expected_clusters,
+    test_db_v2__function_scope,
+    db_config,
+    test_data_dir,
+):
     db = test_db_v2__function_scope
     importer = DBJsonImporter(db=db)
 
@@ -281,18 +365,28 @@ async def test_DBJsonImporter_autoupdate(sonar_msg_files,
         json_filename = Path(test_data_dir) / "sonar" / sonar_msg_file
         with open(json_filename, "r") as f:
             msg_data = json.load(f)
-            msg_data["data"]["attributes"]["time"] = (utcnow() - dt.timedelta(seconds=(3600 - idx*60))).isoformat()
+            msg_data["data"]["attributes"]["time"] = (
+                utcnow() - dt.timedelta(seconds=(3600 - idx * 60))
+            ).isoformat()
             await importer.insert(copy.deepcopy(msg_data))
 
     for cluster_name, nodes in expected_clusters.items():
         await importer.autoupdate(cluster=cluster_name)
 
         with db.make_session() as session:
-            results = session.execute(sqlalchemy.text(f"SELECT cluster, nodes, partitions from cluster_attributes where cluster = '{cluster_name}' ORDER BY time DESC")).all()
+            results = session.execute(
+                sqlalchemy.text(
+                    f"SELECT cluster, nodes, partitions from cluster_attributes where cluster = '{cluster_name}' ORDER BY time DESC"
+                )
+            ).all()
             assert results
             cluster, nodes, partitions = results[0]
-            expected_nodes = expected_clusters[cluster_name]['nodes']
-            expected_partitions = expected_clusters[cluster_name]['partitions']
+            expected_nodes = expected_clusters[cluster_name]["nodes"]
+            expected_partitions = expected_clusters[cluster_name]["partitions"]
 
-            assert sorted(nodes) == sorted(expected_nodes), f"Expected nodes {expected_nodes} in cluster_attributes, but got {nodes=}"
-            assert sorted(partitions) == sorted(expected_partitions), f"Expected partitions {expected_partitions} in cluster_attributes, but got {partitions=}"
+            assert sorted(nodes) == sorted(
+                expected_nodes
+            ), f"Expected nodes {expected_nodes} in cluster_attributes, but got {nodes=}"
+            assert sorted(partitions) == sorted(
+                expected_partitions
+            ), f"Expected partitions {expected_partitions} in cluster_attributes, but got {partitions=}"

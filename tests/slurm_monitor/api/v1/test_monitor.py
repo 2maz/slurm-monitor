@@ -10,19 +10,20 @@ from slurm_monitor.db.v1.db_tables import CPUStatus
 from slurm_monitor.db.v1.query import QueryMaker
 
 
-
 @pytest_asyncio.fixture(loop_scope="module")
 def client(mock_slurm_command_hint, test_db_uri, monkeypatch_module):
-    Slurm._BIN_HINTS = [ mock_slurm_command_hint ]
+    Slurm._BIN_HINTS = [mock_slurm_command_hint]
     monkeypatch_module.setenv("SLURM_MONITOR_DATABASE_URI", f"{test_db_uri}")
 
     with TestClient(app) as c:
         yield c
 
+
 @pytest.mark.asyncio
 async def test_metrics(client):
     response = client.get("/metrics")
     assert response.status_code == 200
+
 
 @pytest.mark.asyncio
 async def test_monitor_nodes(client):
@@ -31,9 +32,10 @@ async def test_monitor_nodes(client):
 
     json_data = response.json()
     assert "nodes" in json_data
-    nodenames = [x['name'] for x in json_data['nodes']]
-    for i in range(1,23):
+    nodenames = [x["name"] for x in json_data["nodes"]]
+    for i in range(1, 23):
         assert f"n{i:03d}" in nodenames
+
 
 @pytest.mark.asyncio
 async def test_monitor_nodes_info(client, test_db):
@@ -46,6 +48,7 @@ async def test_monitor_nodes_info(client, test_db):
     for node in nodes:
         assert node in json_data["nodes"]
 
+
 @pytest.mark.asyncio
 async def test_job_system_status(client, test_db):
     response = client.get("/api/v1/monitor/jobs/1/system_status")
@@ -55,6 +58,7 @@ async def test_job_system_status(client, test_db):
     assert "nodes" in json_data
     assert "node-1" in json_data["nodes"]
     assert "accumulated" in json_data["nodes"]["node-1"]
+
 
 @pytest.mark.asyncio
 async def test_job_info(client, test_db):
@@ -66,6 +70,7 @@ async def test_job_info(client, test_db):
     assert json_data["job_status"]["job_id"] == 1
     assert json_data["job_status"]["name"] == "test-job"
 
+
 @pytest.mark.asyncio
 async def test_nodes_gpu_status(client, test_db):
     response = client.get("/api/v1/monitor/nodes/node-0/gpu_status")
@@ -74,6 +79,7 @@ async def test_nodes_gpu_status(client, test_db):
     json_data = response.json()
     assert "gpu_status" in json_data
 
+
 @pytest.mark.asyncio
 async def test_nodes_gpu_status_with_args(client, test_db):
     response = client.get("/api/v1/monitor/nodes/node-0/gpu_status")
@@ -81,6 +87,7 @@ async def test_nodes_gpu_status_with_args(client, test_db):
 
     json_data = response.json()
     assert "gpu_status" in json_data
+
 
 @pytest.mark.asyncio
 async def test_nodes_refresh_info(client, test_db):
@@ -93,28 +100,31 @@ async def test_nodes_refresh_info(client, test_db):
     for node in nodes:
         assert node in json_data["nodes"]
 
+
 def test_validate_interval():
     start_time_in_s = None
     end_time_in_s = None
     resolution_in_s = None
 
-    start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(start_time_in_s,
-            end_time_in_s, resolution_in_s)
+    start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
+        start_time_in_s, end_time_in_s, resolution_in_s
+    )
 
     # Checking defaults
     assert start_time_in_s is not None
     assert end_time_in_s is not None
-    assert abs((end_time_in_s - start_time_in_s) - 60*60) <= 10E-3
+    assert abs((end_time_in_s - start_time_in_s) - 60 * 60) <= 10e-3
     assert resolution_in_s == 60
 
     with pytest.raises(HTTPException, match="cannot be smaller"):
         validate_interval(100, 120, resolution_in_s)
 
     with pytest.raises(HTTPException, match="cannot exceed 14 days"):
-        validate_interval(3600*24*14+101, 100, resolution_in_s)
+        validate_interval(3600 * 24 * 14 + 101, 100, resolution_in_s)
 
     with pytest.raises(HTTPException, match="must be >= 1"):
         validate_interval(120, 100, -1)
+
 
 def test_nodeinfo(client, test_db):
     load_infos = load_node_infos()
@@ -136,9 +146,12 @@ async def test_nodes_last_probe_timestamp(client, test_db):
     for node in nodes:
         assert node in json_data
 
-        latest_cpu_status = test_db.fetch_latest(CPUStatus, where=(CPUStatus.node == node))
+        latest_cpu_status = test_db.fetch_latest(
+            CPUStatus, where=(CPUStatus.node == node)
+        )
         assert latest_cpu_status
         assert dt.datetime.fromisoformat(json_data[node]) == latest_cpu_status.timestamp
+
 
 @pytest.mark.asyncio
 async def test_queries(client, test_db):
@@ -146,8 +159,9 @@ async def test_queries(client, test_db):
     assert response.status_code == 200
 
     json_data = response.json()
-    assert 'queries' in json_data
-    assert QueryMaker.list_available() == json_data['queries']
+    assert "queries" in json_data
+    assert QueryMaker.list_available() == json_data["queries"]
+
 
 @pytest.mark.parametrize("query_name", QueryMaker.list_available())
 @pytest.mark.asyncio

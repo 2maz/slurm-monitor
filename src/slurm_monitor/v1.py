@@ -30,6 +30,7 @@ from logging import getLogger
 logger = getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -65,13 +66,16 @@ async def lifespan(app: FastAPI):
         logger.info("Startup of jobs collector")
         jobs_pool = start_jobs_collection(database)
     else:
-        logger.warning("Jobs collector has been disabled (via env SLURM_MONITOR_JOBS_COLLECTOR)")
+        logger.warning(
+            "Jobs collector has been disabled (via env SLURM_MONITOR_JOBS_COLLECTOR)"
+        )
 
     yield
 
     logger.info("Shutting down ...")
     if jobs_pool is not None:
         jobs_pool.stop()
+
 
 app = FastAPI(
     title="slurm-monitor", description="slurm monitor", version="0.1", lifespan=lifespan
@@ -104,13 +108,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     logger.debug("", exc_info=exc)
     return await exception_handlers.request_validation_exception_handler(request, exc)
 
+
 @app.exception_handler(Exception)
 async def runtime_exception_handler(request: Request, exc: Exception):
     logger.warning(exc)
     traceback.print_tb(exc.__traceback__)
 
-    raise HTTPException(status_code=500,
-            detail=f"Internal Error: {exc}")
+    raise HTTPException(status_code=500, detail=f"Internal Error: {exc}")
+
 
 # Serve API. We want the API to take full charge of its prefix, not involve the SPA mount
 # at all, hence we use a submount rather than subrouter.

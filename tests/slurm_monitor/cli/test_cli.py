@@ -21,6 +21,7 @@ from slurm_monitor.db_operations import DBManager
 from slurm_monitor.utils.command import Command
 from slurm_monitor.db.v2.db_tables import SampleDisk
 
+
 @pytest.fixture
 def subparsers():
     return [
@@ -34,33 +35,39 @@ def subparsers():
         "restapi",
         "spec",
         "system-info",
-        "test"
+        "test",
     ]
 
+
 def test_help(subparsers, capsys, monkeypatch):
-    monkeypatch.setattr(sys, 'argv', ['slurm-monitor'])
+    monkeypatch.setattr(sys, "argv", ["slurm-monitor"])
     cli_main.run()
     captured = capsys.readouterr()
 
     for subparser in subparsers:
-        assert re.search(subparser, captured.out), f"Help for subcommand '{subparser}' expected"
+        assert re.search(
+            subparser, captured.out
+        ), f"Help for subcommand '{subparser}' expected"
 
 
-@pytest.mark.parametrize("name, klass", [
-    [ "auto-deploy", AutoDeployParser ],
-    [ "import", ImportParser ],
-    [ "listen", ListenParser ],
-    [ "listen-ui", ListenUiParser],
-    [ "probe", ProbeParser ],
-    [ "query", QueryParser ],
-    [ "restapi", RestapiParser ],
-    [ "system-info", SystemInfoParser ],
-    [ "spec", SpecParser ],
-    [ "db", DBParser ],
-    [ "test", TestParser ],
-])
+@pytest.mark.parametrize(
+    "name, klass",
+    [
+        ["auto-deploy", AutoDeployParser],
+        ["import", ImportParser],
+        ["listen", ListenParser],
+        ["listen-ui", ListenUiParser],
+        ["probe", ProbeParser],
+        ["query", QueryParser],
+        ["restapi", RestapiParser],
+        ["system-info", SystemInfoParser],
+        ["spec", SpecParser],
+        ["db", DBParser],
+        ["test", TestParser],
+    ],
+)
 def test_subparser(name, klass, script_runner):
-    result = script_runner.run(['slurm-monitor', name, "--help"])
+    result = script_runner.run(["slurm-monitor", name, "--help"])
     assert result.returncode == 0, f"Expected --help option for {name} subparser"
 
     test_parser = ArgumentParser()
@@ -71,18 +78,37 @@ def test_subparser(name, klass, script_runner):
             continue
 
         for option in a.option_strings:
-            assert re.search(option, result.stdout) is not None, f"Should have {option=}"
+            assert (
+                re.search(option, result.stdout) is not None
+            ), f"Should have {option=}"
+
 
 def test_spec(script_runner):
-    result = script_runner.run(['slurm-monitor', 'spec'])
+    result = script_runner.run(["slurm-monitor", "spec"])
     assert re.search("implemented", result.stdout) is not None, "Implemented"
 
-@pytest.mark.parametrize("timescaledb", [{'port': 7002, 'container-suffix': '-db_parser'}], indirect=["timescaledb"])
+
+@pytest.mark.parametrize(
+    "timescaledb",
+    [{"port": 7002, "container-suffix": "-db_parser"}],
+    indirect=["timescaledb"],
+)
 def test_db_parser(script_runner, timescaledb):
     cluster = "my-test-cluster"
-    result = script_runner.run(['slurm-monitor', 'db', '--db-uri', timescaledb, "--insert-test-samples", cluster])
+    result = script_runner.run(
+        [
+            "slurm-monitor",
+            "db",
+            "--db-uri",
+            timescaledb,
+            "--insert-test-samples",
+            cluster,
+        ]
+    )
     assert result.returncode == 0
-    cluster_result = Command.run("docker exec timescaledb-pytest-db_parser psql -U test test -tAq -c 'SELECT cluster from cluster_attributes'")
+    cluster_result = Command.run(
+        "docker exec timescaledb-pytest-db_parser psql -U test test -tAq -c 'SELECT cluster from cluster_attributes'"
+    )
 
     cluster_entries = cluster_result.split("\n")
     assert len(cluster_entries) == 2
@@ -92,6 +118,7 @@ def test_db_parser(script_runner, timescaledb):
 
     assert list(unique_clusters)[0] == cluster
 
+
 @pytest.mark.asyncio(loop_scope="function")
 async def test_db_apply_changes(script_runner, test_db_v2, db_config, timescaledb):
     SampleDisk.__table__.drop(test_db_v2.engine)
@@ -100,9 +127,13 @@ async def test_db_apply_changes(script_runner, test_db_v2, db_config, timescaled
     initial_status = DBManager.get_status(timescaledb)
     assert tablename not in initial_status
 
-    result = script_runner.run(['slurm-monitor', 'db', "--db-uri", str(timescaledb), "--apply-changes"])
+    result = script_runner.run(
+        ["slurm-monitor", "db", "--db-uri", str(timescaledb), "--apply-changes"]
+    )
     assert result.returncode == 0
-    assert re.search(r"added tables: \['" + tablename + r"'\]", result.stdout) is not None
+    assert (
+        re.search(r"added tables: \['" + tablename + r"'\]", result.stdout) is not None
+    )
 
     new_status = DBManager.get_status(timescaledb)
     assert tablename in new_status

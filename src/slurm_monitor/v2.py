@@ -31,6 +31,7 @@ from logging import getLogger
 logger = getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -38,18 +39,15 @@ async def lifespan(app: FastAPI):
     https://fastapi.tiangolo.com/advanced/events/#lifespan
     """
     logging.basicConfig(
-        format='[{asctime}][{levelname:^8s}] {name}: {message}',
-        style='{',
-        datefmt='%Y-%m-%d %H:%M:%S',
+        format="[{asctime}][{levelname:^8s}] {name}: {message}",
+        style="{",
+        datefmt="%Y-%m-%d %H:%M:%S",
         level=logging.INFO,
     )
 
     logger.setLevel(logging.DEBUG)  # output of exception handlers above
     logger.info("Setting up cache ...")
-    FastAPICache.init(
-            backend=InMemoryBackend(),
-            prefix="fastapi-cache"
-    )
+    FastAPICache.init(backend=InMemoryBackend(), prefix="fastapi-cache")
 
     logger.info("Setting up database ...")
     app_settings = AppSettings.initialize(db_schema_version="v2", force=True)
@@ -57,8 +55,12 @@ async def lifespan(app: FastAPI):
         logger.info("Setting up prefetching ...")
 
         # Keeping it here to parametrize via app_settings
-        repeat_decorator = repeat_every(seconds=app_settings.prefetch.interval, logger=logger)
-        task = asyncio.create_task(repeat_decorator(prefetch_data)(), name="prefetch_data")
+        repeat_decorator = repeat_every(
+            seconds=app_settings.prefetch.interval, logger=logger
+        )
+        task = asyncio.create_task(
+            repeat_decorator(prefetch_data)(), name="prefetch_data"
+        )
 
     yield
 
@@ -70,11 +72,11 @@ async def lifespan(app: FastAPI):
             logger.info("Prefetching has been stopped")
     logger.info("Shutting down ...")
 
+
 tags_metadata = [
     {
         "name": "cluster",
         "description": "Operations that give a high-level **cluster**-specific result",
-
     },
     {
         "name": "node",
@@ -83,19 +85,17 @@ tags_metadata = [
             "description": "test external",
             "url": "https://fastapi.tiangolo.com",
         },
-
     },
     {
         "name": "job",
         "description": "Operations that give **job**-specific results",
-
     },
 ]
 
 app = createFastAPI(
-        lifespan=lifespan,
-        openapi_tags=tags_metadata,
-      )
+    lifespan=lifespan,
+    openapi_tags=tags_metadata,
+)
 
 add_pagination(app)
 app.add_middleware(
@@ -124,13 +124,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     logger.debug("", exc_info=exc)
     return await exception_handlers.request_validation_exception_handler(request, exc)
 
+
 @app.exception_handler(Exception)
 async def runtime_exception_handler(request: Request, exc: Exception):
     logger.warning(exc)
     traceback.print_tb(exc.__traceback__)
 
-    raise HTTPException(status_code=500,
-            detail=f"Internal Error: {exc}")
+    raise HTTPException(status_code=500, detail=f"Internal Error: {exc}")
+
 
 async def prefetch_data():
     logger.info("Prefetch starting")
@@ -143,13 +144,17 @@ async def prefetch_data():
     jobs_endpoint = find_endpoint_by_name(app=app, name="jobs")
 
     for cluster_data in clusters:
-        cluster = cluster_data['cluster']
+        cluster = cluster_data["cluster"]
 
         # DO NOT use a dynamic argument such as time_in_s, since that will
         # prevent the caching to work
         try:
-            await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster, time_in_s=None, dbi=dbi)
-            await partitions_endpoint(token_payload=None, cluster=cluster, time_in_s=None, dbi=dbi)
+            await nodes_sysinfo_endpoint(
+                token_payload=None, cluster=cluster, time_in_s=None, dbi=dbi
+            )
+            await partitions_endpoint(
+                token_payload=None, cluster=cluster, time_in_s=None, dbi=dbi
+            )
             await jobs_endpoint(token_payload=None, cluster=cluster, dbi=dbi)
         except Exception:
             logger.info("Prefetching failed - {e}")
@@ -161,6 +166,7 @@ async def prefetch_data():
     logger.debug("Running gc")
     gc.collect()
     logger.debug(f"Done running gc, post stats: {gc.get_stats()}")
+
 
 # Serve API. We want the API to take full charge of its prefix, not involve the SPA mount
 # at all, hence we use a submount rather than subrouter.

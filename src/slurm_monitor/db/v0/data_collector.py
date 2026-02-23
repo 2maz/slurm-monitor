@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
+
 class Observer(Generic[T]):
     _samples: Queue
 
@@ -120,11 +121,20 @@ class GPUStatusCollector(DataCollector[GPUStatus], Observable[GPUStatus]):
     user: str = None
     gpu_type: str
 
-    def __init__(self, nodename: str, gpu_type: str, user: str = None, sampling_interval_in_s: int | None = None):
+    def __init__(
+        self,
+        nodename: str,
+        gpu_type: str,
+        user: str = None,
+        sampling_interval_in_s: int | None = None,
+    ):
         if sampling_interval_in_s is None:
             sampling_interval_in_s = 20
 
-        super().__init__(name=f"gpu-collector-{nodename}", sampling_interval_in_s=sampling_interval_in_s)
+        super().__init__(
+            name=f"gpu-collector-{nodename}",
+            sampling_interval_in_s=sampling_interval_in_s,
+        )
 
         self.observers = []
         self.local_id_mapping = {}
@@ -210,7 +220,7 @@ class CollectorPool(Generic[T], Observer[T]):
     _stop: bool = False
     verbose: bool = True
 
-    def __init__(self, db: Database, name: str = ''):
+    def __init__(self, db: Database, name: str = ""):
         super().__init__()
 
         self.name = name
@@ -229,7 +239,10 @@ class CollectorPool(Generic[T], Observer[T]):
         [x.start() for x in self._collectors]
         if self.verbose:
             while not self._stop:
-                print(f"{self.name} queue size: {self._samples.qsize()} {utcnow()} (UTC)\r", end="")
+                print(
+                    f"{self.name} queue size: {self._samples.qsize()} {utcnow()} (UTC)\r",
+                    end="",
+                )
                 time.sleep(5)
         [x.thread.join() for x in self._collectors]
 
@@ -262,6 +275,7 @@ class CollectorPool(Generic[T], Observer[T]):
                     self.save(samples)
                 break
         assert self._samples.qsize() == 0
+
     def start(self, verbose: bool = True):
         self._stop = False
         self.verbose = verbose
@@ -279,8 +293,15 @@ class CollectorPool(Generic[T], Observer[T]):
 
 
 class NvidiaInfoCollector(GPUStatusCollector):
-    def __init__(self, nodename: str, user: str = None, sampling_interval_in_s: int | None = None):
-        super().__init__(nodename=nodename, gpu_type="nvidia", user=user, sampling_interval_in_s=sampling_interval_in_s)
+    def __init__(
+        self, nodename: str, user: str = None, sampling_interval_in_s: int | None = None
+    ):
+        super().__init__(
+            nodename=nodename,
+            gpu_type="nvidia",
+            user=user,
+            sampling_interval_in_s=sampling_interval_in_s,
+        )
 
     @property
     def query_cmd(self):
@@ -309,8 +330,15 @@ class NvidiaInfoCollector(GPUStatusCollector):
 
 
 class HabanaInfoCollector(GPUStatusCollector):
-    def __init__(self, nodename: str, user: str = None, sampling_interval_in_s: int | None = None):
-        super().__init__(nodename=nodename, gpu_type="habana", user=user, sampling_interval_in_s=sampling_interval_in_s)
+    def __init__(
+        self, nodename: str, user: str = None, sampling_interval_in_s: int | None = None
+    ):
+        super().__init__(
+            nodename=nodename,
+            gpu_type="habana",
+            user=user,
+            sampling_interval_in_s=sampling_interval_in_s,
+        )
 
     @property
     def query_cmd(self):
@@ -358,8 +386,15 @@ class HabanaInfoCollector(GPUStatusCollector):
 
 
 class ROCMInfoCollector(GPUStatusCollector):
-    def __init__(self, nodename: str, user: str = None, sampling_interval_in_s: int | None = None):
-        super().__init__(nodename=nodename, gpu_type="amd", user=user, sampling_interval_in_s=sampling_interval_in_s)
+    def __init__(
+        self, nodename: str, user: str = None, sampling_interval_in_s: int | None = None
+    ):
+        super().__init__(
+            nodename=nodename,
+            gpu_type="amd",
+            user=user,
+            sampling_interval_in_s=sampling_interval_in_s,
+        )
 
     @property
     def query_cmd(self):
@@ -402,7 +437,7 @@ class ROCMInfoCollector(GPUStatusCollector):
             "Card series",
             "Card model",
             "Card vendor",
-            "Card SKU"
+            "Card SKU",
         ]
 
     def send_request(self, nodename: str, user: str) -> str:
@@ -413,7 +448,9 @@ class ROCMInfoCollector(GPUStatusCollector):
 
     def parse_response(self, response: str) -> dict[str]:
         gpus = []
-        main_response = [x for x in response.strip().split("\n") if not x.lower().startswith("warn")]
+        main_response = [
+            x for x in response.strip().split("\n") if not x.lower().startswith("warn")
+        ]
 
         field_names = main_response[0].split(",")
         for line in main_response[1:]:
@@ -444,7 +481,8 @@ class ROCMInfoCollector(GPUStatusCollector):
                 * 1.0
                 / int(value["VRAM Total Memory (B)"]),
                 utilization_gpu=value["GPU use (%)"],
-                memory_total=int(value["VRAM Total Memory (B)"])/(1024.0**2), # Use MB
+                memory_total=int(value["VRAM Total Memory (B)"])
+                / (1024.0**2),  # Use MB
                 timestamp=timestamp,
             )
             samples.append(sample)
@@ -497,6 +535,7 @@ class JobStatusCollector(DataCollector[JobStatus], Observable[JobStatus]):
 
         return [JobStatus.from_json(x) for x in response["jobs"]]
 
+
 def cli_run():
     Slurm.ensure_restd()
 
@@ -506,7 +545,7 @@ def cli_run():
     args, unknown = parser.parse_known_args()
 
     db_settings = DatabaseSettings()
-    db_home = Path(db_settings.uri.replace("sqlite:///","")).parent
+    db_home = Path(db_settings.uri.replace("sqlite:///", "")).parent
     db_home.mkdir(parents=True, exist_ok=True)
 
     if args.mode == "dev":
@@ -521,12 +560,13 @@ def cli_run():
 
     run(db_settings)
 
+
 def run(db_settings: DatabaseSettings | None = None):
     if db_settings is None:
         db_settings = DatabaseSettings()
 
     db = SlurmMonitorDB(db_settings=db_settings)
-    gpu_pool = GPUStatusCollectorPool(db=db, name='gpu status')
+    gpu_pool = GPUStatusCollectorPool(db=db, name="gpu status")
 
     collectors = [
         # Nvidia Volta V100
@@ -555,17 +595,18 @@ def run(db_settings: DatabaseSettings | None = None):
     gpu_pool.start()
 
     job_status_collector = JobStatusCollector()
-    jobs_pool = CollectorPool[JobStatus](db=db, name='job status')
+    jobs_pool = CollectorPool[JobStatus](db=db, name="job status")
     jobs_pool.add_collector(job_status_collector)
     jobs_pool.start()
 
     while True:
         answer = input("\nEnter 'q' to quit\n\n")
-        if answer.lower().startswith('q'):
+        if answer.lower().startswith("q"):
             break
 
     gpu_pool.stop()
     jobs_pool.stop()
+
 
 if __name__ == "__main__":
     cli_run()

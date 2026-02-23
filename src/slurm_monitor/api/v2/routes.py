@@ -15,7 +15,7 @@ from slurm_monitor.utils import utcnow
 logger: Logger = getLogger(__name__)
 
 api_router = APIRouter(
-#    prefix="",
+    #    prefix="",
     tags=["v2"]
 )
 
@@ -23,30 +23,33 @@ oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="token",
     scopes={
         "user.read": "Read information about the current user.",
-        "jobs.all": "Read all items."
-    }
+        "jobs.all": "Read all items.",
+    },
 )
+
 
 class Roles(BaseSettings):
     roles: list[str] = Field(default=[])
 
+
 class Account(BaseSettings):
     account: Roles
 
+
 class TokenPayload(BaseSettings):
-    exp: int # time in s
+    exp: int  # time in s
     iat: int
     jti: str
-    iss: str # issuer
-    aud: str # audience
-    sub: str # subject
-    typ: str # type: Bearer
-    azp: str # client name
-    sid: str #
+    iss: str  # issuer
+    aud: str  # audience
+    sub: str  # subject
+    typ: str  # type: Bearer
+    azp: str  # client name
+    sid: str  #
     acr: int
 
     auth_time: int | None = Field(default=None)
-    allowed_origins: list[str] = Field(alias='allowed-origins', default=[])
+    allowed_origins: list[str] = Field(alias="allowed-origins", default=[])
     realm_access: Roles
     resource_access: Account
     scope: str
@@ -58,7 +61,11 @@ class TokenPayload(BaseSettings):
     email: str
 
 
-def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None, resolution_in_s: int | None):
+def validate_interval(
+    end_time_in_s: float | None,
+    start_time_in_s: float | None,
+    resolution_in_s: int | None,
+):
     if end_time_in_s is None:
         now = utcnow()
         end_time_in_s = now.timestamp()
@@ -76,7 +83,7 @@ def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None
             detail=f"ValueError: {end_time_in_s=} cannot be smaller than {start_time_in_s=}",
         )
 
-    if (end_time_in_s - start_time_in_s) > 3600*24*14:
+    if (end_time_in_s - start_time_in_s) > 3600 * 24 * 14:
         raise HTTPException(
             status_code=500,
             detail=f"""ValueError: query timeframe cannot exceed 14 days (job length), but was
@@ -90,6 +97,7 @@ def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None
         )
 
     return start_time_in_s, end_time_in_s, resolution_in_s
+
 
 # Dependency to validate JWT token
 async def verify_token(token: str) -> TokenPayload:
@@ -114,7 +122,7 @@ async def verify_token(token: str) -> TokenPayload:
                 "verify_iat": True,
                 "verify_aud": True,
                 "verify_iss": True,
-            }
+            },
         )
         logger.info(f"Token validated for user: {payload.get('preferred_username')}")
         return TokenPayload(**payload)
@@ -141,6 +149,7 @@ async def verify_token(token: str) -> TokenPayload:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+
 async def get_token_payload(request: Request) -> TokenPayload:
     app_settings = AppSettings.get_instance()
 
@@ -156,9 +165,11 @@ async def get_token_payload(request: Request) -> TokenPayload:
 
 
 T = TypeVar("T")
+
+
 def create_custom_page(items_alias: str):
     class CustomPage(Page[T], Generic[T]):
         items: Sequence[T] = Field(alias=items_alias)
-        model_config = { 'populate_by_name': True }
+        model_config = {"populate_by_name": True}
 
     return CustomPage
