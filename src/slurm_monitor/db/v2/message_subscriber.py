@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 from pydantic import BaseModel
 import re
+import sqlalchemy
 import sys
 import time
 from typing import Iterable, Callable
@@ -542,8 +543,10 @@ class MessageSubscriber:
             self.receive_and_notify()
             consumer._fetch_all_topic_metadata()
             if not consumer.assignment():
-                # Wait for partitions to become available
-                time.sleep(5)
+                logger.info(
+                    "No consumer assignment, waiting for partitions to become available"
+                )
+                time.sleep(self.retry_timeout_in_s)
                 continue
 
             for idx, consumer_record in enumerate(consumer, 1):
@@ -645,6 +648,12 @@ class MessageSubscriber:
                         self.output.stats = metrics
 
                     self.receive_and_notify()
+                except sqlalchemy.exc.OperationalError as e:
+                    logger.warning(
+                        "OperationalError of database encountered. For now, assuming it is being (re)started."
+                        f"Will sleep for {self.retry_timeout_in_s}s -- details: {e}"
+                    )
+                    time.sleep(self.retry_timeout_in_s)
                 except Exception as e:
                     if self.verbose:
                         tb.print_tb(e.__traceback__)
