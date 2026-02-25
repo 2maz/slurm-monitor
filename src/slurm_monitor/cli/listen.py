@@ -267,7 +267,7 @@ class ListenUiParser(BaseParser):
 
         def send(dealer_id: str, control: MessageSubscriber.Control):
             json_bytes = json.dumps(control.model_dump()).encode("UTF-8")
-            self.socket.send_multipart([dealer_id.encode("UTF-8"), b"", json_bytes])
+            self.socket.send_multipart([dealer_id.encode("UTF-8"), b"", json_bytes], zmq.NOBLOCK)
 
         display = TerminalDisplay(rx_fn=update, tx_fn=send, log_output=log_output)
         display.run()
