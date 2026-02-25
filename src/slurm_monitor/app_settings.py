@@ -124,8 +124,8 @@ class AppSettings(BaseSettings):
             if "--env-file" in sys.argv:
                 idx = sys.argv.index("--env-file")
                 env_file = sys.argv[idx + 1]
-
-            if "SLURM_MONITOR_ENVFILE" in os.environ:
+                os.environ["SLURM_MONITOR_ENVFILE"] = env_file
+            elif "SLURM_MONITOR_ENVFILE" in os.environ:
                 env_file = os.environ["SLURM_MONITOR_ENVFILE"]
 
             if env_file == "" or not Path(env_file).exists():
