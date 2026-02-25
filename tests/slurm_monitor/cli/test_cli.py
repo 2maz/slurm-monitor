@@ -121,6 +121,8 @@ def test_db_parser(script_runner, timescaledb):
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_db_apply_changes(script_runner, test_db_v2, db_config, timescaledb):
+    DBManager.clear_cache()
+
     SampleDisk.__table__.drop(test_db_v2.engine)
     tablename = SampleDisk.__tablename__
 

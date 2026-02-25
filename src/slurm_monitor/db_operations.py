@@ -29,6 +29,10 @@ class DBManager:
     _databases: ClassVar[dict[str, any]] = {}
 
     @classmethod
+    def clear_cache(cls):
+        cls._databases.clear()
+
+    @classmethod
     def get_database(cls, app_settings: AppSettings | None = None):
         if app_settings is None:
             app_settings = AppSettings.get_instance()
