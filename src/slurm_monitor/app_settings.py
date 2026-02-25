@@ -119,25 +119,24 @@ class AppSettings(BaseSettings):
         if not force and hasattr(cls, "_instance") and cls._instance:
             return cls._instance
 
-        if env_file_required:
-            env_file = ".env"
-            if "--env-file" in sys.argv:
-                idx = sys.argv.index("--env-file")
-                env_file = sys.argv[idx + 1]
-                os.environ["SLURM_MONITOR_ENVFILE"] = env_file
-            elif "SLURM_MONITOR_ENVFILE" in os.environ:
-                env_file = os.environ["SLURM_MONITOR_ENVFILE"]
+        env_file = ".env"
+        if "--env-file" in sys.argv:
+            idx = sys.argv.index("--env-file")
+            env_file = sys.argv[idx + 1]
+            os.environ["SLURM_MONITOR_ENVFILE"] = env_file
+        elif "SLURM_MONITOR_ENVFILE" in os.environ:
+            env_file = os.environ["SLURM_MONITOR_ENVFILE"]
 
-            if env_file == "" or not Path(env_file).exists():
+        if env_file == "" or not Path(env_file).exists():
+            if env_file_required:
                 raise FileNotFoundError(
                     f"AppSettings.initialize: could not find {env_file=}"
                 )
+                logger.info(f"AppSettings.initialize: loading {env_file=}")
+            else:
+                env_file = None
 
-            logger.info(f"AppSettings.initialize: loading {env_file=}")
-            cls._instance = AppSettings(_env_file=env_file, **kwargs)
-        else:
-            cls._instance = AppSettings(**kwargs)
-
+        cls._instance = AppSettings(_env_file=env_file, **kwargs)
         if cls._instance.data_dir:
             cls._instance.data_dir = str(Path(cls._instance.data_dir).resolve())
         return cls._instance
