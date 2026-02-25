@@ -33,8 +33,10 @@ class DBManager:
         if app_settings is None:
             app_settings = AppSettings.get_instance()
 
-        logger.info(f"Loading database with: {app_settings.database}")
+        if app_settings.db_schema_version in cls._databases:
+            return cls._databases[app_settings.db_schema_version]
 
+        logger.info(f"Loading database with: {app_settings.database} -- existing {cls._databases}")
         try:
             if app_settings.db_schema_version == "v1":
                 from slurm_monitor.db.v1.db import SlurmMonitorDB
@@ -47,6 +49,7 @@ class DBManager:
             else:
                 raise RuntimeError("AppSettings.db_schema_version is not set")
 
+            cls._databases[app_settings.db_schema_version] = db
             return db
         except sqlalchemy.exc.OperationalError:
             raise HTTPException(
