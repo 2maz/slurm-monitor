@@ -32,6 +32,8 @@ INTERVAL_2WEEKS = 14*INTERVAL_1DAY
 
 DEFAULT_HISTORY_INTERVAL_IN_S = INTERVAL_12H
 
+DB_POOL_SIZE = 25
+
 def create_url(url_str: str, username: str | None, password: str | None) -> URL:
     url = make_url(url_str)
 
@@ -102,8 +104,12 @@ class Database:
                     db_settings.password
             )
 
-        self.async_engine = create_async_engine(async_db_url, pool_size=10, **engine_kwargs)
-        self.async_session_factory = async_sessionmaker(self.async_engine, expire_on_commit=False)
+        self.async_engine = create_async_engine(
+            async_db_url, pool_size=DB_POOL_SIZE, **engine_kwargs
+        )
+        self.async_session_factory = async_sessionmaker(
+            self.async_engine, expire_on_commit=False
+        )
 
         #from sqlalchemy_schemadisplay import create_schema_graph
         ## create the pydot graph object by autoloading all tables via a bound metadata object
