@@ -1,10 +1,13 @@
 from argparse import ArgumentParser
+import json
+import logging
+from pathlib import Path
+import subprocess
+import yaml
 
 from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.app_settings import AppSettings
-import logging
-
-import subprocess
+from slurm_monitor.v2 import api_v2_app
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +40,40 @@ class RestapiParser(BaseParser):
                             help=f"Set ssl-certfile, default is {app_settings.ssl.certfile}"
         )
 
+        parser.add_argument(
+            "--export-openapi",
+            type=str,
+            default=None,
+            help="Export the current openapi schema"
+        )
 
     def execute(self, args):
         super().execute(args)
 
-        cmd = ["uvicorn", "slurm_monitor.v2:app", "--port", str(args.port), "--host", args.host]
+        if args.export_openapi:
+            with open(args.export_openapi, "w") as f:
+                path = Path(args.export_openapi)
+                if path.suffix in [".yaml", ".yml"]:
+                    yaml.dump(api_v2_app.openapi(), f)
+                    print(f"Exported openapi spec in 'yaml' format: {path.resolve()}")
+                elif path.suffix in [".json"]:
+                    json.dump(api_v2_app.openapi(), f)
+                    print(f"Exported openapi spec in 'json' format: {path.resolve()}")
+                else:
+                    raise RuntimeError(f"Unknown export type: '{path.suffix}'")
+
+            return
+
+
+        cmd = [
+            "uvicorn",
+            "slurm_monitor.v2:app",
+            "--port",
+            str(args.port),
+            "--host",
+            args.host,
+        ]
+
         # forward extra arguments to uvicorn
         cmd += self.unknown_args
 
