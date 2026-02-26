@@ -24,7 +24,6 @@ from slurm_monitor.db.v2.db_tables import (
     TableBase,
 )
 from slurm_monitor.db.v2.db import ClusterDB
-
 import slurm_monitor.db.v2.sonar as sonar
 
 logger = logging.getLogger(__name__)
@@ -325,7 +324,7 @@ class DBJsonImporter(Importer):
         nodes_states = []
         for n in attributes["nodes"]:
             for names in n["names"]:
-                node_names = Slurm.expand_node_names(names)
+                node_names = sonar.Sonar.expand_hostname_range(names)
                 nodes.update(node_names)
 
             states = n["states"]
@@ -340,7 +339,7 @@ class DBJsonImporter(Importer):
         for p in attributes["partitions"]:
             partition_nodes = set()
             for names in p["nodes"]:
-                node_names = Slurm.expand_node_names(names)
+                node_names = sonar.Sonar.expand_hostname_range(names)
                 partition_nodes.update(node_names)
 
             partitions.append(
@@ -382,6 +381,9 @@ class DBJsonImporter(Importer):
             if "sacct" in job_data:
                 sacct = job_data["sacct"]
                 del job_data["sacct"]
+
+            if 'nodes' in job_data:
+                job_data['nodes'] = sonar.Sonar.expand_hostname_range(job_data['nodes'])
 
             slurm_job_samples.append(
                 SampleSlurmJob.create(cluster=cluster, **job_data, time=time)
