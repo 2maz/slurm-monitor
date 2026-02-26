@@ -2050,18 +2050,20 @@ class ClusterDB(Database):
             all_disks = (await session.execute(query)).mappings().all()
 
         disks = []
+        disks_ignored = []
         for d in all_disks:
             disk_name = d['name']
             if disk_name.startswith("loop"):
-                logger.info(f"Ignoring disk stats for loop device: {disk_name}")
+                disks_ignored.append(disk_name)
                 continue
             elif re.search(r"p[0-9]+$", disk_name):
-                logger.info(f"Ignoring diskstats for partition: {disk_name}")
+                disks_ignored.append(disk_name)
                 continue
 
             disks.append(d)
 
-        disks = sorted(disks, key=lambda x: x['name'])
+        logger.info(f"Ignoring disk stats for {disks_ignored}")
+        disks = sorted(disks, key=lambda x: x["name"])
 
         response = []
         fields = []
@@ -2073,24 +2075,28 @@ class ClusterDB(Database):
                 fields.append( (last(f, SampleDisk.time) - first(f, SampleDisk.time)).label(x) )
 
         for disk in tqdm(disks, desc="Disks", total=len(disks)):
-            query = select(
-                           time_bucket(resolution_in_s, SampleDisk.time).label('time'),
-                           *fields,
-                           ).where(
-                        (SampleDisk.cluster == cluster),
-                        (SampleDisk.node == node),
-                        (SampleDisk.name == disk['name']),
-                        (SampleDisk.time >= fromtimestamp(start_time_in_s)),
-                        (SampleDisk.time <= fromtimestamp(end_time_in_s)),
-                   ).group_by(
-                        'time'
-                   ).order_by(
-                        'time'
-                   )
+            query = (
+                select(
+                    time_bucket(resolution_in_s, SampleDisk.time).label("bucket_time"),
+                    *fields,
+                )
+                .where(
+                    (SampleDisk.cluster == cluster),
+                    (SampleDisk.node == node),
+                    (SampleDisk.name == disk["name"]),
+                    (SampleDisk.time >= fromtimestamp(start_time_in_s)),
+                    (SampleDisk.time <= fromtimestamp(end_time_in_s)),
+                )
+                .group_by("bucket_time")
+                .order_by("bucket_time")
+            )
 
             async with self.make_async_session() as session:
                 result = (await session.execute(query)).mappings().all()
-                data = [ SampleDiskResponse(**x, delta_time_in_s=resolution_in_s) for x in result ]
+                data = [
+                    SampleDiskResponse(**x, time=x["bucket_time"], delta_time_in_s=resolution_in_s)
+                    for x in result
+                ]
 
             response.append(SampleDiskTimeseriesResponse(
                     name=disk['name'],
