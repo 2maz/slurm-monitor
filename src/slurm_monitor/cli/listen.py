@@ -23,6 +23,7 @@ class ListenParser(BaseParser):
         super().__init__(parser=parser)
 
         app_settings = AppSettings.get_instance()
+        parser.description = "listen - The listener component establishes a link between a kafka broker and a database. The (sonar) messages received by the kafka broker will be stored in the database. A listener can be monitored with the listen-ui component"
 
         parser.add_argument("--host", type=str,
                             default=app_settings.listen.kafka.host,
