@@ -104,19 +104,37 @@ Install locally with all dependencies (development and test included, refer to
 pyproject.toml for the optional dependencies):
 
 ```
-pip install slurm-monitor/[restapi,dev]
+pip install slurm-monitor/[dev]
 ```
 
 
-## Listener
+## Usage
+
+All use cases are covered by subcommand of the slurm-monitor command line tool.
+By default, settings are read from a .env file that resides in the current working directory.
+Note, that all subcommands take a '--env-file <filename>' argument to specify a specific configuration to load.
+A parameter that is given on the command line, e.g., "--cluster-name mycluster" will overwrite a
+setting defined in the .env file (here for instance: SLURM\_MONITOR\_LISTEN\_CLUSTER).
+
+A sample for the .env is provided [here](./tests/slurm_monitor/dot-env-sample).
+
+
+
+### listen
 
 Prepare the data collection to record published messages via:
 
 ```
-slurm-monitor listen --host my-kafka-broker --db-uri timescaledb://my_db_user:my_db_user_password@db_hostname:10000/db_name
+slurm-monitor listen --host my-kafka-broker --db-uri timescaledb://my_db_user:my_db_user_password@db_hostname:10000/db_name --cluster-name mycluster
 ```
 
-## REST Api:
+with a full configured .env file you can just run:
+
+```
+slurm-monitor listen
+```
+
+### restapi:
 
 To run the REST Api add an entry to the .env file with the desired database setup:
 
@@ -134,24 +152,25 @@ For timescaledb:
 
 
 ```bash
-    python3 -m uvicorn --reload slurm_monitor.main:app --port 12000 --host 0.0.0.0
+    slurm-monitor --reload --port 12000 --host 0.0.0.0
 ```
 
 The API should now be accessible. Check the docs via:
 ```
-    http://<your host>:12000/api/v1/docs
+    http://<your host>:12000/api/v2/docs
 ```
 
-### Running with ssl
+#### Running with ssl
 
 To run with ssl, get or create a certificate and run as follows:
 
 ```
     openssl req -nodes -new -x509 -keyout key.pem -out cert.pem -days 365 -subj "/C=countrycode/ST=state/L=city/O=Organization Name/OU=Unit Name/CN=cname/emailAddress=creator@yourdomain"
-    python3 -m uvicorn --reload slurm_monitor.main:app --port 12000 --host 0.0.0.0 --ssl-keyfile key.pem --ssl-certfile cert.pem
+    slurm-monitor --reload --port 12000 --host 0.0.0.0 --ssl-keyfile key.pem --ssl-certfile cert.pem
 ```
 
-### Enabling Authentication
+
+#### Enabling OAuth
 
 By default Bearer token based authentication is disabled. To enable set the configuration according to
 your identity provider. The setup has been tested with keycloak.
@@ -165,19 +184,19 @@ SLURM_MONITOR_OAUTH_REALM="slurm-monitor-realm"
 ```
 
 
-## Probe
+### Probe
 
 slurm-monitor relies on [sonar](https://github.com/NordicHPC/sonar) as a probe on the individual nodes.
 As such it should be set up so that it communicates with the kafka broker that the above described listener will attach to.
 Instruction for installation of sonar are found in the sonar repository - in addition to an example kafka configuration.
 
 
-## Validation
+### Validation
 
 Since slurm-monitor consumes sonar data, it has to align with [types communicated by sonar](https://raw.githubusercontent.com/NordicHPC/sonar/refs/heads/main/doc/types.spec.yaml).
 In case you need to (re)generate the types.spec.yaml, please use the [documentation processor](https://github.com/NordicHPC/sonar/tree/main/util/process-doc) distributed with sonar.
 
-### Spec vs. DB Schema Definitions
+#### Spec vs. DB Schema Definitions
 
 To check the degree of alignment of the database schema with sonar's types, you can either
 check using the sonar type spec added to slurm-monitor:
@@ -195,7 +214,7 @@ slurm-monitor spec --spec-file types.spec.yaml
 There is no complete one-to-one mapping from types to database schema, so that the current validation approach remains limited. Check the warnings.
 
 
-### DB Schema Definitions vs. Actual DB State
+#### DB Schema Definitions vs. Actual DB State
 
 When the database schema is updated, e.g., to align with the sonar spec, the actual state of the database might differ from the newly defind schema.
 To identify required changes of the database use:
