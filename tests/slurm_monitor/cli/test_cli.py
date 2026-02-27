@@ -8,10 +8,11 @@ import pytest
 import slurm_monitor.cli.main as cli_main
 from slurm_monitor.cli.db import DBParser
 from slurm_monitor.cli.probe import ProbeParser
-from slurm_monitor.cli.listen import ListenParser
+from slurm_monitor.cli.listen import ListenParser, ListenUiParser
 from slurm_monitor.cli.system_info import SystemInfoParser
 from slurm_monitor.cli.autodeploy import AutoDeployParser
 from slurm_monitor.cli.query import QueryParser
+from slurm_monitor.cli.restapi import RestapiParser
 from slurm_monitor.cli.spec import SpecParser
 from slurm_monitor.cli.data_import import ImportParser
 from slurm_monitor.cli.test import TestParser
@@ -27,8 +28,10 @@ def subparsers():
         "db",
         "import",
         "listen",
+        "listen-ui",
         "probe",
         "query",
+        "restapi",
         "spec",
         "system-info",
         "test"
@@ -47,8 +50,10 @@ def test_help(subparsers, capsys, monkeypatch):
     [ "auto-deploy", AutoDeployParser ],
     [ "import", ImportParser ],
     [ "listen", ListenParser ],
+    [ "listen-ui", ListenUiParser],
     [ "probe", ProbeParser ],
     [ "query", QueryParser ],
+    [ "restapi", RestapiParser ],
     [ "system-info", SystemInfoParser ],
     [ "spec", SpecParser ],
     [ "db", DBParser ],

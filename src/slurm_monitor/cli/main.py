@@ -11,9 +11,12 @@ from slurm_monitor.cli.listen import ListenParser, ListenUiParser
 from slurm_monitor.cli.system_info import SystemInfoParser
 from slurm_monitor.cli.autodeploy import AutoDeployParser
 from slurm_monitor.cli.query import QueryParser
+from slurm_monitor.cli.restapi import RestapiParser
 from slurm_monitor.cli.spec import SpecParser
 from slurm_monitor.cli.data_import import ImportParser
 from slurm_monitor.cli.test import TestParser
+
+from slurm_monitor.app_settings import AppSettings
 
 from slurm_monitor import __version__
 from slurm_monitor.config import (
@@ -44,6 +47,15 @@ class MainParser(ArgumentParser):
         self.add_argument("--version", "-i", action="store_true", help="Show version")
         self.add_argument("--verbose", action="store_true", help="Show verbose information")
 
+        # This is mainly here to provide documentation,
+        # the actual loading need to be done in AppSettings, since this
+        # will be initialized before the parser is parsing the arguments
+        self.add_argument("--env-file",
+                          type=str,
+                          default=".env",
+                          help="Set the env-file"
+        )
+
     def attach_subcommand_parser(
         self, subcommand: str, help: str, parser_klass: BaseParser
     ):
@@ -56,6 +68,8 @@ class MainParser(ArgumentParser):
         parser_klass(parser=subparser)
 
 def run():
+    AppSettings.initialize(env_file_required=False)
+
     main_parser = MainParser()
     main_parser.attach_subcommand_parser(
         subcommand="auto-deploy",
@@ -100,6 +114,12 @@ def run():
     )
 
     main_parser.attach_subcommand_parser(
+        subcommand="restapi",
+        help="Start the restapi",
+        parser_klass=RestapiParser
+    )
+
+    main_parser.attach_subcommand_parser(
         subcommand="spec",
         help="Validate implementation of specs",
         parser_klass=SpecParser
@@ -117,7 +137,7 @@ def run():
         parser_klass=TestParser
     )
 
-    args = main_parser.parse_args()
+    args, unknown_args = main_parser.parse_known_args()
 
     if args.version:
         print(__version__)
@@ -129,7 +149,9 @@ def run():
 
     if hasattr(args, "active_subparser"):
         try:
-            getattr(args, "active_subparser").execute(args)
+            active_subparser = getattr(args, "active_subparser")
+            active_subparser.unknown_args  = unknown_args
+            active_subparser.execute(args)
         except Exception as e:
             if args.verbose:
                 traceback.print_tb(e.__traceback__)

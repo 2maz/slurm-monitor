@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
     FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
 
     logger.info("Setting up database ...")
-    app_settings = AppSettings.initialize(db_schema_version="v1")
+    app_settings = AppSettings.initialize(db_schema_version="v1", force=True)
 
     database = SlurmMonitorDB(app_settings.database)
 
