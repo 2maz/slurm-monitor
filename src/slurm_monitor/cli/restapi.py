@@ -93,4 +93,9 @@ class RestapiParser(BaseParser):
         cmd_txt = ' '.join(cmd)
 
         logger.info(f"Execute: {cmd_txt}")
-        subprocess.run(cmd_txt, shell=True)
+        result = subprocess.run(cmd_txt, shell=True)
+
+        if result.returncode != 0:
+            print(result.stderr, file=sys.stderr)
+            print(result.stdout, file=sys.stdout)
+            sys.exit(result.returncode)

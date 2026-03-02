@@ -3,7 +3,10 @@ import sys
 from argparse import ArgumentParser
 
 import pytest
-
+import httpx
+import os
+import subprocess
+import time
 
 import slurm_monitor.cli.main as cli_main
 from slurm_monitor.cli.db import DBParser
@@ -20,6 +23,7 @@ from slurm_monitor.cli.test import TestParser
 from slurm_monitor.db_operations import DBManager
 from slurm_monitor.utils.command import Command
 from slurm_monitor.db.v2.db_tables import SampleDisk
+from slurm_monitor.app_settings import SLURM_MONITOR_RESTAPI_PORT
 
 @pytest.fixture
 def subparsers():
@@ -106,3 +110,97 @@ async def test_db_apply_changes(script_runner, test_db_v2, db_config, timescaled
 
     new_status = DBManager.get_status(timescaledb)
     assert tablename in new_status
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_restapi_env_file_not_existing(script_runner, test_db_v2, db_config, timescaledb):
+    result = script_runner.run(['slurm-monitor', 'restapi', '--env-file', 'non-existing-envfile'])
+    assert result.returncode != 0
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_restapi_env_file_via_args(script_runner, tmp_path, test_db_v2, db_config, timescaledb):
+    """
+    Use --env-file <filename> to point to the envfile which should be used
+    """
+    port = 55555
+    with open(tmp_path / "existing-envfile", "w") as f:
+        f.write(f"SLURM_MONITOR_DATABASE_URI={timescaledb}\n")
+        f.write(f"SLURM_MONITOR_PORT={port}\n")
+
+    p = subprocess.Popen(['slurm-monitor', 'restapi', '--env-file', str(tmp_path / 'existing-envfile')])
+
+    time.sleep(5)
+    response = httpx.get(f"http://localhost:{port}/api/v2/docs")
+
+    p.kill()
+    p.wait()
+
+    assert response.status_code == 200
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_restapi_env_file_via_env(script_runner, tmp_path, test_db_v2, db_config, timescaledb):
+    """
+    Set the SLURM_MONITOR_ENV_FILE to point to the envfile which should be used
+    """
+    port = 55555
+    with open(tmp_path / "existing-envfile", "w") as f:
+        f.write(f"SLURM_MONITOR_DATABASE_URI={timescaledb}\n")
+        f.write(f"SLURM_MONITOR_PORT={port}\n")
+
+    env = os.environ.copy()
+    env['SLURM_MONITOR_ENV_FILE'] = str(tmp_path / 'existing-envfile')
+    p = subprocess.Popen(['slurm-monitor', 'restapi'], env=env)
+
+    time.sleep(5)
+    response = httpx.get(f"http://localhost:{port}/api/v2/docs")
+
+    p.kill()
+    p.wait()
+
+    assert response.status_code == 200
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_restapi_env_file_with_overrides(script_runner, tmp_path, test_db_v2, db_config, timescaledb):
+    """
+    Using --env-file <filename> to point to the envfile which should be used, should take precedence over
+    environment variables
+    """
+    port = 55554
+    with open(tmp_path / ".a.env", "w") as f:
+        f.write(f"SLURM_MONITOR_DATABASE_URI={timescaledb}\n")
+        f.write(f"SLURM_MONITOR_PORT={port}\n")
+
+    port = 55555
+    with open(tmp_path / ".b.env", "w") as f:
+        f.write(f"SLURM_MONITOR_DATABASE_URI={timescaledb}\n")
+        f.write(f"SLURM_MONITOR_PORT={port}\n")
+
+    env = os.environ.copy()
+    env['SLURM_MONITOR_ENV_FILE'] = str(tmp_path / '.a.env')
+    p = subprocess.Popen(['slurm-monitor', 'restapi', '--env-file', '.b.env'], env=env)
+
+    time.sleep(5)
+    response = httpx.get(f"http://localhost:{port}/api/v2/docs")
+
+    p.kill()
+    p.wait()
+
+    assert response.status_code == 200
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_restapi_settings_from_env(script_runner, tmp_path, test_db_v2, db_config, timescaledb):
+    """
+    AppSettings should read setting plainly from env as well
+    """
+    env = os.environ.copy()
+    env['SLURM_MONITOR_DATABASE_URI'] = timescaledb
+
+    p = subprocess.Popen(['slurm-monitor', 'restapi'], env=env)
+
+    time.sleep(5)
+    response = httpx.get(f"http://localhost:{SLURM_MONITOR_RESTAPI_PORT}/api/v2/docs")
+
+    p.kill()
+    p.wait()
+
+    assert response.status_code == 200
