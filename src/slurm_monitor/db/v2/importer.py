@@ -4,7 +4,6 @@ import sqlalchemy
 import traceback as tb
 
 from slurm_monitor.utils import utcnow
-from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.db.v2.db_tables import (
     Cluster,
     ErrorMessage,
