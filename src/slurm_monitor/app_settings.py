@@ -11,6 +11,7 @@ import sys
 
 from slurm_monitor.db import DatabaseSettings
 
+SLURM_MONITOR_RESTAPI_PORT = 12000
 SLURM_MONITOR_LISTEN_PORT = 9099
 SLURM_MONITOR_LISTEN_UI_PORT = 25052
 
@@ -79,7 +80,7 @@ class AppSettings(BaseSettings):
                     extra='ignore'
                 )
     host: str = Field(default="0.0.0.0")
-    port: int = Field(default=12000)
+    port: int = Field(default=SLURM_MONITOR_RESTAPI_PORT)
     ssl: SSLSettings = Field(default_factory=SSLSettings)
 
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
@@ -106,20 +107,27 @@ class AppSettings(BaseSettings):
         if not force and hasattr(cls, "_instance") and cls._instance:
             return cls._instance
 
-        if env_file_required:
-            env_file = ".env"
-            if "--env-file" in sys.argv:
-                idx = sys.argv.index("--env-file")
-                env_file = sys.argv[idx + 1]
-
-            if "SLURM_MONITOR_ENVFILE" in os.environ:
-                env_file = os.environ["SLURM_MONITOR_ENVFILE"]
-
-            if env_file == "" or not Path(env_file).exists():
+        env_file = None
+        if "SLURM_MONITOR_ENVFILE" in os.environ:
+            env_file = os.environ["SLURM_MONITOR_ENVFILE"]
+            if not Path(env_file).exists():
                 raise FileNotFoundError(
-                    f"AppSettings.initialize: could not find {env_file=}"
+                    f"AppSettings.initialize: could not find {env_file=} set via env SLURM_MONITOR_ENVFILE"
                 )
 
+        if "--env-file" in sys.argv:
+            idx = sys.argv.index("--env-file")
+            env_file = sys.argv[idx + 1]
+
+            if not Path(env_file).exists():
+                raise FileNotFoundError(
+                    f"AppSettings.initialize: could not find {env_file=} provided via --env-file"
+                )
+
+        if env_file_required and not env_file:
+            env_file = ".env"
+
+        if env_file:
             logger.info(f"AppSettings.initialize: loading {env_file=}")
             cls._instance = AppSettings(_env_file=env_file, **kwargs)
         else:

@@ -3,6 +3,7 @@ import json
 import logging
 from pathlib import Path
 import subprocess
+import sys
 import yaml
 
 from slurm_monitor.cli.base import BaseParser
@@ -64,7 +65,6 @@ class RestapiParser(BaseParser):
 
             return
 
-
         cmd = [
             "uvicorn",
             "slurm_monitor.v2:app",
@@ -73,6 +73,13 @@ class RestapiParser(BaseParser):
             "--host",
             args.host,
         ]
+
+        # keep this
+        if "--env-file" in sys.argv:
+            idx = sys.argv.index("--env-file")
+            env_file = sys.argv[idx + 1]
+            cmd += ["--env-file", env_file]
+
 
         # forward extra arguments to uvicorn
         cmd += self.unknown_args
@@ -86,4 +93,9 @@ class RestapiParser(BaseParser):
         cmd_txt = ' '.join(cmd)
 
         logger.info(f"Execute: {cmd_txt}")
-        subprocess.run(cmd_txt, shell=True)
+        result = subprocess.run(cmd_txt, shell=True)
+
+        if result.returncode != 0:
+            print(result.stderr, file=sys.stderr)
+            print(result.stdout, file=sys.stdout)
+            sys.exit(result.returncode)
