@@ -133,6 +133,7 @@ async def job_sample_process_system_tree(
 async def job_sample_process_gpu_timeseries(
     token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
     cluster: str,
+    user: str | None = None,
     job_id: int | None = None,
     epoch: int = 0,
     nodename: str | None = None,
@@ -156,6 +157,7 @@ async def job_sample_process_gpu_timeseries(
             nodes=nodes,
             job_id=job_id,
             epoch=epoch,
+            user=user,
             start_time_in_s=start_time_in_s,
             end_time_in_s=end_time_in_s,
             resolution_in_s=resolution_in_s
