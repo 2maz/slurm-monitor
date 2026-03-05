@@ -209,7 +209,8 @@ class TerminalDisplay:
                     self.stop = True
                     self.addstr(0,0, "Received user's request to stop ... ]")
                 elif key == ord('c'):
-                    self.current_cluster_index = (self.current_cluster_index + 1) % len(self.clusters)
+                    if self.clusters:
+                        self.current_cluster_index = (self.current_cluster_index + 1) % len(self.clusters)
                 elif key == ord('l'):
                     log_level = output.log_level
                     if log_level == logging.CRITICAL:
