@@ -96,7 +96,7 @@ class ListenParser(BaseParser):
         parser.add_argument("--log-output",
                 type=str,
                 default=None,
-                help="Output file for the log - default: slurm-monitor.listen.<cluster-name>.log",
+                help="Output file for the log - default: slurm-monitor.listen.<cluster-name>.log, disable logging to file by specifying 'none'",
         )
 
         parser.add_argument("--ui-host",
@@ -176,10 +176,12 @@ class ListenParser(BaseParser):
                     stats_output = f"slurm-monitor.listen.{args.cluster_name}.stats.json"
 
             log_output = args.log_output
-            if log_output is None:
+            if log_output is None and log_output.lower() != 'none':
                 log_output = "slurm-monitor.listen.log"
                 if args.cluster_name:
                     log_output = f"slurm-monitor.listen.{args.cluster_name}.log"
+            else:
+                log_output = None
 
             context = zmq.Context()
             self.socket = context.socket(zmq.DEALER)
@@ -236,7 +238,7 @@ class ListenUiParser(BaseParser):
         parser.add_argument("--log-output",
                 type=str,
                 default=None,
-                help="Output file for the log - default: slurm-monitor.listen-ui.<cluster-name>.log",
+                help="Output file for the log - default: slurm-monitor.listen-ui.<cluster-name>.log, disable logging to file by specifying 'none'",
         )
 
     def execute(self, args):
@@ -249,10 +251,12 @@ class ListenUiParser(BaseParser):
             self.socket.bind(f"tcp://{args.ui_host}:{args.ui_port}")
 
         log_output = args.log_output
-        if log_output is None:
+        if log_output is None and log_output.lower() != 'none':
             log_output = "slurm-monitor.listen-ui.log"
             if args.cluster_name:
                 log_output = f"slurm-monitor.listen-ui.{args.cluster_name}.log"
+        else:
+            log_output = None
 
         def update():
             """
