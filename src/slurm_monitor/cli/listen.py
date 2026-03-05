@@ -84,7 +84,7 @@ class ListenParser(BaseParser):
         parser.add_argument("--stats-output",
                 type=str,
                 default=None,
-                help="Output file for the listen stats - default: slurm-monitor-listen.<cluster-name>.stats.json",
+                help="Output file for the listen stats - default: slurm-monitor.listen.<cluster-name>.stats.json",
         )
 
         parser.add_argument("--stats-interval",
@@ -96,7 +96,7 @@ class ListenParser(BaseParser):
         parser.add_argument("--log-output",
                 type=str,
                 default=None,
-                help="Output file for the log - default: slurm-monitor-listen.<cluster-name>.log",
+                help="Output file for the log - default: slurm-monitor.listen.<cluster-name>.log",
         )
 
         parser.add_argument("--ui-host",
@@ -171,15 +171,15 @@ class ListenParser(BaseParser):
 
             stats_output = args.stats_output
             if stats_output is None:
-                stats_output = "slurm-monitor-listen.stats.json"
+                stats_output = "slurm-monitor.listen.stats.json"
                 if args.cluster_name:
-                    stats_output = f"slurm-monitor-listen.{args.cluster_name}.stats.json"
+                    stats_output = f"slurm-monitor.listen.{args.cluster_name}.stats.json"
 
             log_output = args.log_output
             if log_output is None:
-                log_output = "slurm-monitor-listen.log"
+                log_output = "slurm-monitor.listen.log"
                 if args.cluster_name:
-                    log_output = f"slurm-monitor-listen.{args.cluster_name}.log"
+                    log_output = f"slurm-monitor.listen.{args.cluster_name}.log"
 
             context = zmq.Context()
             self.socket = context.socket(zmq.DEALER)
@@ -236,7 +236,7 @@ class ListenUiParser(BaseParser):
         parser.add_argument("--log-output",
                 type=str,
                 default=None,
-                help="Output file for the log - default: slurm-monitor-listen-ui.<cluster-name>.log",
+                help="Output file for the log - default: slurm-monitor.listen-ui.<cluster-name>.log",
         )
 
     def execute(self, args):
@@ -250,9 +250,9 @@ class ListenUiParser(BaseParser):
 
         log_output = args.log_output
         if log_output is None:
-            log_output = "slurm-monitor-listen-ui.log"
+            log_output = "slurm-monitor.listen-ui.log"
             if args.cluster_name:
-                log_output = f"slurm-monitor-listen-ui.{args.cluster_name}.log"
+                log_output = f"slurm-monitor.listen-ui.{args.cluster_name}.log"
 
         def update():
             """
@@ -269,5 +269,5 @@ class ListenUiParser(BaseParser):
             json_bytes = json.dumps(control.model_dump()).encode("UTF-8")
             self.socket.send_multipart([dealer_id.encode("UTF-8"), b"", json_bytes], zmq.NOBLOCK)
 
-        display = TerminalDisplay(rx_fn=update, tx_fn=send, log_output=log_output)
+        display = TerminalDisplay(rx_fn=update, tx_fn=send, log_output=log_output, log_level=args.log_level)
         display.run()
