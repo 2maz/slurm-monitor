@@ -212,16 +212,17 @@ class TerminalDisplay:
                     if self.clusters:
                         self.current_cluster_index = (self.current_cluster_index + 1) % len(self.clusters)
                 elif key == ord('l'):
-                    log_level = output.log_level
-                    if log_level == logging.CRITICAL:
-                        log_level = logging.DEBUG
-                    else:
-                        # see https://docs.python.org/3/library/logging.html#logging-levels
-                        log_level += 10
+                    if current_cluster:
+                        log_level = output.log_level
+                        if log_level == logging.CRITICAL:
+                            log_level = logging.DEBUG
+                        else:
+                            # see https://docs.python.org/3/library/logging.html#logging-levels
+                            log_level += 10
 
-                    if self.tx_fn:
-                        control = MessageSubscriber.Control(log_level=log_level)
-                        self.tx_fn(current_cluster, control)
+                        if self.tx_fn:
+                            control = MessageSubscriber.Control(log_level=log_level)
+                            self.tx_fn(current_cluster, control)
                 elif key == ord('t'):
                     self.current_tab_index = (self.current_tab_index + 1) % len(self.tabs)
 
