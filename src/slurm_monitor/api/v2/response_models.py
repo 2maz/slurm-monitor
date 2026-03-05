@@ -633,3 +633,8 @@ class JobReport(BaseModel):
             warnings.append(f"Memory threshold exceeded: requested memory (total): {requested_memory:.2f} KiB, but actual usage of: {memory_max:.2f} KiB")
 
         self.warnings = warnings
+
+class UserSettingsResponse(BaseModel):
+    user: str
+    settings: dict = Field(default={})
+    time_modified: AwareDatetime | None = Field(default=None)

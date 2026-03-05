@@ -38,6 +38,7 @@ from slurm_monitor.api.v2.response_models import (
     SampleGpuTimeseriesResponse,
     SampleProcessAccResponse,
     SampleProcessGpuAccResponse,
+    UserSettingsResponse,
 )
 
 from slurm_monitor.db.v2.db_base import (
@@ -72,7 +73,8 @@ from .db_tables import (
     SysinfoAttributes,
     SysinfoGpuCard,
     SysinfoGpuCardConfig,
-    time_bucket
+    time_bucket,
+    UserSettings,
 )
 
 logger = logging.getLogger(__name__)
@@ -98,6 +100,8 @@ class ClusterDB(Database):
     SysinfoGpuCardConfig = SysinfoGpuCardConfig
 
     ErrorMessage = ErrorMessage
+
+    UserSettings = UserSettings
 
     #TableMetadata = TableMetadata
 
@@ -1046,7 +1050,7 @@ class ClusterDB(Database):
             start_time_in_s: int,
             end_time_in_s: int,
             resolution_in_s: int,
-            user: str | None = None
+            user: str | None = None,
             nodes: list[str] | None = None
             ):
 
@@ -2780,3 +2784,20 @@ class ClusterDB(Database):
             lookbacks[topic] = round((now - timestamp).total_seconds() / 3600.0,2)
 
         return lookbacks
+
+    def get_user_settings(self, user: str) -> UserSettingsResponse:
+        with self.make_session() as session:
+            query = select(UserSettings).where(UserSettings.user == user)
+            result = session.execute(query).mappings().all()
+            if result:
+                return result[0]["UserSettings"]
+            else:
+                return { 'user': user, 'settings': {}, 'time_modified': None }
+
+    def set_user_settings(self, user: str, settings: dict[str, any]):
+        user_settings = UserSettings(
+                user=user,
+                settings=settings,
+                time_modified=utcnow()
+        )
+        self.insert_or_update(user_settings)
