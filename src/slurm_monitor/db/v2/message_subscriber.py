@@ -8,6 +8,7 @@ import logging
 from logging.handlers import QueueHandler, TimedRotatingFileHandler
 import collections
 import datetime as dt
+import kafka
 from kafka import KafkaConsumer, TopicPartition
 import json
 from pathlib import Path
@@ -19,6 +20,7 @@ import time
 from typing import Iterable, Callable
 import traceback as tb
 import threading
+import warnings
 
 from slurm_monitor.utils import utcnow
 import slurm_monitor.db.v2.sonar as sonar
@@ -775,10 +777,17 @@ class MessageSubscriber:
                               msg_handler=msg_handler,
                               startup_offsets=startup_offsets,
                               topic_lb=topic_lb, topic_ub=topic_ub)
+            except kafka.errors.NoBrokersAvailable as e:
+                msg = f"No brokers available using bootstrap_servers: {self.host}:{self.port} retrying in {self.retry_timeout_in_s} (check {self.log_output}) - {e}"
+                logger.warning(msg)
+                warnings.warn(msg)
+                time.sleep(self.retry_timeout_in_s)
             except TimeoutError:
                 raise
             except Exception as e:
-                logger.warning(f"Connection failed - retrying in 5s - {e}")
+                msg = f"Connection failed - retrying in {self.retry_timeout_in_s}s (see {self.log_output}) - {e}"
+                logger.warning(msg)
+                warnings.warn(msg)
                 time.sleep(self.retry_timeout_in_s)
 
         logger.info("All tasks gracefully stopped")
