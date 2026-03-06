@@ -81,7 +81,8 @@ class TerminalDisplay:
 
     _getch_supported: bool
 
-    def __init__(self, rx_fn: Callable[MessageSubscriber.Output], tx_fn: Callable[[str,MessageSubscriber.Control]], log_output: Path | None = None):
+    def __init__(self, rx_fn: Callable[MessageSubscriber.Output], tx_fn: Callable[[str,MessageSubscriber.Control]], log_output: Path | None = None,
+                 log_level: int = logging.INFO):
         self._screen = None
 
         self.current_cluster_index = 0
@@ -108,8 +109,15 @@ class TerminalDisplay:
                 style=SLURM_MONITOR_LOG_STYLE
             )
 
-            file_handler = TimedRotatingFileHandler(self.log_output, when='d', interval=3)
+            # setup the logging
+            root_logger = logging.getLogger()
+            root_logger.handlers.clear()
+
+            file_handler = TimedRotatingFileHandler(self.log_output, when='d', interval=3, backupCount=1)
+            file_handler.setLevel(logging.getLevelName(log_level))
             file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+            root_logger.addHandler(file_handler)
 
         self._getch_supported = True
 
@@ -466,7 +474,7 @@ class MessageSubscriber:
         root_logger.addHandler(queue_handler)
 
         if self.log_output:
-            file_handler = TimedRotatingFileHandler(self.log_output, when='d', interval=3)
+            file_handler = TimedRotatingFileHandler(self.log_output, when='d', interval=3, backupCount=1)
             file_handler.setLevel(logging.getLevelName(log_level))
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
