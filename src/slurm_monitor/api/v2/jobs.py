@@ -12,7 +12,9 @@ from slurm_monitor.api.v2.routes import (
     create_custom_page,
     validate_interval,
     get_token_payload,
-    TokenPayload
+    TokenPayload,
+    Role,
+    NoneForUserWithRealmRoles
 )
 
 from slurm_monitor.api.v2.response_models import (
@@ -72,6 +74,7 @@ async def job_sample_process_system(
             nodes=nodes,
             job_id=job_id,
             epoch=epoch,
+            user=TokenPayload.user_or_none(token_payload, Role.ADMIN),
             start_time_in_s=start_time_in_s,
             end_time_in_s=end_time_in_s,
             resolution_in_s=resolution_in_s
@@ -131,9 +134,8 @@ async def job_sample_process_system_tree(
         response_model=list[JobNodeSampleProcessGpuTimeseriesResponse]
 )
 async def job_sample_process_gpu_timeseries(
-    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    user: Annotated[NoneForUserWithRealmRoles, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     cluster: str,
-    user: str | None = None,
     job_id: int | None = None,
     epoch: int = 0,
     nodename: str | None = None,
@@ -170,7 +172,7 @@ async def job_sample_process_gpu_timeseries(
         response_model=JobsResponse)
 @cache(expire=30)
 async def jobs(cluster: str,
-    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    user: Annotated[str | None, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     start_time_in_s: int | None = None,
     end_time_in_s: int | None = None,
     states: str | None = None,
@@ -191,6 +193,7 @@ async def jobs(cluster: str,
 
     return { 'jobs' : await dbi.get_jobs(
                 cluster=cluster,
+                user=user,
                 start_time_in_s=start_time_in_s,
                 end_time_in_s=end_time_in_s,
                 states=job_states

@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from fastapi_pagination import Page
 
+from enum import Enum
+
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
@@ -26,6 +28,9 @@ oauth2_scheme = OAuth2PasswordBearer(
         "jobs.all": "Read all items."
     }
 )
+
+class Role(str, Enum):
+    ADMIN = "admin"
 
 class Roles(BaseSettings):
     roles: list[str] = Field(default=[])
@@ -62,10 +67,6 @@ class TokenPayload(BaseSettings):
     given_name: str
     family_name: str
     email: str
-
-    def has_resource_role(self, role: str) -> bool:
-        return self.resource_access.has_role(role)
-
 
 def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None, resolution_in_s: int | None):
     if end_time_in_s is None:
@@ -163,6 +164,7 @@ async def get_token_payload(request: Request) -> TokenPayload:
     logger.info("get_token_payload: authentication disabled")
     return None
 
+
 class RequiredPermissions:
     required_roles: list[str]
 
@@ -185,6 +187,49 @@ class RequiredPermissions:
                     detail=f"Permission/role(s) '{','.join(self.required_roles)}' required"
                 )
         return token_payload
+
+class NoneForUserWithRoles:
+    optional_roles: list[Role]
+
+    def __init__(self, roles: list[Role]) -> None:
+        app_settings = AppSettings.initialize()
+
+        if not app_settings.oauth.required:
+            self.optional_roles = []
+        else:
+            self.optional_roles = roles
+
+    def __call__(self, token_payload: Annotated[TokenPayload, Depends(get_token_payload)]) -> None:
+        if token_payload:
+            logger.info(f"Optional roles: {self.optional_roles} - available roles: {token_payload.resource_access.account.roles}")
+
+        for role in self.optional_roles:
+            if not token_payload.resource_access.has_role(role.value):
+                return token_payload.preferred_username
+
+        return None
+
+class NoneForUserWithRealmRoles:
+    optional_roles: list[Role]
+
+    def __init__(self, roles: list[Role]) -> None:
+        app_settings = AppSettings.initialize()
+
+        if not app_settings.oauth.required:
+            self.optional_roles = []
+        else:
+            self.optional_roles = roles
+
+    def __call__(self, token_payload: Annotated[TokenPayload, Depends(get_token_payload)]) -> None:
+        if token_payload:
+            logger.info(f"Optional roles: {self.optional_roles} - available roles: {token_payload.realm_access.roles}")
+
+        for role in self.optional_roles:
+            if not token_payload.realm_access.has_role(role.value):
+                return token_payload.preferred_username
+
+        return None
+
 
 
 T = TypeVar("T")
