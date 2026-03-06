@@ -1575,12 +1575,14 @@ class ClusterDB(Database):
             start_time_in_s: int | None = None,
             end_time_in_s: int | None = None,
             epoch: int | None = None,
+            user: str | None = None,
         ):
 
         jobs = await self.get_jobs_with_nodes(
                 cluster=cluster,
                 job_id=job_id,
                 epoch=epoch,
+                user=user,
                 start_time_in_s=start_time_in_s,
                 end_time_in_s=end_time_in_s
         )
@@ -2224,6 +2226,7 @@ class ClusterDB(Database):
             self,
             cluster: str,
             job_id: int,
+            user: str | None = None,
             start_time_in_s: int | None = None,
             end_time_in_s: int | None = None,
             states: list[str] | None = None,
@@ -2235,6 +2238,8 @@ class ClusterDB(Database):
             (SampleSlurmJob.job_id == job_id) & \
             (SampleSlurmJob.job_step == '') # get the main job
 
+        if user:
+            where &= SampleSlurmJob.user_name == user
         if start_time_in_s:
             where &= (SampleSlurmJob.time >= fromtimestamp(start_time_in_s))
         if end_time_in_s:
@@ -2584,6 +2589,7 @@ class ClusterDB(Database):
         self,
         cluster: str,
         job_id: int,
+        user: str | None = None,
         time_in_s: int | None = None,
         interval_in_s: int = INTERVAL_2WEEKS
     ) -> Awaitable[dict[str, dict[str, float]]]:
@@ -2597,6 +2603,9 @@ class ClusterDB(Database):
                 end_time_in_s=time_in_s,
                 states=["RUNNING", "COMPLETED"]
         )
+
+        if user and job.user_name != user:
+            raise RuntimeError(f"Job Report for {job_id=} on {cluster=} cannot be provided. The job belongs a different user (current {user=})")
 
         report = JobReport()
         async with self.make_async_session() as session:
