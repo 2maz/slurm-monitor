@@ -91,11 +91,14 @@ class RestapiParser(BaseParser):
             cmd += ["--ssl-certfile", app_settings.ssl.certfile]
 
         cmd_txt = ' '.join(cmd)
-
         logger.info(f"Execute: {cmd_txt}")
-        result = subprocess.run(cmd_txt, shell=True)
+        returncode = 0
+        try:
+            with subprocess.Popen(cmd) as process:
+                process.wait()
 
-        if result.returncode != 0:
-            print(result.stderr, file=sys.stderr)
-            print(result.stdout, file=sys.stdout)
-            sys.exit(result.returncode)
+                returncode = process.returncode
+        except KeyboardInterrupt:
+            logger.info("Shutdown completed (after KeyboardInterrupt)")
+
+        sys.exit(returncode)
