@@ -148,6 +148,16 @@ class ListenParser(BaseParser):
         elif args.use_version == "v2":
             from slurm_monitor.db.v2.db import ClusterDB
 
+            # Ensure commandline overrides .env file settings
+            if args.cluster_name:
+                app_settings.listen.cluster = args.cluster_name
+
+            if args.port:
+                app_settings.listen.kafka.port = args.port
+
+            if args.host:
+                app_settings.listen.kafka.host = args.host
+
             lookback_in_h = MessageSubscriber.extract_lookbacks(args.lookback)
 
             database = None
@@ -165,9 +175,12 @@ class ListenParser(BaseParser):
             else:
                 logger.info("Running in listen mode")
 
-            print("Using lookbacks: ")
+            print("Connecting with")
+            print(f"    kafka bootstrap server: {app_settings.listen.kafka.host}:{app_settings.listen.kafka.port}")
+            print(f"    listen-ui: {args.ui_host}:{args.ui_port}")
+            print("    lookbacks: ")
             for x,y in lookback_in_h.items():
-                print(f"    {x.rjust(10)}: {str(y).rjust(4)}h")
+                print(f"        {x.rjust(10)}: {str(y).rjust(4)}h")
 
             stats_output = args.stats_output
             if stats_output is None:
@@ -189,6 +202,7 @@ class ListenParser(BaseParser):
             if args.ui_host and args.ui_port:
                 self.socket.setsockopt_string(zmq.IDENTITY, args.cluster_name)
                 self.socket.connect(f"tcp://{args.ui_host}:{args.ui_port}")
+
 
             subscriber = MessageSubscriber(
                     host=args.host,
@@ -222,7 +236,7 @@ class ListenUiParser(BaseParser):
                 nargs="+",
                 type=str,
                 default=app_settings.listen.cluster,
-                help=f"Cluster(s) for which the topics shall be extracted, default is {app_settings.listen.cluster}",
+                help=f"Cluster for which the ui runs"
         )
 
         parser.add_argument("--ui-host",
