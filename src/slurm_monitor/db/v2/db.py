@@ -38,6 +38,7 @@ from slurm_monitor.api.v2.response_models import (
     SampleGpuTimeseriesResponse,
     SampleProcessAccResponse,
     SampleProcessGpuAccResponse,
+    UserSettingsResponse,
 )
 
 from slurm_monitor.db.v2.db_base import (
@@ -72,7 +73,8 @@ from .db_tables import (
     SysinfoAttributes,
     SysinfoGpuCard,
     SysinfoGpuCardConfig,
-    time_bucket
+    time_bucket,
+    UserSettings,
 )
 
 logger = logging.getLogger(__name__)
@@ -98,6 +100,8 @@ class ClusterDB(Database):
     SysinfoGpuCardConfig = SysinfoGpuCardConfig
 
     ErrorMessage = ErrorMessage
+
+    UserSettings = UserSettings
 
     #TableMetadata = TableMetadata
 
@@ -1046,6 +1050,7 @@ class ClusterDB(Database):
             start_time_in_s: int,
             end_time_in_s: int,
             resolution_in_s: int,
+            user: str | None = None,
             nodes: list[str] | None = None
             ):
 
@@ -1053,6 +1058,7 @@ class ClusterDB(Database):
                 cluster=cluster,
                 job_id=job_id,
                 epoch=epoch,
+                user=user,
                 start_time_in_s=start_time_in_s,
                 end_time_in_s=end_time_in_s,
                 resolution_in_s=resolution_in_s,
@@ -1061,6 +1067,7 @@ class ClusterDB(Database):
 
         active_jobs = await self.get_jobs_with_nodes(
                 cluster=cluster,
+                user=user,
                 start_time_in_s=start_time_in_s,
                 end_time_in_s=end_time_in_s,
                 job_id=job_id,
@@ -1075,7 +1082,7 @@ class ClusterDB(Database):
             else:
                 intersection = set(nodes) & set(job_nodes)
                 if not intersection:
-                    # this jobs runs on nodes that are not
+                    # these jobs run on nodes that are not
                     # relevant for this query
                     all_jobs.append({'job': jid, 'epoch': epoch, 'nodes': {}})
                     continue
@@ -1087,6 +1094,8 @@ class ClusterDB(Database):
                     break
 
             for node in nodes:
+                # no need to be user specific, since the job id is already
+                # filtering
                 cpu_status_timeseries = await self.get_node_sample_process_timeseries(
                         cluster=cluster,
                         job_id=job_id,
@@ -1211,6 +1220,7 @@ class ClusterDB(Database):
             start_time_in_s: int,
             end_time_in_s: int,
             resolution_in_s: int,
+            user: str | None = None,
             nodes: list[str] | None = None
             ) -> list[JobNodeSampleProcessGpuTimeseriesResponse]:
         """
@@ -1232,6 +1242,9 @@ class ClusterDB(Database):
 
         if end_time_in_s:
             where &= SampleProcessGpu.time <= fromtimestamp(end_time_in_s)
+
+        if user:
+            where &= SampleProcessGpu.user == user
 
         query = select(
                     SampleProcessGpu.job,
@@ -1562,12 +1575,14 @@ class ClusterDB(Database):
             start_time_in_s: int | None = None,
             end_time_in_s: int | None = None,
             epoch: int | None = None,
+            user: str | None = None,
         ):
 
         jobs = await self.get_jobs_with_nodes(
                 cluster=cluster,
                 job_id=job_id,
                 epoch=epoch,
+                user=user,
                 start_time_in_s=start_time_in_s,
                 end_time_in_s=end_time_in_s
         )
@@ -2125,6 +2140,7 @@ class ClusterDB(Database):
                 end_time_in_s: int | None = None,
                 node: str | None = None,
                 job_id: int | None = None,
+                user: str | None = None,
                 epoch: int | None = None,
                 ):
         """
@@ -2149,6 +2165,9 @@ class ClusterDB(Database):
         if node is not None:
             where &= (SampleProcess.node == node)
 
+        if user is not None:
+            where &= (SampleProcess.user == user)
+
         query = select(
                     SampleProcess.job,
                     SampleProcess.epoch,
@@ -2169,11 +2188,13 @@ class ClusterDB(Database):
     async def get_jobs(
             self,
             cluster: str,
+            user: str | None = None,
             start_time_in_s: int | None = None,
             end_time_in_s: int | None = None,
             states: list[str] | None = None,
         ):
         return await self.get_slurm_jobs(cluster,
+                    user=user,
                     start_time_in_s=start_time_in_s,
                     end_time_in_s=end_time_in_s,
                     states=states,
@@ -2184,6 +2205,7 @@ class ClusterDB(Database):
             cluster: str,
             job_id: int,
             epoch: int,
+            user: str | None = None,
             start_time_in_s: int | None = None,
             end_time_in_s: int | None = None,
             states: list[str] | None = None,
@@ -2192,6 +2214,7 @@ class ClusterDB(Database):
         if epoch == 0:
             return await self.get_slurm_job(
                     cluster,
+                    user=user,
                     job_id=job_id,
                     start_time_in_s=start_time_in_s,
                     end_time_in_s=end_time_in_s,
@@ -2203,6 +2226,7 @@ class ClusterDB(Database):
             self,
             cluster: str,
             job_id: int,
+            user: str | None = None,
             start_time_in_s: int | None = None,
             end_time_in_s: int | None = None,
             states: list[str] | None = None,
@@ -2214,6 +2238,8 @@ class ClusterDB(Database):
             (SampleSlurmJob.job_id == job_id) & \
             (SampleSlurmJob.job_step == '') # get the main job
 
+        if user:
+            where &= SampleSlurmJob.user_name == user
         if start_time_in_s:
             where &= (SampleSlurmJob.time >= fromtimestamp(start_time_in_s))
         if end_time_in_s:
@@ -2438,6 +2464,7 @@ class ClusterDB(Database):
     async def get_slurm_jobs(
             self,
             cluster: str,
+            user: str | None = None,
             partition: str | None = None,
             nodelist: list[str] | None = None,
             states: list[str] | None = None,
@@ -2460,6 +2487,9 @@ class ClusterDB(Database):
 
         where &= (SampleSlurmJob.time >= fromtimestamp(start_time_in_s))
         where &= (SampleSlurmJob.time <= fromtimestamp(end_time_in_s))
+
+        if user:
+            where &= SampleSlurmJob.user_name == user
 
         if states:
             where &= SampleSlurmJob.job_state.in_(states)
@@ -2559,6 +2589,7 @@ class ClusterDB(Database):
         self,
         cluster: str,
         job_id: int,
+        user: str | None = None,
         time_in_s: int | None = None,
         interval_in_s: int = INTERVAL_2WEEKS
     ) -> Awaitable[dict[str, dict[str, float]]]:
@@ -2572,6 +2603,9 @@ class ClusterDB(Database):
                 end_time_in_s=time_in_s,
                 states=["RUNNING", "COMPLETED"]
         )
+
+        if user and job.user_name != user:
+            raise RuntimeError(f"Job Report for {job_id=} on {cluster=} cannot be provided. The job belongs a different user (current {user=})")
 
         report = JobReport()
         async with self.make_async_session() as session:
@@ -2759,3 +2793,20 @@ class ClusterDB(Database):
             lookbacks[topic] = round((now - timestamp).total_seconds() / 3600.0,2)
 
         return lookbacks
+
+    def get_user_settings(self, user: str) -> UserSettingsResponse:
+        with self.make_session() as session:
+            query = select(UserSettings).where(UserSettings.user == user)
+            result = session.execute(query).mappings().all()
+            if result:
+                return result[0]["UserSettings"]
+            else:
+                return { 'user': user, 'settings': {}, 'time_modified': None }
+
+    def set_user_settings(self, user: str, settings: dict[str, any]):
+        user_settings = UserSettings(
+                user=user,
+                settings=settings,
+                time_modified=utcnow()
+        )
+        self.insert_or_update(user_settings)

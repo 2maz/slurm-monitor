@@ -6,6 +6,7 @@ from . import monitor # noqa
 from . import cluster # noqa
 from . import nodes   # noqa
 from . import jobs    # noqa
+from . import user    # noqa
 
 from slurm_monitor.utils.api import createFastAPI
 

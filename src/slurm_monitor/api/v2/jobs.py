@@ -1,7 +1,7 @@
 from fastapi import Depends
 from fastapi_cache.decorator import cache
 import fastapi_pagination
-
+import logging
 from typing import Annotated
 
 from slurm_monitor.utils import utcnow
@@ -11,8 +11,8 @@ from slurm_monitor.api.v2.routes import (
     api_router,
     create_custom_page,
     validate_interval,
-    get_token_payload,
-    TokenPayload
+    Role,
+    NoneForUserWithRealmRoles
 )
 
 from slurm_monitor.api.v2.response_models import (
@@ -28,6 +28,8 @@ from slurm_monitor.api.v2.response_models import (
 # we query directly to cache the full query response on the db layer
 fastapi_pagination.utils.disable_installed_extensions_check()
 
+logger = logging.getLogger(__name__)
+
 JobsPage = create_custom_page("jobs")
 
 @api_router.get("/cluster/{cluster}/jobs/process/timeseries",
@@ -42,7 +44,7 @@ JobsPage = create_custom_page("jobs")
 )
 @cache(expire=90)
 async def job_sample_process_system(
-    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    user: Annotated[NoneForUserWithRealmRoles, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     cluster: str,
     job_id: int | None = None,
     epoch: int = 0,
@@ -72,6 +74,7 @@ async def job_sample_process_system(
             nodes=nodes,
             job_id=job_id,
             epoch=epoch,
+            user=user,
             start_time_in_s=start_time_in_s,
             end_time_in_s=end_time_in_s,
             resolution_in_s=resolution_in_s
@@ -84,7 +87,7 @@ async def job_sample_process_system(
 )
 @cache(expire=90)
 async def job_sample_process_system_tree(
-    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    user: Annotated[NoneForUserWithRealmRoles, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     cluster: str,
     job_id: int,
     epoch: int = 0,
@@ -114,6 +117,7 @@ async def job_sample_process_system_tree(
             cluster=cluster,
             job_id=job_id,
             epoch=epoch,
+            user=user,
             start_time_in_s=start_time_in_s,
             end_time_in_s=end_time_in_s,
             resolution_in_s=resolution_in_s
@@ -131,7 +135,7 @@ async def job_sample_process_system_tree(
         response_model=list[JobNodeSampleProcessGpuTimeseriesResponse]
 )
 async def job_sample_process_gpu_timeseries(
-    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    user: Annotated[NoneForUserWithRealmRoles, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     cluster: str,
     job_id: int | None = None,
     epoch: int = 0,
@@ -156,6 +160,7 @@ async def job_sample_process_gpu_timeseries(
             nodes=nodes,
             job_id=job_id,
             epoch=epoch,
+            user=user,
             start_time_in_s=start_time_in_s,
             end_time_in_s=end_time_in_s,
             resolution_in_s=resolution_in_s
@@ -168,7 +173,7 @@ async def job_sample_process_gpu_timeseries(
         response_model=JobsResponse)
 @cache(expire=30)
 async def jobs(cluster: str,
-    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    user: Annotated[str | None, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     start_time_in_s: int | None = None,
     end_time_in_s: int | None = None,
     states: str | None = None,
@@ -189,6 +194,7 @@ async def jobs(cluster: str,
 
     return { 'jobs' : await dbi.get_jobs(
                 cluster=cluster,
+                user=user,
                 start_time_in_s=start_time_in_s,
                 end_time_in_s=end_time_in_s,
                 states=job_states
@@ -213,7 +219,7 @@ async def jobs(cluster: str,
         tags=["job"],
         response_model=JobResponse)
 async def job_status(
-    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    user: Annotated[NoneForUserWithRealmRoles, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     cluster: str,
     job_id: int,
     epoch: int = 0,
@@ -234,6 +240,7 @@ async def job_status(
                 cluster=cluster,
                 job_id=job_id,
                 epoch=epoch,
+                user=user,
                 start_time_in_s=start_time_in_s,
                 end_time_in_s=end_time_in_s,
                 states=job_states
@@ -245,9 +252,9 @@ async def job_status(
         response_model=None
         )
 async def query_jobs(
-    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    as_user: Annotated[NoneForUserWithRealmRoles, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     cluster: str,
-    user: str | None = None,
+    user: str  | None = None,
     user_id: int | None = None,
     job_id: int | None = None,
     start_before_in_s: float | None = None,
@@ -265,6 +272,10 @@ async def query_jobs(
     job_states = None
     if states:
         job_states = states.split(",")
+
+    if as_user is not None:
+        logger.warning(f"User {as_user} is quering other {user=} without admin privilegde")
+        user = as_user
 
     return {"jobs": await dbi.query_jobs(
         cluster=cluster,
@@ -290,7 +301,7 @@ async def query_jobs(
         response_model=JobsPage[JobResponse]
         )
 async def query_jobs_pages(
-    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    as_user: Annotated[NoneForUserWithRealmRoles, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     cluster: str,
     user: str | None = None,
     user_id: int | None = None,
@@ -313,6 +324,9 @@ async def query_jobs_pages(
     job_states = None
     if states:
         job_states = states.split(",")
+
+    if as_user is not None:
+        user = as_user
 
     jobs = await dbi.query_jobs(
         cluster=cluster,
@@ -341,7 +355,7 @@ async def query_jobs_pages(
         response_model=JobReport
 )
 async def job_report(
-    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    user: Annotated[NoneForUserWithRealmRoles, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     cluster: str,
     job_id: int,
     time_in_s: float | None = None,
@@ -349,6 +363,7 @@ async def job_report(
     ):
     return await dbi.get_job_report(
             cluster=cluster,
+            user=user,
             job_id=job_id,
             time_in_s=time_in_s
         )

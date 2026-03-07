@@ -17,6 +17,7 @@ from slurm_monitor.db_operations import DBManager
 from slurm_monitor.api.v2.routes import (
     api_router,
     get_token_payload,
+    RequiredPermissions,
     TokenPayload
 )
 
@@ -60,7 +61,7 @@ async def partitions(
         response_model=TokenPayload
 )
 async def user(
-        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+        token_payload: Annotated[TokenPayload, Depends(RequiredPermissions([]))],
         ):
     """
     Get status of partitions of a cluster (for a specific time point)
