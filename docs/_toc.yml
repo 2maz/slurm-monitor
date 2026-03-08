@@ -11,3 +11,4 @@ parts:
   - caption: API Documentation
     chapters:
       - file: modules
+      - file: cli
