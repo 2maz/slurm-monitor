@@ -199,7 +199,7 @@ class ListenParser(BaseParser):
             elif log_output.lower() == 'none':
                 log_output = None
             else:
-                # user has specified a 'custom' filename for logout, so use it
+                # user has specified a 'custom' filename for logging, so use it
                 pass
 
             context = zmq.Context()
@@ -281,7 +281,7 @@ class ListenUiParser(BaseParser):
         elif log_output.lower() == 'none':
             log_output = None
         else:
-            # user has specified a 'custom' filename for logout, so use it
+            # user has specified a 'custom' filename for logging, so use it
             pass
 
         def update():
