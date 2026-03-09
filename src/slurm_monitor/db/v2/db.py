@@ -73,9 +73,10 @@ from .db_tables import (
     SysinfoAttributes,
     SysinfoGpuCard,
     SysinfoGpuCardConfig,
-    time_bucket,
     UserSettings,
 )
+
+from slurm_monitor.timescaledb import time_bucket
 
 logger = logging.getLogger(__name__)
 
