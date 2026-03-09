@@ -189,7 +189,7 @@ class ListenParser(BaseParser):
                     stats_output = f"slurm-monitor.listen.{args.cluster_name}.stats.json"
 
             log_output = args.log_output
-            if log_output is None or log_output.lower() == 'none':
+            if log_output is None and log_output.lower() != 'none':
                 log_output = "slurm-monitor.listen.log"
                 if args.cluster_name:
                     log_output = f"slurm-monitor.listen.{args.cluster_name}.log"
@@ -236,7 +236,7 @@ class ListenUiParser(BaseParser):
                 nargs="+",
                 type=str,
                 default=app_settings.listen.cluster,
-                help="Cluster for which the ui runs"
+                help=f"Cluster for which the ui runs"
         )
 
         parser.add_argument("--ui-host",
@@ -265,7 +265,7 @@ class ListenUiParser(BaseParser):
             self.socket.bind(f"tcp://{args.ui_host}:{args.ui_port}")
 
         log_output = args.log_output
-        if log_output is None or log_output.lower() == 'none':
+        if log_output is None and log_output.lower() != 'none':
             log_output = "slurm-monitor.listen-ui.log"
             if args.cluster_name:
                 log_output = f"slurm-monitor.listen-ui.{args.cluster_name}.log"

@@ -881,13 +881,6 @@ class SampleDisk(TableBase):
     def create(cls, **kwargs):
         if "stats" in kwargs:
             stats = kwargs['stats']
-
-            expected_len = len(cls.diskstats())
-            actual_len = len(stats)
-            if actual_len != expected_len:
-                raise RuntimeError("SampleDisk.create: failed to create diskstats"
-                                   f" unexcepted number of fields: {actual_len} vs. {expected_len}")
-
             for field, idx in cls.diskstats().items():
                 kwargs[field] = stats[idx-1]
             del kwargs['stats']
