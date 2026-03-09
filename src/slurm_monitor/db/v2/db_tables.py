@@ -23,7 +23,6 @@ from sqlalchemy import (
     types,
     String,
     Text,
-    TIMESTAMP,
 )
 
 from sqlalchemy.orm import as_declarative, class_mapper
@@ -33,9 +32,9 @@ from sqlalchemy.dialects.postgresql import (
     HSTORE,
     ARRAY
 )
-
 from sqlalchemy.sql.functions import GenericFunction
 from sqlalchemy.ext.compiler import compiles
+
 import slurm_monitor.timescaledb as timescaledb # noqa
 
 __all__ = [ "timescaledb" ]
@@ -69,22 +68,6 @@ def compile_epoch_fn_timescaledb(expr, compiler, **kwargs):
 @compiles(EpochFn, 'sqlite')
 def compile_epoch_fn_sqlite(expr, compiler, **kwargs):
     return f"strftime('%s', {compiler.process(expr.clauses.clauses[0], **kwargs)})"
-
-class time_bucket(GenericFunction):
-    type = TIMESTAMP()
-    inherit_cache = True
-
-# For TimeScaledb
-@compiles(time_bucket, 'timescaledb')
-def compile_time_bucket_timescaledb(expr, compiler, **kwargs):
-    time_window = expr.clauses.clauses[0].value
-    time_column = f"{compiler.process(expr.clauses.clauses[1], **kwargs)}"
-
-    if type(time_window) is int:
-        return f"time_bucket('{time_window} seconds',{time_column})"
-    else:
-        return f"time_bucket('{time_window}',{time_column}"
-
 
 def Column(*args, **kwargs):
     if "nullable" not in kwargs:
