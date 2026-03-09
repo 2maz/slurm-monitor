@@ -881,15 +881,12 @@ class SampleDisk(TableBase):
     def create(cls, **kwargs):
         if "stats" in kwargs:
             stats = kwargs['stats']
-
-            expected_len = len(cls.diskstats())
-            actual_len = len(stats)
-            if actual_len != expected_len:
-                raise RuntimeError("SampleDisk.create: failed to create diskstats"
-                                   f" unexcepted number of fields: {actual_len} vs. {expected_len}")
+            number_of_fields = len(stats)
 
             for field, idx in cls.diskstats().items():
-                kwargs[field] = stats[idx-1]
+                if idx <= number_of_fields:
+                    kwargs[field] = stats[idx-1]
+
             del kwargs['stats']
 
         return super().create(**kwargs)
@@ -929,17 +926,18 @@ class SampleDisk(TableBase):
 
     weighted_ms_spent_doing_ios = Column(BigInteger)
 
-    discards_completed = Column(BigInteger)
+    # Optional
+    discards_completed = Column(BigInteger, default=0)
 
-    discards_merged = Column(BigInteger)
+    discards_merged = Column(BigInteger, default=0)
 
-    sectors_discarded = Column(BigInteger)
+    sectors_discarded = Column(BigInteger, default=0)
 
-    ms_spent_discarding = Column(BigInteger)
+    ms_spent_discarding = Column(BigInteger, default=0)
 
-    flush_requests_completed = Column(BigInteger)
+    flush_requests_completed = Column(BigInteger, default=0)
 
-    ms_spent_flushing = Column(BigInteger)
+    ms_spent_flushing = Column(BigInteger, default=0)
 
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
