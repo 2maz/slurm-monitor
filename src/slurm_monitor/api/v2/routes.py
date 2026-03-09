@@ -188,7 +188,7 @@ class RequiredPermissions:
                 )
         return token_payload
 
-class NoneForUserWithRoles:
+class NoneForUserWithResourceRoles:
     optional_roles: list[Role]
 
     def __init__(self, roles: list[Role]) -> None:
