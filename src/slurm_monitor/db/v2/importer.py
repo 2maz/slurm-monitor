@@ -223,13 +223,16 @@ class DBJsonImporter(Importer):
                 del system["disks"]
 
                 for disk in disks:
-                    disk_sample = SampleDisk.create(
-                        cluster=cluster,
-                        node=node,
-                        **disk,
-                        time=time
-                    )
-                    disk_samples.append(disk_sample)
+                    try:
+                        disk_sample = SampleDisk.create(
+                            cluster=cluster,
+                            node=node,
+                            **disk,
+                            time=time
+                        )
+                        disk_samples.append(disk_sample)
+                    except Exception as e:
+                        logger.warning(f"Sample: adding diskstats for {disk=} failed: -- {e}")
 
             if "gpus" in system:
                 gpus = system["gpus"]
