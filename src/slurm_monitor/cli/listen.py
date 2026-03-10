@@ -130,7 +130,7 @@ class ListenParser(BaseParser):
             self.message_tx_count += 1
             logger.debug(f"Listen.publish_status (to listen-ui): complete (message_tx_count={self.message_tx_count} {cluster=})")
         except zmq.error.Again:
-            logger.warning(f"Listen.publish_status: Socket is full (highwatermark: {self.socket.get_hwm()} reached, message could not be forwarded to listen-ui. Drop message or retry")
+            logger.warning(f"Listen.publish_status: Socket is full (highwatermark: {self.socket.get_hwm()} reached, message could not be forwarded to listen-ui.")
         except zmq.error.ZMQError as e:
             logger.debug(f"Listen.publish_status: zmq error (from {cluster}) -- {e}")
             pass

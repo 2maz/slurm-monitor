@@ -604,10 +604,7 @@ class MessageSubscriber:
                     # If a sample arrives there should be no duplicates in the database - an exception is the initialization
                     # where historic records are retrieved
                     # Default: allow to update / merge existing information
-                    update = True
-                    if sonar.TopicType.infer(topic) == sonar.TopicType.sample:
-                        update = False
-
+                    update = sonar.TopicType.infer(topic) != sonar.TopicType.sample
                     logger.debug(f"DB insert: {topic} {update=} {ignore_integrity_errors=} - start")
                     await msg_handler.insert(json.loads(msg), update=update, ignore_integrity_errors=ignore_integrity_errors)
                     logger.debug(f"DB insert: {topic} - completed")

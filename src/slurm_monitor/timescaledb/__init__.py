@@ -1,8 +1,8 @@
 from sqlalchemy.dialects import registry
 from .functions import (
     first, # noqa
-    last, #noqa
-    time_bucket #noqa
+    last, # noqa
+    time_bucket # noqa
 )
 
 registry.register(
