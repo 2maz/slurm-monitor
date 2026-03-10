@@ -236,7 +236,7 @@ class ListenUiParser(BaseParser):
                 nargs="+",
                 type=str,
                 default=app_settings.listen.cluster,
-                help=f"Cluster for which the ui runs"
+                help="Cluster for which the ui runs"
         )
 
         parser.add_argument("--ui-host",
