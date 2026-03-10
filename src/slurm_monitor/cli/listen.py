@@ -19,6 +19,8 @@ class ListenParser(BaseParser):
     ui_host: str | None
     ui_port: int | None
 
+    cluster_name: str | None
+
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
 
@@ -113,13 +115,28 @@ class ListenParser(BaseParser):
         """
         zmq Dealer/Router pattern in use: this is the 'Dealer' publishing / and receiving instructions
         """
-        self.socket.send_json(dict(output), default=str)
+        cluster = self.cluster_name
         try:
+            logger.debug(f"Listen.send_json: start (from {cluster})")
+            self.socket.send_json(dict(output), default=str)
+            logger.debug(f"Listen.send_json: complete (from {cluster})")
+        except zmq.error.ZMQError:
+            logger.debug(f"Listen.send_json: error (from {cluster})")
+            pass
+
+        try:
+            logger.debug("Listen.recv_multipart: start (from {cluster})")
             empty, json_bytes = self.socket.recv_multipart(zmq.NOBLOCK)
+            logger.debug("Listen.recv_multipart: complete (from {cluster})")
             control = json.loads(json_bytes.decode("UTF-8"))
             return MessageSubscriber.Control(**control)
         except zmq.error.ZMQError:
+            logger.debug(f"Listen.recv_multipart: error (from {cluster})")
             return None
+        except json.decoder.JSONDecodeError:
+            logger.warning(f"Listen.recv_multipart: json decoding error for {json_bytes=} (from {cluster})")
+            return None
+
 
     def execute(self, args):
         super().execute(args)
@@ -151,6 +168,7 @@ class ListenParser(BaseParser):
             # Ensure commandline overrides .env file settings
             if args.cluster_name:
                 app_settings.listen.cluster = args.cluster_name
+                self.cluster_name = args.cluster_name
 
             if args.port:
                 app_settings.listen.kafka.port = args.port
@@ -267,6 +285,16 @@ class ListenUiParser(BaseParser):
         context = zmq.Context()
         self.socket = context.socket(zmq.ROUTER)
 
+        # http://api.zeromq.org/3-0:zmq-setsockopt
+        # default is an infinite wait (-1)
+        self.socket.RCVTIMEO = 0
+        # default is an infinite wait (-1)
+        self.socket.SNDTIMEO = 0
+        self.socket.RECONNECT_IVL_MAX = 60*1000 # 1 min
+
+        # immediately discard messages in memory if socket is closed
+        self.socket.LINGER = 0
+
         if args.ui_host and args.ui_port:
             self.socket.bind(f"tcp://{args.ui_host}:{args.ui_port}")
 
@@ -289,15 +317,27 @@ class ListenUiParser(BaseParser):
             zmq DEALER / ROUTER pattern: receiving a multipart message from dealer here
             """
             try:
+                logger.debug("ListenUiParser.recv_multipart: start")
                 dealer_id, json_content = self.socket.recv_multipart(zmq.NOBLOCK)
+                logger.debug("ListenUiParser.recv_multipart: complete (from {dealer_id=})")
                 message = json.loads(json_content)
                 return MessageSubscriber.Output.from_dict(message)
             except zmq.error.ZMQError:
+                logger.debug("ListenUiParser.recv_multipart: error / nothing to receive")
+                return None
+            except json.decoder.JSONDecodeError:
+                logger.warning(f"Failed to decode json content: {dealer_id=} {json_content=}")
                 return None
 
         def send(dealer_id: str, control: MessageSubscriber.Control):
             json_bytes = json.dumps(control.model_dump()).encode("UTF-8")
-            self.socket.send_multipart([dealer_id.encode("UTF-8"), b"", json_bytes], zmq.NOBLOCK)
+            try:
+                logger.debug(f"ListenUiParser.send_multipart: start (to {dealer_id=})")
+                self.socket.send_multipart([dealer_id.encode("UTF-8"), b"", json_bytes])
+                logger.debug("ListenUiParser.send_multipart: complete (to {dealer_id=})")
+            except zmq.error.ZMQError:
+                logger.warning(f"ListenUiParser.send_multipart: Error sending {dealer_id=} {json_bytes=}")
+
 
         display = TerminalDisplay(rx_fn=update, tx_fn=send, log_output=log_output, log_level=args.log_level)
         display.run()
