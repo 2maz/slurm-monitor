@@ -21,8 +21,14 @@ class ListenParser(BaseParser):
 
     cluster_name: str | None
 
+    message_tx_count: int
+    message_rx_count: int
+
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
+
+        self.message_tx_count = 0
+        self.message_rx_count = 0
 
         app_settings = AppSettings.get_instance()
         parser.description = "listen - The listener component establishes a link between a kafka broker and a database. The (sonar) messages received by the kafka broker will be stored in the database. A listener can be monitored with the listen-ui component"
@@ -111,27 +117,33 @@ class ListenParser(BaseParser):
                             default=app_settings.listen.ui.port,
                             help=f"Set the ui port, default is {app_settings.listen.ui.port}")
 
+
     def publish_status(self, output: MessageSubscriber.Output) -> MessageSubscriber.Control:
         """
         zmq Dealer/Router pattern in use: this is the 'Dealer' publishing / and receiving instructions
         """
         cluster = self.cluster_name
         try:
-            logger.debug(f"Listen.send_json: start (from {cluster})")
-            self.socket.send_json(dict(output), default=str)
-            logger.debug(f"Listen.send_json: complete (from {cluster})")
-        except zmq.error.ZMQError:
-            logger.debug(f"Listen.send_json: error (from {cluster})")
+            logger.debug(f"Listen.publish_status (to listen-ui) - start (from {cluster}) (hwm: {self.socket.get_hwm()})")
+            data = dict(output)
+            self.socket.send_json(data, default=str, flags=zmq.NOBLOCK)
+            self.message_tx_count += 1
+            logger.debug(f"Listen.publish_status (to listen-ui): complete (message_tx_count={self.message_tx_count} {cluster=})")
+        except zmq.error.Again:
+            logger.warning(f"Listen.publish_status: Socket is full (highwatermark: {self.socket.get_hwm()} reached, message could not be forwarded to listen-ui. Drop message or retry")
+        except zmq.error.ZMQError as e:
+            logger.debug(f"Listen.publish_status: zmq error (from {cluster}) -- {e}")
             pass
 
         try:
-            logger.debug("Listen.recv_multipart: start (from {cluster})")
+            logger.debug(f"Listen.publish_status (check control cmds from listen-ui) recv_multipart: start (from {cluster})")
             empty, json_bytes = self.socket.recv_multipart(zmq.NOBLOCK)
-            logger.debug("Listen.recv_multipart: complete (from {cluster})")
+            self.message_rx_count += 1
+            logger.debug(f"Listen.publish_status (check control cmds from listen-ui) recv_multipart: complete (message_rx_count={self.message_rx_count} {cluster=})")
             control = json.loads(json_bytes.decode("UTF-8"))
             return MessageSubscriber.Control(**control)
         except zmq.error.ZMQError:
-            logger.debug(f"Listen.recv_multipart: error (from {cluster})")
+            logger.debug(f"Listen.recv_multipart: error / nothing to receive (from {cluster})")
             return None
         except json.decoder.JSONDecodeError:
             logger.warning(f"Listen.recv_multipart: json decoding error for {json_bytes=} (from {cluster})")
@@ -219,9 +231,19 @@ class ListenParser(BaseParser):
             else:
                 # user has specified a 'custom' filename for logging, so use it
                 pass
+            print(f"Logging to: {log_output}")
 
             context = zmq.Context()
             self.socket = context.socket(zmq.DEALER)
+
+            # default is an infinite wait (-1)
+            self.socket.RCVTIMEO = 0
+            # default is an infinite wait (-1)
+            self.socket.SNDTIMEO = 0
+            # Setting the high-water mark to keep only one message
+            self.socket.SNDHWM = 1
+            # immediately discard messages in memory if socket is closed
+            self.socket.LINGER = 0
 
             if args.ui_host and args.ui_port:
                 self.socket.setsockopt_string(zmq.IDENTITY, args.cluster_name)
@@ -251,8 +273,14 @@ class ListenUiParser(BaseParser):
     ui_host: str | None
     ui_port: int | None
 
+    message_tx_count: int
+    message_rx_count: int
+
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
+
+        self.message_tx_count = 0
+        self.message_rx_count = 0
 
         app_settings = AppSettings.get_instance()
 
@@ -290,7 +318,8 @@ class ListenUiParser(BaseParser):
         self.socket.RCVTIMEO = 0
         # default is an infinite wait (-1)
         self.socket.SNDTIMEO = 0
-        self.socket.RECONNECT_IVL_MAX = 60*1000 # 1 min
+        # Setting the high-water mark to keep only one message
+        self.socket.SNDHWM = 1
 
         # immediately discard messages in memory if socket is closed
         self.socket.LINGER = 0
@@ -313,20 +342,22 @@ class ListenUiParser(BaseParser):
             pass
 
         def update():
+            global message_rx_count
             """
             zmq DEALER / ROUTER pattern: receiving a multipart message from dealer here
             """
             try:
                 logger.debug("ListenUiParser.recv_multipart: start")
                 dealer_id, json_content = self.socket.recv_multipart(zmq.NOBLOCK)
-                logger.debug("ListenUiParser.recv_multipart: complete (from {dealer_id=})")
+                self.message_rx_count += 1
+                logger.info(f"ListenUiParser.recv_multipart: complete (message_rx_count={self.message_rx_count} {dealer_id=})")
                 message = json.loads(json_content)
                 return MessageSubscriber.Output.from_dict(message)
             except zmq.error.ZMQError:
                 logger.debug("ListenUiParser.recv_multipart: error / nothing to receive")
                 return None
             except json.decoder.JSONDecodeError:
-                logger.warning(f"Failed to decode json content: {dealer_id=} {json_content=}")
+                logger.warning(f"Failed to decode json content: message_rx_count={self.message_rx_count} {dealer_id=} {json_content=}")
                 return None
 
         def send(dealer_id: str, control: MessageSubscriber.Control):
@@ -334,7 +365,10 @@ class ListenUiParser(BaseParser):
             try:
                 logger.debug(f"ListenUiParser.send_multipart: start (to {dealer_id=})")
                 self.socket.send_multipart([dealer_id.encode("UTF-8"), b"", json_bytes])
-                logger.debug("ListenUiParser.send_multipart: complete (to {dealer_id=})")
+                self.message_tx_count +=1
+                logger.info(f"ListenUiParser.send_multipart: complete (message_tx_count={self.message_tx_count} {dealer_id=} {json_bytes=})")
+            except zmq.error.Again:
+                logger.warning(f"Socket is full (highwatermark: {self.socket.get_hwm()} reached): message could not be forwarded to listener {dealer_id=}")
             except zmq.error.ZMQError:
                 logger.warning(f"ListenUiParser.send_multipart: Error sending {dealer_id=} {json_bytes=}")
 

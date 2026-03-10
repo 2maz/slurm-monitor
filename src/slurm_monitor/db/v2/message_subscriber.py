@@ -481,6 +481,11 @@ class MessageSubscriber:
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
             root_logger.addHandler(file_handler)
+        else:
+            stream_handler = logging.StreamHandler()
+            stream_handler.setFormatter(formatter)
+            logger.addHandler(stream_handler)
+            root_logger.addHandler(stream_handler)
 
 
     @classmethod
@@ -523,6 +528,7 @@ class MessageSubscriber:
             self.output.log_level = logger.handlers[0].level
             command = self.output_fn(self.output)
             if command:
+                logger.info(f"Control message - received: {command=}")
                 log_level = logging.getLevelName(command.log_level)
                 logger.info(f"Changing log level to: {log_level}")
                 for handler in logger.handlers:
@@ -561,6 +567,7 @@ class MessageSubscriber:
                 time.sleep(self.retry_timeout_in_s)
                 continue
 
+            logger.debug("Consuming msg records - start")
             for idx, consumer_record in enumerate(consumer, 1):
                 try:
                     topic = consumer_record.topic
@@ -587,6 +594,7 @@ class MessageSubscriber:
                         ignore_integrity_errors = False
 
                     if self.state == self.State.STOPPING:
+                        logger.debug("Consuming: stop requested")
                         break
 
                     msg = consumer_record.value.decode("UTF-8")
@@ -595,15 +603,19 @@ class MessageSubscriber:
 
                     # If a sample arrives there should be no duplicates in the database - an exception is the initialization
                     # where historic records are retrieved
+                    # Default: allow to update / merge existing information
+                    update = True
                     if sonar.TopicType.infer(topic) == sonar.TopicType.sample:
-                        await msg_handler.insert(json.loads(msg), update=False, ignore_integrity_errors=ignore_integrity_errors)
-                    else:
-                        # Allow to update / merge existing information
-                        await msg_handler.insert(json.loads(msg), update=True, ignore_integrity_errors=ignore_integrity_errors)
+                        update = False
+
+                    logger.debug(f"DB insert: {topic} {update=} {ignore_integrity_errors=} - start")
+                    await msg_handler.insert(json.loads(msg), update=update, ignore_integrity_errors=ignore_integrity_errors)
+                    logger.debug(f"DB insert: {topic} - completed")
 
                     if sonar.TopicType.infer(topic) == sonar.TopicType.job:
-                        logging.info("Auto update - aligning cluster information from jobs data")
+                        logging.info("Auto update - aligning cluster information from jobs data - start")
                         await msg_handler.autoupdate(cluster=self.cluster_name)
+                        logging.info("Auto update - aligning cluster information from jobs data - completed")
 
                     now = utcnow()
                     seconds_from_now = (now.timestamp() - consumer_record.timestamp/1000.0)
@@ -748,7 +760,9 @@ class MessageSubscriber:
                             bootstrap_servers=f"{self.host}:{self.port}",
                             **self.kafka_consumer_options
                             )
+                logger.debug("KafkaConsumer: fetching topic metadata - start")
                 consumer._fetch_all_topic_metadata()
+                logger.debug("KafkaConsumer: fetching topic metadata - completed")
 
                 # In particular sysinfo message are expected to run with low
                 # cadence (every 24\,h)
