@@ -20,6 +20,7 @@ from sqlalchemy import (
     Index,
     Integer,
     inspect,
+    JSON,
     types,
     String,
     Text,
@@ -1324,3 +1325,12 @@ class ErrorMessage(TableBase):
 
 # Note: SlurmJob table contains all required information
 # class JobsAttributes(TableBase):
+
+
+class UserSettings(TableBase):
+    __tablename__ = "user_settings"
+
+    user = Column(String, primary_key=True, index=True)
+    settings = Column(JSON)
+
+    time_modified = Column(DateTimeTZAware, default=dt.datetime.now)
