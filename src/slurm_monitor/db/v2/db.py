@@ -2702,32 +2702,42 @@ class ClusterDB(Database):
             time_in_s = utcnow().timestamp()
 
         info_from_jobs = select(
+                            SampleSlurmJob.job_id,
                             func.array_agg(SampleSlurmJob.partition.distinct()),
                             func.array_agg(SampleSlurmJob.nodes.distinct())
                           ).where(
                               (SampleSlurmJob.cluster == cluster) &
                               (SampleSlurmJob.partition.is_not(None)) &
                               (SampleSlurmJob.nodes.is_not(None)) &
+                              (SampleSlurmJob.job_step == '') & # only consider the main job
                               (SampleSlurmJob.time >= fromtimestamp(time_in_s - interval_in_s)) &
                               (SampleSlurmJob.time <= fromtimestamp(time_in_s))
+                          ).group_by(
+                            SampleSlurmJob.job_id
                           )
+
         async with self.make_async_session() as session:
+            txt = info_from_jobs.compile(compile_kwargs={"literal_binds": True})
+            logger.debug(f"ClusterDB.sync_cluster_and_nodes_with_jobs: {txt}")
+
             rows = (await session.execute(info_from_jobs)).all()
 
             observed_nodes = []
             observed_partitions = []
 
-            partitions, nodeslist = rows[0]
-            if nodeslist:
-                for nodes in nodeslist:
-                    for txt in nodes:
-                        if txt.lower() == SampleSlurmJob.NONE_ASSIGNED.lower():
-                            continue
-                        observed_nodes += Slurm.expand_node_names(txt)
-                    observed_nodes = list(set(observed_nodes))
+            for row in rows:
+                _, partitions, nodeslist = row
+                if nodeslist:
+                    for nodes in nodeslist:
+                        for txt in nodes:
+                            if txt.lower() == SampleSlurmJob.NONE_ASSIGNED.lower():
+                                continue
+                            observed_nodes += Slurm.expand_node_names(txt)
+                        observed_nodes = list(set(observed_nodes))
 
-            if partitions:
-                observed_partitions = [x for x in partitions if x != '']
+                if partitions:
+                    observed_partitions += [x for x in partitions if x != '']
+                    observed_partitions = list(set(observed_partitions))
 
         cluster_attributes = await self.get_cluster(cluster=cluster,
                          time_in_s=time_in_s,
