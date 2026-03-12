@@ -204,9 +204,9 @@ class ListenParser(BaseParser):
             database = None
             if args.db_uri is not None:
                 database = ClusterDB(db_settings=app_settings.database)
-                inspector = None
 
-                while True:
+                inspector = None
+                while inspector is None:
                     try:
                         inspector = inspect(database.engine)
                     except sqlalchemy.exc.OperationalError as e:
@@ -215,9 +215,10 @@ class ListenParser(BaseParser):
                             sys.exit(10)
                         elif re.search("is starting up", str(e)) is not None:
                             logger.warning(f"Database is starting up - retrying in {args.retry_timeout_in_s}s -- {e}")
-                            time.sleep(args.retry_timeout_in_s)
                         else:
                             raise
+
+                        time.sleep(args.retry_timeout_in_s)
 
                 if not inspector.get_table_names():
                     raise RuntimeError("Listener is trying to connect to an uninitialized database."
