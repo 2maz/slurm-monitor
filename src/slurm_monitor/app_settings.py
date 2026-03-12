@@ -65,6 +65,7 @@ class ListenSettings(BaseModel):
     )
 
     stats: ListenStatsSettings = Field(default_factory=ListenStatsSettings)
+    retry: int = 15
 
 class SSLSettings(BaseModel):
     keyfile: str | None = Field(default=None, description="Keyfile to use")

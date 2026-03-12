@@ -1,6 +1,10 @@
 from argparse import ArgumentParser
 import json
+import re
+import sqlalchemy
 from sqlalchemy import inspect
+import sys
+import time
 import zmq
 
 from slurm_monitor.cli.base import BaseParser
@@ -23,6 +27,8 @@ class ListenParser(BaseParser):
 
     message_tx_count: int
     message_rx_count: int
+
+    retry_timeout_in_s: int
 
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
@@ -117,6 +123,11 @@ class ListenParser(BaseParser):
                             default=app_settings.listen.ui.port,
                             help=f"Set the ui port, default is {app_settings.listen.ui.port}")
 
+        parser.add_argument("--retry-timeout-in-s",
+                            type=int,
+                            default=app_settings.listen.retry,
+                            help="Set retry timeout, when database or partition are not available")
+
 
     def publish_status(self, output: MessageSubscriber.Output) -> MessageSubscriber.Control:
         """
@@ -193,7 +204,21 @@ class ListenParser(BaseParser):
             database = None
             if args.db_uri is not None:
                 database = ClusterDB(db_settings=app_settings.database)
-                inspector = inspect(database.engine)
+                inspector = None
+
+                while True:
+                    try:
+                        inspector = inspect(database.engine)
+                    except sqlalchemy.exc.OperationalError as e:
+                        if re.search("refused", str(e)) is not None:
+                            logger.warning("Connection refused - please verify connection settings.")
+                            sys.exit(10)
+                        elif re.search("is starting up", str(e)) is not None:
+                            logger.warning(f"Database is starting up - retrying in {args.retry_timeout_in_s}s -- {e}")
+                            time.sleep(args.retry_timeout_in_s)
+                        else:
+                            raise
+
                 if not inspector.get_table_names():
                     raise RuntimeError("Listener is trying to connect to an uninitialized database."
                                        f" Call 'slurm-monitor db --init --db-uri {app_settings.database.uri}' for the database first")
@@ -264,6 +289,7 @@ class ListenParser(BaseParser):
                     log_output=log_output,
                     log_level=args.log_level,
                     output_fn=self.publish_status,
+                    retry_timeout_in_s=args.retry_timeout_in_s
                 )
             subscriber.run()
 
