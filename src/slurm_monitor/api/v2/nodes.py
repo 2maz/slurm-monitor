@@ -10,6 +10,7 @@ import logging
 from typing import Annotated
 
 from slurm_monitor.db_operations import DBManager
+from slurm_monitor.db.v2.db_tables import SampleDisk
 from slurm_monitor.db.v2.db import ClusterDB
 from slurm_monitor.api.v2.routes import (
     api_router,
@@ -101,7 +102,7 @@ async def nodes_sysinfo(cluster: str,
     return await dbi.get_nodes_sysinfo(cluster, nodename, time_in_s)
 
 @api_router.get("/cluster/{cluster}/nodes/info/pages",
-        summary="Detailed information about nodes in a cluster",
+        summary="Detailed information about nodes in a cluster (using pagination)",
         tags=["cluster"],
         response_model=NodesPage[NodeInfoResponse]
 )
@@ -130,7 +131,7 @@ async def nodes_sysinfo_pages(cluster: str,
 
 
 @api_router.get("/cluster/{cluster}/nodes/states",
-        summary="Information about the states of all nodes in a cluster",
+        summary="Information about the state(s) of all nodes in a cluster",
         tags=["cluster"],
         response_model=list[NodeStateResponse]
 )
@@ -194,10 +195,12 @@ async def nodes_last_probe_timestamp(
 
 
 @api_router.get("/cluster/{cluster}/nodes/{nodename}/process/gpu/util",
+        summary="Get the gpu utilization of a given node in a cluster",
         tags=["node"],
         response_model=NodeSampleProcessGpuAccResponse
 )
 @api_router.get("/cluster/{cluster}/nodes/process/gpu/util",
+        summary="Get the gpu utilization for all nodes in a cluster",
         tags=["cluster"],
         response_model=NodeSampleProcessGpuAccResponse
 )
@@ -226,15 +229,17 @@ async def nodes_process_gpu_util(
     return { x: (await task) for x, task in tasks.items()}
 
 @api_router.get("/cluster/{cluster}/nodes/{nodename}/process/gpu/timeseries",
+        summary="Get **node**-specific and **job**-related timeseries of GPU samples / gpu usage as timeseries: node > gpu > job_id",
         tags=["node"],
         response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse
 )
 @api_router.get("/cluster/{cluster}/nodes/process/gpu/timeseries",
+        summary="Get **node**-related and **job**-related timeseries of GPU samples / gpu usage as timeseries: node > gpu > job_id",
         tags=["cluster"],
         response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse
 )
 @api_router.get("/cluster/{cluster}/nodes/{nodename}/jobs/{job_id}/process/gpu/timeseries",
-        summary="Get **node**-related and **job**-related timeseries of GPU samples",
+        summary="Get **node**-specific and **job**-specific timeseries of GPU samples / gpu usage as timeseries: node > gpu > job_id",
         tags=["node"],
         response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse
 )
@@ -271,22 +276,22 @@ async def nodes_sample_process_gpu(
 
 
 @api_router.get("/cluster/{cluster}/nodes/{nodename}/cpu/timeseries",
-        summary="Get **node**-specific timeseries data of CPU samples",
+                summary="Get **node**-specific timeseries data of CPU samples (accumulated over processes): node > cpu timeseries",
         tags=["node"],
         response_model=dict[str, list[SampleProcessAccResponse]]
 )
 @api_router.get("/cluster/{cluster}/nodes/cpu/timeseries",
-        summary="Get timeseries data of CPU samples for all nodes in a given cluster",
+        summary="Get timeseries data of CPU samples for all nodes in a given cluster (per node accumulated over processes): node > cpu timeseries",
         tags=["cluster"],
         response_model=dict[str, list[SampleProcessAccResponse]]
 )
 @api_router.get("/cluster/{cluster}/nodes/{nodename}/memory/timeseries",
-        summary="Get **node**-specific timeseries data of Memory samples",
+        summary="Get **node**-specific timeseries data of memory samples (accumulated over processes): node > cpu timeseries",
         tags=["node"],
         response_model=dict[str, list[SampleProcessAccResponse]]
 )
 @api_router.get("/cluster/{cluster}/nodes/memory/timeseries",
-        summary="Get timeseries data of Memory samples for all nodes in a given cluster",
+        summary="Get timeseries data of memory samples for all nodes in a given cluster (per node accumulated over processes): node > cpu timeseries",
         tags=["cluster"],
         response_model=dict[str, list[SampleProcessAccResponse]]
 )
@@ -327,12 +332,12 @@ async def nodes_process_cpu_memory_timeseries(
 
 
 @api_router.get("/cluster/{cluster}/nodes/{nodename}/gpu/timeseries",
-        summary="Get **node**-specific timeseries data of GPU samples",
+        summary="Get **node**-specific timeseries data of GPU samples: node > gpu(s) > gpu timeseries",
         tags=["node"],
         response_model=NodeGpuTimeseriesResponse,
         )
 @api_router.get("/cluster/{cluster}/nodes/gpu/timeseries",
-        summary="Get timeseries data of GPU samples for all nodes in a given cluster",
+        summary="Get **node**-related timeseries data of GPU samples: node > gpu(s) > gpu timeseries",
         tags=["cluster"],
         response_model=NodeGpuTimeseriesResponse,
         )
@@ -370,12 +375,12 @@ async def nodes_sample_gpu(
                 detail=str(e))
 
 @api_router.get("/cluster/{cluster}/nodes/{nodename}/diskstats/timeseries",
-        summary="Get **node**-specific timeseries data of DiskStat samples",
+                summary=f"Get **node**-specific timeseries data of disk i/o read/write rates (derived from diskstat) (experimental) -- fields: {SampleDisk.diskstats().keys()}",
         tags=["node"],
         response_model=NodeDiskTimeseriesResponse,
         )
 @api_router.get("/cluster/{cluster}/nodes/diskstats/timeseries",
-        summary="Get timeseries data of GPU samples for all nodes in a given cluster",
+        summary=f"Get **node**-related timeseries data of disk i/o read/write rates (derived from diskstat) (experimental) -- fields: {SampleDisk.diskstats().keys()}",
         tags=["cluster"],
         response_model=NodeDiskTimeseriesResponse,
         )
