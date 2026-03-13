@@ -215,6 +215,8 @@ class ListenParser(BaseParser):
                             sys.exit(10)
                         elif re.search("is starting up", str(e)) is not None:
                             logger.warning(f"Database is starting up - retrying in {args.retry_timeout_in_s}s -- {e}")
+                        elif re.search("server closed the connection unexpectedly", str(e)) is not None:
+                            logger.warning(f"Database closed connection - retrying in {args.retry_timeout_in_s}s -- {e}")
                         else:
                             raise
 
