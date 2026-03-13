@@ -1010,7 +1010,7 @@ class ClusterDB(Database):
             interval_in_s: int | None = DEFAULT_HISTORY_INTERVAL_IN_S
             ) -> Awaitable[dict[str, dt.datetime | None]]:
         """
-        Get the timestamp of the lastest sample for all nodes in this cluster
+        Get the timestamp of the latest sample for all nodes in this cluster
         """
         if not time_in_s:
             time_in_s = utcnow().timestamp()
@@ -1019,14 +1019,17 @@ class ClusterDB(Database):
                 time_in_s=time_in_s,
                 ensure_sysinfo=False)
 
+
+        # SampleSystem should be (reliably) available with the configured
+        # cadence
         query = select(
-                     SampleProcess.node,
-                     func.max(SampleProcess.time).label('max_time')
+                     SampleSystem.node,
+                     func.max(SampleSystem.time).label('max_time')
                    ).where(
-                     (SampleProcess.cluster == cluster) &
-                     (SampleProcess.time >= fromtimestamp(time_in_s - interval_in_s))
+                     (SampleSystem.cluster == cluster) &
+                     (SampleSystem.time >= fromtimestamp(time_in_s - interval_in_s))
                    ).group_by(
-                     SampleProcess.node
+                     SampleSystem.node
                    )
 
         async with self.make_async_session() as session:
