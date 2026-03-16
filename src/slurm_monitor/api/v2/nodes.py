@@ -375,12 +375,26 @@ async def nodes_sample_gpu(
                 detail=str(e))
 
 @api_router.get("/cluster/{cluster}/nodes/{nodename}/diskstats/timeseries",
-                summary=f"Get **node**-specific timeseries data of disk i/o read/write rates (derived from diskstat) (experimental) -- fields: {SampleDisk.diskstats().keys()}",
+        summary=f"Get **node**-specific timeseries data of disk i/o read/write rates (derived from diskstat with respect to the selected time resolution, default 300s) (experimental)",
+        description="The computation uses [timescaledb's time_bucketing](https://www.tigerdata.com/docs/use-timescale/latest/time-buckets/use-time-buckets)"
+            " The endpoint parameter +resolution_in_s+ sets the resolution of the bucket, and deltas are computed as:"
+            "\n```"
+            "\n    'delta value' = 'last-sample-in-bucket' - 'first-sample-in-bucket'"
+            "\n```"
+            "\n(see [implementation](https://github.com/2maz/slurm-monitor/blob/d7ec63f54316e5d5a9cdc6bb2d68d66a5734cb0c/src/slurm_monitor/db/v2/db.py#L2024]))"
+            f"\n\nAvailable fields:\n  - {'\n - '.join(SampleDisk.fieldnames())}",
         tags=["node"],
         response_model=NodeDiskTimeseriesResponse,
         )
 @api_router.get("/cluster/{cluster}/nodes/diskstats/timeseries",
-        summary=f"Get **node**-related timeseries data of disk i/o read/write rates (derived from diskstat) (experimental) -- fields: {SampleDisk.diskstats().keys()}",
+        summary=f"Get **node**-specific timeseries data of disk i/o read/write rates (derived from diskstat with respect to the selected time resolution, default 300s) (experimental)",
+        description="The computation uses [timescaledb's time_bucketing](https://www.tigerdata.com/docs/use-timescale/latest/time-buckets/use-time-buckets)"
+            " The endpoint parameter +resolution_in_s+ sets the resolution of the bucket, and deltas are computed as:"
+            "\n```"
+            "\n    'delta value' = 'last-sample-in-bucket' - 'first-sample-in-bucket'"
+            "\n```"
+            "\n(see [implementation](https://github.com/2maz/slurm-monitor/blob/d7ec63f54316e5d5a9cdc6bb2d68d66a5734cb0c/src/slurm_monitor/db/v2/db.py#L2024]))"
+            f"\n\nAvailable fields:\n  - {'\n - '.join(SampleDisk.fieldnames())}",
         tags=["cluster"],
         response_model=NodeDiskTimeseriesResponse,
         )
