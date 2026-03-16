@@ -32,7 +32,9 @@ from slurm_monitor.db.v2.query import QueryMaker
 
 logger: Logger = getLogger(__name__)
 
-@api_router.get("/clear_cache")
+@api_router.get("/clear_cache",
+                summary="Clear the FastAPI cache",
+)
 async def clear_cache(
         token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
     ):
@@ -57,7 +59,7 @@ async def partitions(
     return await dbi.get_partitions(cluster, time_in_s)
 
 @api_router.get("/user",
-        summary="Currently logged in user",
+        summary="Given information about the currently logged in user -- only available with OAuth in use",
         response_model=TokenPayload
 )
 async def user(
@@ -292,7 +294,11 @@ async def queries(
                 detail=f"Failed to execute query: '{query_name}' -- {e}"
         )
 
-@api_router.get("/cluster/{cluster}/benchmarks/{benchmark_name}")
+@api_router.get(
+        "/cluster/{cluster}/benchmarks/{benchmark_name}",
+        summary="Get available benchmark results",
+        tags=["benchmark"]
+)
 @cache(expire=3600)
 def benchmarks(
         token_payload: Annotated[TokenPayload, Depends(get_token_payload)],

@@ -81,7 +81,7 @@ async def job_sample_process_system(
         )
 
 @api_router.get("/cluster/{cluster}/jobs/{job_id}/process/tree",
-        summary="Get **job**-specific process (cpu/memory) timeseries data",
+        summary="Get **job**-specific process tree",
         tags=["job"],
         response_model=SystemProcessTreeResponse
 )
@@ -125,12 +125,12 @@ async def job_sample_process_system_tree(
     return SystemProcessTreeResponse(job=job_id, epoch=epoch, nodes=nodes_data)
 
 @api_router.get("/cluster/{cluster}/jobs/process/gpu/timeseries",
-        summary="Get GPU samples as timeseries, aggregated per job (for all jobs) and process on a given cluster",
+        summary="Get GPU samples as timeseries, aggregated per job (for all jobs) and processes on a given cluster",
         tags=["cluster"],
         response_model=list[JobNodeSampleProcessGpuTimeseriesResponse]
 )
 @api_router.get("/cluster/{cluster}/jobs/{job_id}/process/gpu/timeseries",
-        summary="Get GPU sample as timeseries aggregate for a specific job on a given cluster",
+        summary="Get GPU sample as timeseries aggregated for a specific job on a given cluster",
         tags=["job"],
         response_model=list[JobNodeSampleProcessGpuTimeseriesResponse]
 )
@@ -201,20 +201,20 @@ async def jobs(cluster: str,
         )}
 
 @api_router.get("/cluster/{cluster}/jobs/{job_id}",
-        summary="Get SLURM job information by id for the given cluster",
+        summary="Get SLURM job (epoch == 0) information by id for the given cluster",
         tags=["job"],
         response_model=JobResponse
 )
 @api_router.get("/cluster/{cluster}/jobs/{job_id}/info",
-        summary="Get SLURM job information by id for the given cluster",
+        summary="Get SLURM job (epoch == 0) information by id for the given cluster",
         tags=["job"],
         response_model=JobResponse
 )
 @api_router.get("/cluster/{cluster}/jobs/{job_id}/epoch/{epoch}",
-        summary="Get job information by id and epoch for the given cluster",
+        summary="Get job information by id and epoch for the given cluster, if epoch == 0, only SLURM jobs will be fetched",
         tags=["job"],
         response_model=JobResponse)
-@api_router.get("/cluster/{cluster}/jobs/{job_id}/epoch/{epoch}/info",
+@api_router.get("/cluster/{cluster}/jobs/{job_id}/epoch/{epoch}/info, if epoch == 0, only SLURM jobs will be fetched",
         summary="Get job information by id and epoch for the given cluster",
         tags=["job"],
         response_model=JobResponse)
@@ -247,7 +247,7 @@ async def job_status(
     )
 
 @api_router.get("/cluster/{cluster}/query/jobs",
-        summary="Provides a generic job query interface",
+        summary="Provides a generic job query interface with filter options",
         tags=["cluster"],
         response_model=None
         )
@@ -296,7 +296,7 @@ async def query_jobs(
     }
 
 @api_router.get("/cluster/{cluster}/query/jobs/pages",
-        summary="Provides a generic job query interface",
+        summary="Provides a generic job query interface provides paginated results",
         tags=["cluster"],
         response_model=JobsPage[JobResponse]
         )
@@ -350,7 +350,7 @@ async def query_jobs_pages(
 
 
 @api_router.get("/cluster/{cluster}/jobs/{job_id}/report",
-        summary="Get a report on stats for the current job",
+        summary="Get a **job**-specific report on stats for the job",
         tags=["job"],
         response_model=JobReport
 )

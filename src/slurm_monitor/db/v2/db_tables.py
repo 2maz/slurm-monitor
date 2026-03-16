@@ -862,6 +862,11 @@ class SampleDisk(TableBase):
         }
 
     @classmethod
+    def fieldnames(cls) -> list[str]:
+        """Get list of fields (sorted by name)"""
+        return sorted(list(cls.diskstats().keys()))
+
+    @classmethod
     def create(cls, **kwargs):
         if "stats" in kwargs:
             stats = kwargs['stats']
