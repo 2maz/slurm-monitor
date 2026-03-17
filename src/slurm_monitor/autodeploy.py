@@ -73,6 +73,10 @@ class AutoDeployer:
         response = Command.run(f"sinfo -n {node} -N -h -o '%t'")
         return response.startswith("drain")
 
+    def all_nodes(self) -> list[str]:
+        response = Command.run("sinfo -N -h -o '%n'")
+        return response.splitlines()
+
     def deploy(self, node: str) -> str:
         response = Command.run(f"slurm-monitor-probes-ctl -n {node} deploy")
         logger.info(response)
@@ -119,11 +123,20 @@ class AutoDeployer:
                 )
                 logger.info(last_probe_timestamp)
 
-            for node in sorted(last_probe_timestamp.keys()):
-                node_time = last_probe_timestamp[node]
+            expected_nodes = self.all_nodes()
+            for node in expected_nodes:
+                node_time = last_probe_timestamp.get(node, None)
                 if not node_time:
+                    msg = f"{node} has not been seen before"
                     if self.allow_list is None or node in self.allow_list:
-                        self.deploy(node)
+                        msg += ", but is in the allow list"
+                        if not loop.run_until_complete(self.is_drained(node)):
+                            self.deploy(node)
+                        else:
+                            msg += ", but is drained"
+                    else:
+                        msg += ", but is not on the allow list"
+                    print(msg)
                     continue
 
                 node_time = node_time.replace(tzinfo=dt.timezone.utc)

@@ -375,7 +375,7 @@ async def nodes_sample_gpu(
                 detail=str(e))
 
 @api_router.get("/cluster/{cluster}/nodes/{nodename}/diskstats/timeseries",
-        summary=f"Get **node**-specific timeseries data of disk i/o read/write rates (derived from diskstat with respect to the selected time resolution, default 300s) (experimental)",
+        summary="Get **node**-specific timeseries data of disk i/o read/write rates (derived from diskstat with respect to the selected time resolution, default 300s) (experimental)",
         description="The computation uses [timescaledb's time_bucketing](https://www.tigerdata.com/docs/use-timescale/latest/time-buckets/use-time-buckets)"
             " The endpoint parameter +resolution_in_s+ sets the resolution of the bucket, and deltas are computed as:"
             "\n```"
@@ -387,7 +387,7 @@ async def nodes_sample_gpu(
         response_model=NodeDiskTimeseriesResponse,
         )
 @api_router.get("/cluster/{cluster}/nodes/diskstats/timeseries",
-        summary=f"Get **node**-specific timeseries data of disk i/o read/write rates (derived from diskstat with respect to the selected time resolution, default 300s) (experimental)",
+        summary="Get **node**-specific timeseries data of disk i/o read/write rates (derived from diskstat with respect to the selected time resolution, default 300s) (experimental)",
         description="The computation uses [timescaledb's time_bucketing](https://www.tigerdata.com/docs/use-timescale/latest/time-buckets/use-time-buckets)"
             " The endpoint parameter +resolution_in_s+ sets the resolution of the bucket, and deltas are computed as:"
             "\n```"
