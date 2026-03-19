@@ -317,7 +317,7 @@ class ListenUiParser(BaseParser):
                 nargs="+",
                 type=str,
                 default=app_settings.listen.cluster,
-                help="Cluster for which the ui runs"
+                help="Cluster(s) for which the ui runs (used only for naming the log file accordingly)"
         )
 
         parser.add_argument("--ui-host",
@@ -362,7 +362,7 @@ class ListenUiParser(BaseParser):
         if log_output is None:
             log_output = "slurm-monitor.listen-ui.log"
             if args.cluster_name:
-                log_output = f"slurm-monitor.listen-ui.{args.cluster_name}.log"
+                log_output = f"slurm-monitor.listen-ui.{'+'.join(args.cluster_name)}.log"
         # to explicitely disable log_output, user needs to set it to 'none'
         elif log_output.lower() == 'none':
             log_output = None

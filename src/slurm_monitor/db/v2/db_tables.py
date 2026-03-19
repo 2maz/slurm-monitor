@@ -637,6 +637,7 @@ class SampleProcessGpu(TableBase):
         Index(f"{ExtraIndexPrefix}sample_process_gpu__cluster_node","cluster", "node", time.desc()),
         Index(f"{ExtraIndexPrefix}sample_process_gpu__cluster_job_time","cluster", "job", time.desc()),
         Index(f"{ExtraIndexPrefix}sample_process_gpu__uuid_time", "uuid", "time"),
+        Index(f"{ExtraIndexPrefix}sample_process_gpu__cluster_node_job_epoch_pid", "cluster", "node", "job", "epoch", "pid", time.desc()),
         ForeignKeyConstraint(["cluster", "node"], [Node.cluster, Node.node]),
         {
             'info': {'sonar_spec': 'SampleProcess.gpus'},
@@ -758,7 +759,9 @@ class SampleProcess(TableBase):
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
     __table_args__ = (
-        Index(f"{ExtraIndexPrefix}sample_process_job_epoch", "job", "epoch", time.desc()),
+        Index(f"{ExtraIndexPrefix}sample_process__job_epoch", "job", "epoch", time.desc()),
+        Index(f"{ExtraIndexPrefix}sample_process__cluster_node_job_epoch_pid", "cluster", "job", "epoch", "node", "pid", time.desc()),
+        Index(f"{ExtraIndexPrefix}sample_process__cluster", "cluster", time.desc()),
         ForeignKeyConstraint(["cluster", "node"], [Node.cluster, Node.node]),
         CheckConstraint("job != 0 or epoch != 0", "job_or_epoch_non_zero"),
         CheckConstraint("job >= 0 and epoch >= 0", "job_or_epoch_non_negative"),
