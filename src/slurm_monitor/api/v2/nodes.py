@@ -50,7 +50,7 @@ async def nodes(
     """
     Get the list of node names in a cluster
     """
-    return await dbi.get_nodes(cluster, time_in_s)
+    return await dbi.get_nodes(cluster, time_in_s, ensure_sysinfo=False)
 
 @api_router.get("/cluster/{cluster}/error_messages",
         summary="Error messages collected for the entire cluster",
@@ -95,7 +95,7 @@ async def nodes_sysinfo(cluster: str,
     """
     Get available information about nodes in a cluster
 
-    It will only contain information about reporting nodes - in some case a
+    It will only contain information about reporting nodes - in some cases a
     node might exist in a cluster, but no system information has been received
     yet.  To check - compare with the complete node list /cluster/{cluster}/nodes
     """
