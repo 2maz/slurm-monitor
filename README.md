@@ -58,6 +58,9 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LOG_DIRS: /tmp/kafka-combined-logs
       CLUSTER_ID: myCluster
+   volumes:
+      # Keep message across restarts
+      - ./kafka-broker:/tmp/kafka-combined-logs
   kafka-ui:
     image: provectuslabs/kafka-ui
     hostname: kafka-ui
@@ -69,11 +72,11 @@ services:
       - KAFKA_CLUSTERS_0_NAME=myCluster
       - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka-broker:29092
   timescaledb:
-    image: timescale/timescaledb:latest-pg16
+    image: timescale/timescaledb:latest-pg18
     ports:
       - 10000:5432
     volumes:
-      - /my_local_volumne/timescaledb-pgdata:/var/lib/postgresql/data
+      - /my_local_volume/timescaledb-pgdata:/var/lib/postgresql/data/18/docker
     environment:
       POSTGRES_DB: db_name
       POSTGRES_PASSWORD: my_db_user_password
@@ -241,6 +244,15 @@ For testing one can run tox.
 
 ```
     tox -e timescaledb
+```
+
+## Optimizations
+
+In order to improve the performance, ensure that you run *[timescaledb-tune](https://www.tigerdata.com/docs/self-hosted/latest/configuration/timescaledb-tune)* on the database configuration, e.g.,
+with a postgres18 based timescaledb db docker:
+
+```
+timescaledb-tune -out-path /var/lib/postgresql/data/18/docker/postgresql.tuned.conf
 ```
 
 # License
