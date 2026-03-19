@@ -28,6 +28,8 @@ class ListenParser(BaseParser):
     message_tx_count: int
     message_rx_count: int
 
+    warn_missing_ui: bool
+
     retry_timeout_in_s: int
 
     def __init__(self, parser: ArgumentParser):
@@ -35,6 +37,7 @@ class ListenParser(BaseParser):
 
         self.message_tx_count = 0
         self.message_rx_count = 0
+        self.warn_missing_ui = True
 
         app_settings = AppSettings.get_instance()
         parser.description = "listen - The listener component establishes a link between a kafka broker and a database. The (sonar) messages received by the kafka broker will be stored in the database. A listener can be monitored with the listen-ui component"
@@ -140,8 +143,17 @@ class ListenParser(BaseParser):
             self.socket.send_json(data, default=str, flags=zmq.NOBLOCK)
             self.message_tx_count += 1
             logger.debug(f"Listen.publish_status (to listen-ui): complete (message_tx_count={self.message_tx_count} {cluster=})")
+            if not self.warn_missing_ui:
+                logger.warning("Listen.publish_status (to listen-ui): listen ui connected")
+                self.warn_missing_ui = True
         except zmq.error.Again:
-            logger.warning(f"Listen.publish_status: Socket is full (highwatermark: {self.socket.get_hwm()} reached, message could not be forwarded to listen-ui.")
+            if self.warn_missing_ui:
+                logger.warning(f"Listen.publish_status: Socket is full (highwatermark: {self.socket.get_hwm()} reached, message could not be forwarded to listen-ui. (no further warning will be shown until ui is up and receiving")
+                self.warn_missing_ui = False
+            else:
+                logger.debug(f"Listen.publish_status: Socket is full (highwatermark: {self.socket.get_hwm()} reached, message could not be forwarded to listen-ui.")
+            # If ui is not available not need to check for received control commands
+            return None
         except zmq.error.ZMQError as e:
             logger.debug(f"Listen.publish_status: zmq error (from {cluster}) -- {e}")
             pass
