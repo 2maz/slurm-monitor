@@ -568,6 +568,7 @@ class MessageSubscriber:
                 continue
 
             logger.debug("Consuming msg records - start")
+            autoupdate_timestamp = None
             for idx, consumer_record in enumerate(consumer, 1):
                 try:
                     topic = consumer_record.topic
@@ -601,6 +602,17 @@ class MessageSubscriber:
                     if self.verbose:
                         logger.info(f"Message: {msg}")
 
+
+                    # Make the alignment of cluster information from jobs data only when all subsequent job samples have been received
+                    # e.g. during INITIALIZATION a number of subsequent job data will be processed - align once all have been
+                    # processed
+                    trigger_autoupdate = (sonar.TopicType.infer(topic) != sonar.TopicType.job and not autoupdate_timestamp) or (autoupdate_timestamp and (utcnow() - autoupdate_timestamp).total_seconds() > self.stats_interval_in_s)
+                    if trigger_autoupdate:
+                        logging.info("Auto update - aligning cluster information from jobs data - start")
+                        await msg_handler.autoupdate(cluster=self.cluster_name)
+                        logging.info("Auto update - aligning cluster information from jobs data - completed")
+                        autoupdate_timestamp = utcnow()
+
                     # If a sample arrives there should be no duplicates in the database - an exception is the initialization
                     # where historic records are retrieved
                     # Default: allow to update / merge existing information
@@ -610,9 +622,7 @@ class MessageSubscriber:
                     logger.debug(f"DB insert: {topic} - completed")
 
                     if sonar.TopicType.infer(topic) == sonar.TopicType.job:
-                        logging.info("Auto update - aligning cluster information from jobs data - start")
-                        await msg_handler.autoupdate(cluster=self.cluster_name)
-                        logging.info("Auto update - aligning cluster information from jobs data - completed")
+                        autoupdate_timestamp = None # requires an update
 
                     now = utcnow()
                     seconds_from_now = (now.timestamp() - consumer_record.timestamp/1000.0)
@@ -626,6 +636,7 @@ class MessageSubscriber:
 
                     self.output.next_stats_update = self.stats_interval_in_s - (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds()
                     if (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds() > self.stats_interval_in_s:
+                        requires_autoupdate = False
                         interval_start_time = dt.datetime.now(dt.timezone.utc)
 
                         msg_timestamps = msg_handler.last_msg_per_node
@@ -680,6 +691,8 @@ class MessageSubscriber:
                         tb.print_tb(e.__traceback__)
 
                     logger.warning(f"Message processing failed: {e}")
+
+        await msg_handler.autoupdate(cluster=self.cluster_name)
 
     @classmethod
     def extract_offset_bounds(cls, txt) -> TopicBound:

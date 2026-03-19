@@ -49,7 +49,7 @@ def start_timescaledb_container(
         user: str = "test",
         db_name: str = "test",
         container_name: str = "timescaledb-test",
-        image: str = "timescale/timescaledb:latest-pg17",
+        image: str = "timescale/timescaledb:latest-pg18",
         stats: bool = False
     ):
     container = Command.run(f"docker ps -f name={container_name} -q").strip()

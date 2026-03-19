@@ -49,11 +49,13 @@ async def test_MessageSubcriber_sonar_examples(sonar_msg_files,
         topic: str
         offset: int = 0
         value: str
+        timestamp: int
 
-        def __init__(self, topic: str, message_data: str, offset: int = 0):
+        def __init__(self, topic: str, message_data: str, offset: int = 0, timestamp: int = int(utcnow().timestamp()*1000)):
             self.topic = topic
             self.value = message_data.encode("UTF-8")
             self.offset = offset
+            self.timestamp = timestamp
 
     class MockKafkaConsumer:
         records: MockKafkaMessageRecord
@@ -71,8 +73,9 @@ async def test_MessageSubcriber_sonar_examples(sonar_msg_files,
                 with open(json_filename, "r") as f:
                     data = json.load(f)
 
+                    timestamp = (utcnow() - dt.timedelta(hours=1))
                     cluster = data['data']['attributes']['cluster']
-                    data['data']['attributes']['time'] = (utcnow() - dt.timedelta(hours=1)).isoformat()
+                    data['data']['attributes']['time'] = timestamp.isoformat()
 
                     if not self.cluster:
                         self.cluster = cluster
@@ -87,7 +90,8 @@ async def test_MessageSubcriber_sonar_examples(sonar_msg_files,
 
                     record = MockKafkaMessageRecord(topic=topic,
                                            offset=self.topic_offsets[topic],
-                                           message_data=json.dumps(data)
+                                           message_data=json.dumps(data),
+                                           timestamp=int(timestamp.timestamp()*1000)
                     )
                     self.records.append(record)
 
@@ -113,7 +117,8 @@ async def test_MessageSubcriber_sonar_examples(sonar_msg_files,
     message_subscriber = MessageSubscriber(host="localhost", port="9999",
                       topics=list(consumer.topic_offsets.keys()),
                       cluster_name=consumer.cluster,
-                      database=db
+                      database=db,
+                      stats_interval_in_s=0,
     )
 
     message_handler = DBJsonImporter(db)
