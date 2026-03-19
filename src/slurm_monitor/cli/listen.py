@@ -214,7 +214,7 @@ class ListenParser(BaseParser):
             lookback_in_h = MessageSubscriber.extract_lookbacks(args.lookback)
 
             database = None
-            if args.db_uri is not None:
+            if args.db_uri is not None and args.db_uri.lower() != 'none':
                 database = ClusterDB(db_settings=app_settings.database)
 
                 inspector = None
