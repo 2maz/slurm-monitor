@@ -140,7 +140,6 @@ async def prefetch_data():
 
     nodes_sysinfo_endpoint = find_endpoint_by_name(app=app, name="nodes_sysinfo")
     partitions_endpoint = find_endpoint_by_name(app=app, name="partitions")
-    jobs_endpoint = find_endpoint_by_name(app=app, name="jobs")
 
     for cluster_data in clusters:
         cluster = cluster_data['cluster']
