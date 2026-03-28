@@ -603,6 +603,14 @@ class MessageSubscriber:
                         logger.info(f"Message: {msg}")
 
 
+                    # If a sample arrives there should be no duplicates in the database - an exception is the initialization
+                    # where historic records are retrieved
+                    # Default: allow to update / merge existing information
+                    update = sonar.TopicType.infer(topic) != sonar.TopicType.sample
+                    logger.debug(f"DB insert: {topic} {update=} {ignore_integrity_errors=} - start")
+                    await msg_handler.insert(json.loads(msg), update=update, ignore_integrity_errors=ignore_integrity_errors)
+                    logger.debug(f"DB insert: {topic} - completed")
+
                     # Make the alignment of cluster information from jobs data only when all subsequent job samples have been received
                     # e.g. during INITIALIZATION a number of subsequent job data will be processed - align once all have been
                     # processed
@@ -613,16 +621,8 @@ class MessageSubscriber:
                         logging.info("Auto update - aligning cluster information from jobs data - completed")
                         autoupdate_timestamp = utcnow()
 
-                    # If a sample arrives there should be no duplicates in the database - an exception is the initialization
-                    # where historic records are retrieved
-                    # Default: allow to update / merge existing information
-                    update = sonar.TopicType.infer(topic) != sonar.TopicType.sample
-                    logger.debug(f"DB insert: {topic} {update=} {ignore_integrity_errors=} - start")
-                    await msg_handler.insert(json.loads(msg), update=update, ignore_integrity_errors=ignore_integrity_errors)
-                    logger.debug(f"DB insert: {topic} - completed")
-
                     if sonar.TopicType.infer(topic) == sonar.TopicType.job:
-                        autoupdate_timestamp = None # requires an update
+                        autoupdate_timestamp = None # requires an update when processing the next message that is not a job message
 
                     now = utcnow()
                     seconds_from_now = (now.timestamp() - consumer_record.timestamp/1000.0)
@@ -636,7 +636,6 @@ class MessageSubscriber:
 
                     self.output.next_stats_update = self.stats_interval_in_s - (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds()
                     if (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds() > self.stats_interval_in_s:
-                        requires_autoupdate = False
                         interval_start_time = dt.datetime.now(dt.timezone.utc)
 
                         msg_timestamps = msg_handler.last_msg_per_node
