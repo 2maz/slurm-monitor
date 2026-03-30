@@ -37,10 +37,15 @@ def test_MessageSubscriber_extract_offset_bounds(txt,
 @pytest.mark.asyncio(loop_scope="function")
 @pytest.mark.parametrize("sonar_msg_files, expected_clusters",
     [
-        [ ["0+job-srl-login3.ex3.simula.no.json"], {"ex3.simula.no": {"nodes": ['h001', 'n004', 'g001'], "partitions": ['dgx2q', 'habanaq', 'hgx2q', 'mi100q'] }}]
+        [ ["0+job-srl-login3.ex3.simula.no.json"], {"ex3.simula.no": {"nodes": ['h001', 'n004', 'g001'], "partitions": ['dgx2q', 'habanaq', 'hgx2q', 'mi100q'] }}],
+        [ ["4+cluster.fox.educloud.no.json"], {
+              "fox.educloud.no": {
+                'partitions': ['normal', 'hf_accel', 'bigmem', 'ifi_accel', 'fhi_bigmem', 'ifi_bigmem', 'autotekst', 'accel_long', 'accel', 'pods', 'dgx_spark', 'klm_accel', 'mig'],
+                'nodes': ['c1-10', 'c1-16', 'c1-25', 'c1-21', 'gpu-10', 'gpu-12', 'gpu-6', 'gpu-17', 'c1-7', 'c1-27', 'c1-8', 'c1-12', 'gpu-13', 'gpu-7', 'dgx-1', 'c1-9', 'c1-20', 'c1-22', 'gpu-8', 'gpu-16', 'gpu-1', 'c1-5', 'c1-6', 'c1-28', 'c1-18', 'gpu-9', 'c1-11', 'c1-26', 'c1-23', 'gpu-4', 'c1-15', 'gpu-11', 'c1-14', 'c1-19', 'c1-17', 'dgx-2', 'c1-29', 'gpu-14', 'c1-24', 'gpu-5', 'bigmem-2', 'bigmem-1', 'gpu-2', 'gpu-15', 'c1-13']
+            }}],
     ]
 )
-async def test_MessageSubcriber_sonar_examples(sonar_msg_files,
+async def test_MessageSubscriber_sonar_examples(sonar_msg_files,
                                              expected_clusters,
                                              test_db_v2__function_scope,
                                              db_config,
@@ -135,9 +140,9 @@ async def test_MessageSubcriber_sonar_examples(sonar_msg_files,
 
     for cluster_name, nodes in expected_clusters.items():
         with db.make_session() as session:
-            results = session.execute(sqlalchemy.text(f"SELECT cluster, nodes, partitions from cluster_attributes where cluster = '{cluster_name}'")).all()
+            results = session.execute(sqlalchemy.text(f"SELECT cluster, nodes, partitions, time from cluster_attributes where cluster = '{cluster_name}' ORDER BY time DESC")).all()
             assert results
-            cluster, nodes, partitions = results[0]
+            cluster, nodes, partitions, time = results[0]
             expected_nodes = expected_clusters[cluster_name]['nodes']
             expected_partitions = expected_clusters[cluster_name]['partitions']
 

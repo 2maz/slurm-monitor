@@ -51,15 +51,8 @@ class Sonar:
             elif len(range_expr) == 2:
                 start, end = range_expr
                 pattern_length = len(start)
-                if not pattern_length == len(end):
-                    raise ValueError("Pattern length of range does not match: "
-                                     f"from {pattern_length} - {len(end)}"
-                    )
 
-                use_zfill = False
-                if start.startswith("0"):
-                    use_zfill = True
-
+                use_zfill = (pattern_length == len(end)) and start.startswith("0")
                 for i in range(int(start), int(end)+1):
                     number = i
                     if use_zfill:

@@ -18,7 +18,14 @@ from slurm_monitor.db.v2.sonar import Sonar
         ],
         [" n001 , n007 ,n[098-100]",
          ["n001","n007", "n098", "n099", "n100"]
-        ]
+        ],
+        ["gpu-[1-2,8-10,99-101]",
+         [
+          "gpu-1", "gpu-2",
+          "gpu-8", "gpu-9", "gpu-10",
+          "gpu-99", "gpu-100", "gpu-101"
+         ]
+        ],
     ]
 )
 def test_expand_hostname_range(expression, expected_nodes):

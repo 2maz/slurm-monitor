@@ -1,0 +1,185 @@
+{
+  "meta": {
+    "producer": "sonar",
+    "version": "0.18.2"
+  },
+  "data": {
+    "type": "cluster",
+    "attributes": {
+      "cluster": "fox.educloud.no",
+      "time": "2026-03-27T14:23:06+01:00",
+      "slurm": true,
+      "partitions": [
+        {
+          "name": "normal",
+          "nodes": [
+            "c1-[5-28]"
+          ]
+        },
+        {
+          "name": "accel",
+          "nodes": [
+            "gpu-[1-2,4-5,7-9,11-17]"
+          ]
+        },
+        {
+          "name": "accel_long",
+          "nodes": [
+            "gpu-[1-2,8-9]"
+          ]
+        },
+        {
+          "name": "mig",
+          "nodes": [
+            "gpu-10"
+          ]
+        },
+        {
+          "name": "autotekst",
+          "nodes": [
+            "gpu-[10,13]"
+          ]
+        },
+        {
+          "name": "bigmem",
+          "nodes": [
+            "bigmem-[1-2]",
+            "c1-29"
+          ]
+        },
+        {
+          "name": "dgx_spark",
+          "nodes": [
+            "dgx-[1-2]"
+          ]
+        },
+        {
+          "name": "ifi_accel",
+          "nodes": [
+            "gpu-[4-6,11-12]"
+          ]
+        },
+        {
+          "name": "ifi_bigmem",
+          "nodes": [
+            "c1-29"
+          ]
+        },
+        {
+          "name": "pods",
+          "nodes": [
+            "c1-[6-7]"
+          ]
+        },
+        {
+          "name": "fhi_bigmem",
+          "nodes": [
+            "bigmem-[1-2]"
+          ]
+        },
+        {
+          "name": "hf_accel",
+          "nodes": [
+            "gpu-[14-15]"
+          ]
+        },
+        {
+          "name": "klm_accel",
+          "nodes": [
+            "gpu-16"
+          ]
+        }
+      ],
+      "nodes": [
+        {
+          "names": [
+            "bigmem-1",
+            "c1-[5,8,10-13,16,21-22,24-28]",
+            "gpu-[1-2,8-10,13-14]"
+          ],
+          "states": [
+            "MIXED",
+            "PLANNED"
+          ]
+        },
+        {
+          "names": [
+            "c1-6"
+          ],
+          "states": [
+            "IDLE",
+            "DRAIN"
+          ]
+        },
+        {
+          "names": [
+            "bigmem-2",
+            "c1-[7,9,14-15,17-20,23]"
+          ],
+          "states": [
+            "ALLOCATED"
+          ]
+        },
+        {
+          "names": [
+            "gpu-7"
+          ],
+          "states": [
+            "MIXED",
+            "RESERVED",
+            "PLANNED"
+          ]
+        },
+        {
+          "names": [
+            "gpu-4"
+          ],
+          "states": [
+            "MIXED",
+            "RESERVED"
+          ]
+        },
+        {
+          "names": [
+            "gpu-[5,12,15-16]"
+          ],
+          "states": [
+            "MIXED"
+          ]
+        },
+        {
+          "names": [
+            "c1-29",
+            "gpu-[6,11,17]"
+          ],
+          "states": [
+            "IDLE"
+          ]
+        },
+        {
+          "names": [
+            "dgx-1"
+          ],
+          "states": [
+            "DOWN",
+            "DRAIN",
+            "MAINTENANCE",
+            "RESERVED",
+            "NOT_RESPONDING"
+          ]
+        },
+        {
+          "names": [
+            "dgx-2"
+          ],
+          "states": [
+            "DOWN",
+            "MAINTENANCE",
+            "RESERVED",
+            "NOT_RESPONDING"
+          ]
+        }
+      ]
+    }
+  }
+}
