@@ -870,28 +870,31 @@ class ClusterDB(Database):
         if time_in_s:
             where &= (NodeState.time <= fromtimestamp(time_in_s))
 
-        query = select(
+        subquery = select(
                     NodeState.node,
-                    NodeState.states,
-                    func.max(NodeState.time),
+                    func.max(NodeState.time).label('max_time'),
                 ).where(
                   where
                 ).group_by(
                     NodeState.node,
-                    NodeState.states
-                )
+                ).subquery()
+
+        query = select(
+                    NodeState.cluster,
+                    NodeState.node,
+                    NodeState.states,
+                    NodeState.time,
+                ).select_from(
+                    subquery
+                ).where(
+                    NodeState.cluster == cluster,
+                    NodeState.node == subquery.c.node,
+                    NodeState.time == subquery.c.max_time
+                ).order_by(NodeState.node)
+                 
 
         async with self.make_async_session() as session:
-            node_states = [
-                    {
-                        'cluster': cluster,
-                        'node': x[0],
-                        'states': x[1],
-                        'time': x[2]
-                    }
-                    for x in (await session.execute(query)).all()]
-
-            return node_states
+            return (await session.execute(query)).mappings().all()
 
 ################################################################
     async def get_all_sysinfo_gpu_cards(self) -> SysinfoGpuCard:
