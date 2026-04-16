@@ -44,6 +44,7 @@ import tempfile
 from tqdm import tqdm
 from zipfile import ZipFile
 
+from slurm_monitor.db.settings import DatabaseSettings
 from slurm_monitor.utils import (
     utcnow,
     ensure_utc
@@ -51,14 +52,6 @@ from slurm_monitor.utils import (
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-
-class DatabaseSettings(BaseModel):
-    user: str | None = None
-    password: str | None = None
-    uri: str = f"sqlite:///{os.environ['HOME']}/.slurm-monitor/slurm-monitor-db.sqlite"
-
-    create_missing: bool = True
 
 
 def _listify(obj_or_list):

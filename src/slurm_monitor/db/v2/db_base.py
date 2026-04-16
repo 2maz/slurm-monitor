@@ -17,9 +17,8 @@ from sqlalchemy.ext.asyncio import (
 )
 import logging
 
-from slurm_monitor.db.v2.db_tables import (
-    TableBase
-)
+from slurm_monitor.db.settings import DatabaseSettings
+from slurm_monitor.db.v2.db_tables import TableBase
 from slurm_monitor.db.v2.validation import Specification
 
 logger = logging.getLogger(__name__)
@@ -46,13 +45,6 @@ def create_url(url_str: str, username: str | None, password: str | None) -> URL:
         )
     return url
 
-
-class DatabaseSettings(BaseModel):
-    user: str | None = None
-    password: str | None = None
-    uri: str = f"sqlite:///{os.environ['HOME']}/.slurm-monitor/slurm-monitor-db.sqlite"
-
-    create_missing: bool = True
 
 def _listify(obj_or_list):
     return obj_or_list if isinstance(obj_or_list, (tuple, list)) else [obj_or_list]

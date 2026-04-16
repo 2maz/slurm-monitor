@@ -23,7 +23,7 @@ class Command:
         return None
 
     @classmethod
-    def run(cls, command: str, decode: str | None = 'utf-8') -> str:
+    def run(cls, command: str, decode: str | None = 'utf-8', timeout: int | None = None) -> str:
         response = subprocess.run(command,
                 shell=True,
                 stdout=subprocess.PIPE,

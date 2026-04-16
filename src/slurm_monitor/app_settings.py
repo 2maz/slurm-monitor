@@ -9,7 +9,7 @@ from pydantic import Field, computed_field, BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import sys
 
-from slurm_monitor.db import DatabaseSettings
+from slurm_monitor.db.settings import DatabaseSettings
 
 SLURM_MONITOR_RESTAPI_PORT = 12000
 SLURM_MONITOR_LISTEN_PORT = 9099
