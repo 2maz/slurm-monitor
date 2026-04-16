@@ -322,8 +322,9 @@ class DBJsonImporter(Importer):
         nodes = set()
         nodes_states = []
         for n in attributes["nodes"]:
+            node_names = []
             for names in n["names"]:
-                node_names = sonar.Sonar.expand_hostname_range(names)
+                node_names += sonar.Sonar.expand_hostname_range(names)
                 nodes.update(node_names)
 
             states = n['states']

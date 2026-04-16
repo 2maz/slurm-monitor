@@ -212,6 +212,7 @@ async def test_DBJsonImporter_non_slurm(sonar_msg, test_db_v2):
          { "ex3.simula.no": {"g001", "g002"}}
         ],
         [[ "3+sample.fox.educloud.no.json" ], {"fox.educloud.no": {"c1-10.fox"}} ],
+        [[ "2+cluster.ex3.simula.no.json" ], {"ex3.simula.no": {"g001", "h001", "g002", "g003", "n001", "n003", "n013","n014","n019", "n022","n049","n060"}} ],
     ]
 )
 async def test_DBJsonImporter_sonar_examples(sonar_msg_files,
@@ -228,6 +229,7 @@ async def test_DBJsonImporter_sonar_examples(sonar_msg_files,
         json_filename = Path(test_data_dir) / "sonar" / sonar_msg_file
 
         has_sysinfo = has_sysinfo or "sysinfo" in sonar_msg_file
+        has_cluster = "cluster" in sonar_msg_file
 
         with open(json_filename, "r") as f:
             msg_data = json.load(f)
@@ -239,10 +241,15 @@ async def test_DBJsonImporter_sonar_examples(sonar_msg_files,
     with db.make_session() as session:
         results = session.execute(sqlalchemy.text("SELECT cluster, nodes from cluster_attributes")).all()
         clusters = { x[0]: set(x[1]) for x in results}
+
         for expected_cluster, expected_nodes in expected_clusters.items():
             assert clusters[expected_cluster] == expected_clusters[expected_cluster], f"Expected {expected_cluster} with nodes {expected_clusters[expected_cluster]} in cluster_attributes, but got {clusters=}"
             # existing clusters of test db plus newly added ons
             assert len(expected_clusters) + db_config.number_of_clusters == len(clusters)
+
+            if has_cluster:
+                nodes_with_states = session.execute(sqlalchemy.text(f"SELECT node from node_state where cluster = '{expected_cluster}'")).all()
+                assert expected_nodes == set([ x[0] for x in nodes_with_states ]), "Node should be in cluster_attributes and node_state"
 
         if has_sysinfo:
             results = session.execute(sqlalchemy.text("SELECT cluster, node, architecture from node")).all()
@@ -259,7 +266,6 @@ async def test_DBJsonImporter_sonar_examples(sonar_msg_files,
             results = session.execute(sqlalchemy.text(f"SELECT memory from sysinfo_gpu_card WHERE uuid = '{uuid}'")).all()
             assert len(results) == 1, f"Expected 1 matching uuid entry got {results}"
             assert results[0][0] != 0, f"Expected memory > 0, but got {results[0][0]}"
-
 
 
 @pytest.mark.asyncio(loop_scope="function")

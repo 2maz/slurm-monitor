@@ -1,0 +1,42 @@
+{
+  "meta": {
+    "producer": "sonar",
+    "version": "0.18.4"
+  },
+  "data": {
+    "type": "cluster",
+    "attributes": {
+      "time": "2026-04-16T16:00:00+02:00",
+      "cluster": "ex3.simula.no",
+      "slurm": true,
+      "partitions": [
+        {
+          "name": "a100q",
+          "nodes": [
+            "n[013-014]"
+          ]
+        }
+      ],
+      "nodes": [
+        {
+          "names": [
+            "g[002-003]",
+            "n[001,003,013-014,019,022,049,060]"
+          ],
+          "states": [
+            "MIXED"
+          ]
+        },
+        {
+          "names": [
+            "g001",
+            "h001"
+          ],
+          "states": [
+            "ALLOCATED"
+          ]
+        }
+      ]
+    }
+  }
+}
