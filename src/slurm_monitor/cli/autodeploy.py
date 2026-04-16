@@ -73,7 +73,7 @@ class AutoDeployParser(BaseParser):
         if log_output is None:
             log_output = "slurm-monitor.auto-deploy.log"
             if args.cluster_name:
-                log_output = "slurm-monitor.auto-deploy" + args.cluster_name + ".log"
+                log_output = "slurm-monitor.auto-deploy." + args.cluster_name + ".log"
         elif log_output.lower() == 'none':
             log_output = None
 

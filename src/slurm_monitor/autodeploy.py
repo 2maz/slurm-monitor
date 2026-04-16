@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
+import subprocess
 import sys
 
 from slurm_monitor.db_operations import DBManager
@@ -256,12 +257,15 @@ class AutoDeployerSonar(AutoDeployer):
 
 
     def deploy(self, node: str) -> str:
-        logger.info(f"Deploying with deploy_command={self.deploy_command}")
-        response = Command.run(f"{self.deploy_command} {node}")
-        logger.info(response)
+        try:
+            logger.info(f"Deploying to {node=} with deploy_command={self.deploy_command} (timeout after 30s)")
+            response = Command.run(f"{self.deploy_command} {node}", timeout=30)
+            logger.info(response)
 
-        if node not in self.stats.nodes:
-            logger.warning(f"Node '{node}' has not been registered in stats yet")
-            self.stats.nodes[node] = AutoDeployerNodeStats(last_seen=utcnow())
+            if node not in self.stats.nodes:
+                logger.warning(f"Node '{node}' has not been registered in stats yet")
+                self.stats.nodes[node] = AutoDeployerNodeStats(last_seen=utcnow())
 
-        self.stats.nodes[node].deploy.append(utcnow())
+            self.stats.nodes[node].deploy.append(utcnow())
+        except subprocess.TimeoutExpired as e:
+            logger.warning("Deploying to {node=} failed - operation timed out")
