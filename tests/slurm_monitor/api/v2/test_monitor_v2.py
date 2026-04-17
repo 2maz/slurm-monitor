@@ -91,6 +91,7 @@ def parametrize_route(path,
     path = path.replace("{epoch}","0")
     path = path.replace("{benchmark_name}","lambdal")
     path = path.replace("{query_name}", "popular-partitions-by-number-of-jobs")
+    path = path.replace("{gpu_name}", "A100")
 
     m = re.search(r"[{}]", path)
     if m is not None:
@@ -136,6 +137,9 @@ async def test_ensure_non_authenticated_response_from_all_endpoints(endpoint, cl
     if endpoint == "/":
         assert response.status_code == 200
         assert response.json() == {'message': 'Slurm Monitor API v2'}
+    elif endpoint.startswith("/spec"):
+        # redirect to a pdf file
+        assert str(response._request.url).endswith(".pdf")
     else:
         assert response.status_code == 401
         assert "Not authenticated" in response.json()["detail"]
@@ -148,7 +152,11 @@ async def test_ensure_response_from_all_endpoints(endpoint, client, mock_token):
 
     response = client.get(f"/api/v2{endpoint}",
                           headers={"Authorization": f"Bearer {mock_token}"})
-    assert response.status_code in [200, 204]
+    if endpoint.startswith("/spec"):
+        # redirect to a pdf file
+        assert str(response._request.url).endswith(".pdf")
+    else:
+        assert response.status_code in [200, 204]
 
 
 @pytest.mark.asyncio

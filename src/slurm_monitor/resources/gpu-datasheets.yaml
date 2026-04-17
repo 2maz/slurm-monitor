@@ -1,0 +1,53 @@
+# https://docs.nvidia.com/vgpu/sizing/virtual-workstation/latest/right-gpu.html#nvidia-l40s
+nvidia:
+  a100:
+    url: https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet.pdf
+    spec: https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/PB-10577-001_v02.pdf
+    whitepaper: https://images.nvidia.com/aem-dam/en-zz/Solutions/data-center/nvidia-ampere-architecture-whitepaper.pdf
+  a100-PCIE-40GB:
+    url: https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/A100-PCIE-Prduct-Brief.pdf
+  v100:
+    url: https://images.nvidia.com/content/technologies/volta/pdf/volta-v100-datasheet-update-us-1165301-r5.pdf
+  a40:
+    url: https://images.nvidia.com/content/Solutions/data-center/a40/nvidia-a40-datasheet.pdf
+  tesla T4:
+    url: https://resources.nvidia.com/en-us-gpu/t4-tensor-core-datas
+  tesla K20m:
+    url: https://www.nvidia.com/content/PDF/kepler/Tesla-KSeries-Overview-LR.pdf
+  v100: &id001
+    url: https://images.nvidia.com/content/technologies/volta/pdf/tesla-volta-v100-datasheet-letter-fnl-web.pdf
+  Tesla V100-SXM3-32GB: *id001
+  A100-SXM4-80GB:
+    url: https://www.nvidia.com/en-us/data-center/a100/
+  gh200:
+    url: https://www.nvidia.com/en-us/data-center/grace-hopper-superchip/
+  h200:
+    url: https://www.nvidia.com/en-us/data-center/h200/
+amd:
+  any:
+    accelerators: https://www.amd.com/en/products/specifications/accelerators.html
+  mi50:
+    url: https://www.techpowerup.com/gpu-specs/radeon-instinct-mi50.c3335
+  mi100:
+    url: https://www.amd.com/content/dam/amd/en/documents/instinct-business-docs/product-briefs/instinct-mi100-brochure.pdf
+  mi210:
+    url: https://www.amd.com/en/products/accelerators/instinct/mi200/mi250.html
+  mi250:
+    url: https://www.amd.com/en/products/accelerators/instinct/mi200/mi250.html
+  mi250x:
+    url: https://www.amd.com/en/products/accelerators/instinct/mi200/mi250x.html
+  mi325x-platform:
+    url: https://www.amd.com/content/dam/amd/en/documents/instinct-tech-docs/product-briefs/instinct-mi325x-platform-datasheet.pdf
+  mi300x:
+    url: https://www.amd.com/content/dam/amd/en/documents/instinct-tech-docs/data-sheets/amd-instinct-mi300x-data-sheet.pdf
+intel:
+  docs: https://docs.habana.ai/en/latest/Gaudi_Overview/index.html
+  max 1100:
+    url: https://ark.intel.com/content/www/us/en/ark/products/232876/intel-data-center-gpu-max-1100.html 
+  gaudi2:
+    url: https://habana.ai/wp-content/uploads/pdf/2021/gaudi2_datasheet.pdf
+  hl-225B:
+    url: https://www.intel.com/content/www/us/en/content-details/784782/habana-gaudi-2-ai-mezzanine-card-datasheet-hl-225b.html
+  hl-205:
+    url: https://habana.ai/wp-content/uploads/pdf/2020/Habana%20GAUDI%20AI%20Training%20Card%20Datasheet.pdf
+

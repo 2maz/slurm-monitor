@@ -1,12 +1,13 @@
 # from slurm_monitor.backend.worker import celery_app
 import datetime as dt
 from fastapi import Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi_cache import FastAPICache
 from fastapi_cache.decorator import cache
 from logging import getLogger, Logger
 import pandas as pd
 from pathlib import Path
+import re
 from typing import Annotated
 import yaml
 
@@ -325,6 +326,43 @@ def benchmarks(
     logger.warning(f"{cluster=}: could not find benchmarking results: {path=}")
     return {}
 
+
+@api_router.get(
+        "/spec/gpu/{gpu_name}",
+        summary="Get available gpu spec sheet",
+        tags=["gpu"]
+)
+def spec_gpu(gpu_name: str):
+    datasheets_yaml = Path(__file__).parent.parent.parent / "resources" / "gpu-datasheets.yaml"
+
+    with open(datasheets_yaml, "r") as f:
+        data = yaml.load(f, Loader=yaml.SafeLoader)
+        known_manufactorers = data.keys()
+
+        manufactorer = None
+        for m in known_manufactorers:
+            if m.lower() in gpu_name.lower():
+                manufactorer = m
+                break
+
+        for m, gpus in data.items():
+            if manufactorer and m != manufactorer:
+                continue
+
+            candidates = {}
+            for gpu, attributes in gpus.items():
+                tokens = re.split(r"[ -.]", gpu_name.lower())
+                for t in tokens:
+                    if t == gpu.lower():
+                        url = attributes.get('url', None)
+                        if url:
+                            logger.info(f"Redirecting to: {url=}")
+                            return RedirectResponse(url)
+
+        return HTTPException(
+                status_code=404,
+                detail=f"Failed to locate a specsheet for: {gpu_name}"
+        )
 
 
 ####### v1 ###############################
