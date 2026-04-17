@@ -239,7 +239,7 @@ async def test_DBJsonImporter_sonar_examples(sonar_msg_files,
             await importer.insert(copy.deepcopy(msg_data))
 
     with db.make_session() as session:
-        results = session.execute(sqlalchemy.text("SELECT cluster, nodes from cluster_attributes")).all()
+        results = session.execute(sqlalchemy.text("SELECT c.cluster, c.nodes FROM cluster_attributes c JOIN ( SELECT cluster, max(time) as max_time FROM cluster_attributes GROUP BY cluster) t ON c.cluster = t.cluster and c.time = t.max_time")).all()
         clusters = { x[0]: set(x[1]) for x in results}
 
         for expected_cluster, expected_nodes in expected_clusters.items():
