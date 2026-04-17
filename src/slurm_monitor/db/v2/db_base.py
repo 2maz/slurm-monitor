@@ -1,5 +1,3 @@
-import os
-from pydantic import BaseModel
 from sqlalchemy.orm import sessionmaker
 from contextlib import contextmanager, asynccontextmanager
 from sqlalchemy.engine.url import URL, make_url

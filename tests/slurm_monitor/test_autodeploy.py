@@ -1,6 +1,6 @@
 from slurm_monitor.autodeploy import AutoDeployer, AutoDeployerSonar
 from slurm_monitor.app_settings import AppSettings
-from slurm_monitor.db import DatabaseSettings
+from slurm_monitor.db.settings import DatabaseSettings
 import time
 
 def test_AutoDeployer_v1(test_db, test_db_uri, number_of_nodes, monkeypatch):

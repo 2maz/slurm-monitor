@@ -267,5 +267,5 @@ class AutoDeployerSonar(AutoDeployer):
                 self.stats.nodes[node] = AutoDeployerNodeStats(last_seen=utcnow())
 
             self.stats.nodes[node].deploy.append(utcnow())
-        except subprocess.TimeoutExpired as e:
+        except subprocess.TimeoutExpired:
             logger.warning("Deploying to {node=} failed - operation timed out")

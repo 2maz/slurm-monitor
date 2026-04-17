@@ -891,7 +891,7 @@ class ClusterDB(Database):
                     NodeState.node == subquery.c.node,
                     NodeState.time == subquery.c.max_time
                 ).order_by(NodeState.node)
-                 
+
 
         async with self.make_async_session() as session:
             return (await session.execute(query)).mappings().all()

@@ -7,4 +7,3 @@ class DatabaseSettings(BaseModel):
     uri: str = f"sqlite:///{os.environ['HOME']}/.slurm-monitor/slurm-monitor-db.sqlite"
 
     create_missing: bool = True
-
