@@ -1,3 +1,5 @@
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.19659914-blue.svg)](https://doi.org/10.5281/zenodo.19659914)
+
 # Slurm Monitor
 
 This package provides mainly three components for monitoring GPU and CPU resource in (Slurm) cluster:
@@ -257,7 +259,7 @@ timescaledb-tune -out-path /var/lib/postgresql/data/18/docker/postgresql.tuned.c
 
 # License
 
-Copyright (c) 2024-2026 Thomas Roehr, Simula Research Laboratory
+Copyright (c) 2024-2026 Thomas M. Roehr, Simula Research Laboratory
 
 This project is licensed under the terms of the [New BSD License](https://opensource.org/license/BSD-3-clause).
 You are free to use, modify, and distribute this work, subject to the
