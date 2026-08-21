@@ -9,6 +9,7 @@ from sqlalchemy import (
         text,
 )
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import (
         AsyncSession,
         async_sessionmaker,
@@ -156,10 +157,13 @@ class Database:
         Insert one or more rows in a single transaction - one commit (round
         trip + fsync) for the whole batch instead of one per row.
 
-        Each row is still added behind its own SAVEPOINT, so a single bad row
-        (a constraint conflict, or a data error such as a malformed field)
-        rolls back and is skipped on its own, without discarding the rest of
-        an otherwise-valid batch.
+        Rows are grouped by table and written with one bulk INSERT statement
+        per table (one more round trip, not one per row). If a table's bulk
+        statement fails (e.g. a constraint conflict when not ignoring those,
+        or a data error such as a malformed field), that table's rows are
+        retried one at a time - each behind its own SAVEPOINT - so a single
+        bad row is skipped on its own without discarding the rest of an
+        otherwise-valid batch.
 
         Example:
 
@@ -175,8 +179,12 @@ class Database:
                 skipped too, but logged as a warning.
         """
         async with self.make_writeable_async_session() as session:
-            for obj in _listify(db_obj):
-                await self._save_row(session, obj, add=True, ignore_integrity_errors=ignore_integrity_errors)
+            for table_cls, rows in self._group_by_table(db_obj).items():
+                if await self._try_bulk_write(session, table_cls, rows, add=True, ignore_integrity_errors=ignore_integrity_errors):
+                    continue
+
+                for obj in rows:
+                    await self._insert_row(session, obj, add=True, ignore_integrity_errors=ignore_integrity_errors)
 
     async def insert_or_update_async(self, db_obj, ignore_integrity_errors: bool = False):
         """
@@ -184,10 +192,13 @@ class Database:
         one commit (round trip + fsync) for the whole batch instead of one
         per row.
 
-        Each row is still merged behind its own SAVEPOINT, so a single bad
-        row (a constraint conflict, or a data error such as a malformed
-        field) rolls back and is skipped on its own, without discarding the
-        rest of an otherwise-valid batch.
+        Rows are grouped by table and written with one bulk upsert statement
+        (`INSERT ... ON CONFLICT DO UPDATE`) per table (one more round trip,
+        not one per row). If a table's bulk statement fails (e.g. a data
+        error such as a malformed field), that table's rows are retried one
+        at a time - each behind its own SAVEPOINT - so a single bad row is
+        skipped on its own without discarding the rest of an otherwise-valid
+        batch.
 
         Example:
 
@@ -203,11 +214,65 @@ class Database:
                 skipped too, but logged as a warning.
         """
         async with self.make_writeable_async_session() as session:
-            for obj in _listify(db_obj):
-                await self._save_row(session, obj, add=False, ignore_integrity_errors=ignore_integrity_errors)
+            for table_cls, rows in self._group_by_table(db_obj).items():
+                if await self._try_bulk_write(session, table_cls, rows, add=False, ignore_integrity_errors=ignore_integrity_errors):
+                    continue
+
+                # Use by-row commit as fallback, when bulk write fails
+                logger.warning("Falling back to inserting by row")
+                for obj in rows:
+                    await self._insert_row(session, obj, add=False, ignore_integrity_errors=ignore_integrity_errors)
 
     @staticmethod
-    async def _save_row(session: AsyncSession, obj, add: bool, ignore_integrity_errors: bool):
+    def _group_by_table(db_obj) -> dict[type, list]:
+        """
+        Group rows by their concrete table class - one bulk statement targets
+        one table, so rows destined for different tables can't share a
+        statement.
+        """
+        groups: dict[type, list] = {}
+        for obj in _listify(db_obj):
+            groups.setdefault(type(obj), []).append(obj)
+        return groups
+
+    @staticmethod
+    async def _try_bulk_write(session: AsyncSession, table_cls: type, rows: list, add: bool, ignore_integrity_errors: bool) -> bool:
+        """
+        Attempt one bulk INSERT (add=True) or upsert (add=False, `INSERT ...
+        ON CONFLICT DO UPDATE`) statement covering all of `rows.
+        The attempt runs behind its own SAVEPOINT so that on failure it rolls
+        back to a clean point (rather than leaving the session unable to
+        proceed) and the caller can fall back to inserting rows one at a time.
+
+        Returns:
+            bool: True if the bulk statement succeeded, False if it failed
+                and the caller should fall back to per-row writes for `rows`.
+        """
+        values = [dict(row) for row in rows]
+        stmt = pg_insert(table_cls).values(values)
+
+        if add:
+            if ignore_integrity_errors:
+                stmt = stmt.on_conflict_do_nothing(index_elements=table_cls.primary_key_columns())
+            # else: plain insert - let a conflict fail the statement so the
+            # per-row fallback can isolate and report the offending row(s).
+        else:
+            update_cols = table_cls.non_primary_key_columns()
+            stmt = stmt.on_conflict_do_update(
+                index_elements=table_cls.primary_key_columns(),
+                set_={c: stmt.excluded[c] for c in update_cols},
+            )
+
+        try:
+            async with session.begin_nested():
+                await session.execute(stmt)
+            return True
+        except Exception as e:
+            logger.warning(f"Bulk write of {len(rows)} {table_cls.__tablename__} row(s) failed -- {e}")
+            return False
+
+    @staticmethod
+    async def _insert_row(session: AsyncSession, obj, add: bool, ignore_integrity_errors: bool):
         """
         Add (add=True) or merge (add=False) a single row behind its own
         SAVEPOINT within `session`'s already-open transaction, so a failure
