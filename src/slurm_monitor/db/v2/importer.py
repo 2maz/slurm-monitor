@@ -37,6 +37,13 @@ class Importer:
         self.verbose = False
 
     async def insert(self, message: sonar.Message, update: bool, ignore_integrity_errors: bool):
+        """
+        Base implementation for the insertion (can be used in the calling handler)
+        Args:
+            message (sonar.Message): the sonar message
+            update (bool): Whether this is an update and shall be merged rather than just added
+            ignore_integrity_errors (bool): True to ignore (expected) integrity error message, False otherwise
+        """
         msg = self.to_message(message)
         attributes = msg.data.attributes
 
