@@ -8,6 +8,7 @@ from sqlalchemy import (
         select,
         text,
 )
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
         AsyncSession,
         async_sessionmaker,
@@ -149,6 +150,81 @@ class Database:
         with self.make_writeable_session() as session:
             for obj in _listify(db_obj):
                 session.merge(obj)
+
+    async def insert_async(self, db_obj, ignore_integrity_errors: bool = False):
+        """
+        Insert one or more rows in a single transaction - one commit (round
+        trip + fsync) for the whole batch instead of one per row.
+
+        Each row is still added behind its own SAVEPOINT, so a single bad row
+        (a constraint conflict, or a data error such as a malformed field)
+        rolls back and is skipped on its own, without discarding the rest of
+        an otherwise-valid batch.
+
+        Example:
+
+        ```python
+        await db.insert_async([row_a, row_b, row_c])
+        ```
+
+        Args:
+            db_obj: A single row, or a list of rows, to insert.
+            ignore_integrity_errors: When True, a row rejected for
+                conflicting with existing data (e.g. re-ingesting historic
+                data) is skipped silently. When False (default), it is
+                skipped too, but logged as a warning.
+        """
+        async with self.make_writeable_async_session() as session:
+            for obj in _listify(db_obj):
+                await self._save_row(session, obj, add=True, ignore_integrity_errors=ignore_integrity_errors)
+
+    async def insert_or_update_async(self, db_obj, ignore_integrity_errors: bool = False):
+        """
+        Insert-or-update (merge) one or more rows in a single transaction -
+        one commit (round trip + fsync) for the whole batch instead of one
+        per row.
+
+        Each row is still merged behind its own SAVEPOINT, so a single bad
+        row (a constraint conflict, or a data error such as a malformed
+        field) rolls back and is skipped on its own, without discarding the
+        rest of an otherwise-valid batch.
+
+        Example:
+
+        ```python
+        await db.insert_or_update_async([row_a, row_b, row_c])
+        ```
+
+        Args:
+            db_obj: A single row, or a list of rows, to merge.
+            ignore_integrity_errors: When True, a row rejected for
+                conflicting with existing data (e.g. re-ingesting historic
+                data) is skipped silently. When False (default), it is
+                skipped too, but logged as a warning.
+        """
+        async with self.make_writeable_async_session() as session:
+            for obj in _listify(db_obj):
+                await self._save_row(session, obj, add=False, ignore_integrity_errors=ignore_integrity_errors)
+
+    @staticmethod
+    async def _save_row(session: AsyncSession, obj, add: bool, ignore_integrity_errors: bool):
+        """
+        Add (add=True) or merge (add=False) a single row behind its own
+        SAVEPOINT within `session`'s already-open transaction, so a failure
+        on this row only rolls back this row, not the whole batch.
+        """
+        try:
+            async with session.begin_nested():
+                if add:
+                    session.add(obj)
+                else:
+                    await session.merge(obj)
+                await session.flush()
+        except IntegrityError as e:
+            if not ignore_integrity_errors:
+                logger.warning(f"Row rejected due to integrity error, skipping: {obj=} -- {e}")
+        except Exception as e:
+            logger.warning(f"Row failed, skipping: {obj=} -- {e}")
 
     @contextmanager
     def make_session(self):

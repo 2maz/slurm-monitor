@@ -1,6 +1,5 @@
 import datetime as dt
 import logging
-import sqlalchemy
 import traceback as tb
 
 from slurm_monitor.utils import utcnow
@@ -384,6 +383,16 @@ class DBJsonImporter(Importer):
                 sacct = job_data['sacct']
                 del job_data['sacct']
 
+            # start_time/submit_time/end_time arrive as ISO8601 strings (or ''
+            # when unset, e.g. a still-PENDING job). SampleSlurmJob expects
+            # real datetime objects: the sync (psycopg2) driver silently
+            # accepted the raw strings via implicit text->timestamp casting,
+            # but asyncpg's typed protocol rejects them outright, so this
+            # needs to be a real conversion rather than a pass-through.
+            for date_field in ("start_time", "submit_time", "end_time"):
+                if date_field in job_data:
+                    job_data[date_field] = dt.datetime.fromisoformat(job_data[date_field]) if job_data[date_field] else None
+
             if 'nodes' in job_data:
                 if job_data['nodes'] == ['None allocated']:
                     job_data['nodes'] = None
@@ -420,6 +429,23 @@ class DBJsonImporter(Importer):
             error_messages.append(ErrorMessage.create(**error))
         return error_messages
 
+    @staticmethod
+    def _flatten_rows(rows: list[TableBase | list[TableBase]]) -> list[TableBase]:
+        """
+        DBJsonImporter.parse_<msgtype> returns a list where entries are
+        either a single row, or (for parse_sample) a list of rows - flatten
+        that into one plain list of rows, dropping empty/falsy entries.
+        """
+        flat = []
+        for row in rows:
+            if not row:
+                continue
+            if isinstance(row, (list, tuple)):
+                flat.extend(r for r in row if r)
+            else:
+                flat.append(row)
+        return flat
+
     async def insert(self,
                      message: dict[str, any],
                      update: bool = True,
@@ -427,34 +453,57 @@ class DBJsonImporter(Importer):
         # sync with the current db state once before handling all samples in a message
         await self.sync_with_db()
 
-        rows = self.parse(message)
-        for row in rows:
-            if row:
-                try:
-                    if update:
-                        self.db.insert_or_update(row)
-                    else:
-                        self.db.insert(row)
+        rows = self._flatten_rows(self.parse(message))
+        if not rows:
+            return
 
-                    if type(row) is Node:
-                        nodes = await self.db.get_nodes(cluster=row.cluster, ensure_sysinfo=False)
-                        if row.node not in nodes:
-                            updated_nodes = set(nodes)
-                            updated_nodes.add(row.node)
+        try:
+            # One transaction for the whole message instead of one per row -
+            # this is the hot path for message throughput, so it matters most
+            # here that db writes are batched and non-blocking (async).
+            if update:
+                await self.db.insert_or_update_async(rows, ignore_integrity_errors=ignore_integrity_errors)
+            else:
+                await self.db.insert_async(rows, ignore_integrity_errors=ignore_integrity_errors)
+        except Exception as e:
+            if self.verbose:
+                tb.print_tb(e.__traceback__)
+            logger.warning(f"Inserting {len(rows)} row(s) failed. -- {e}")
+            return
 
-                            # Update the associated cluster at the same time
-                            cluster = Cluster.create(
-                                cluster=row.cluster,
-                                slurm=False,
-                                partitions=[],
-                                nodes=updated_nodes,
-                                time=utcnow()
-                            )
-                            self.db.insert(cluster)
-                except Exception as e:
-                    if ignore_integrity_errors and type(e) is sqlalchemy.exc.IntegrityError:
-                        continue
-                    else:
-                        if self.verbose:
-                            tb.print_tb(e.__traceback__)
-                        logger.warning(f"Inserting {row=} failed. -- {e}")
+        await self._sync_new_nodes_with_cluster([r for r in rows if type(r) is Node])
+
+    async def _sync_new_nodes_with_cluster(self, node_rows: list[Node]):
+        """
+        Keep each Cluster row's denormalized node list in sync when new nodes
+        show up in this message - grouped per cluster, so a message with many
+        Node rows (e.g. a 'cluster' topic message) costs at most one
+        `get_nodes` read and one `Cluster` upsert per cluster, instead of one
+        of each per node.
+        """
+        if not node_rows:
+            return
+
+        nodes_by_cluster: dict[str, set[str]] = {}
+        for row in node_rows:
+            nodes_by_cluster.setdefault(row.cluster, set()).add(row.node)
+
+        for cluster, new_nodes in nodes_by_cluster.items():
+            try:
+                known_nodes = await self.db.get_nodes(cluster=cluster, ensure_sysinfo=False)
+                missing_nodes = new_nodes - set(known_nodes)
+                if not missing_nodes:
+                    continue
+
+                cluster_row = Cluster.create(
+                    cluster=cluster,
+                    slurm=False,
+                    partitions=[],
+                    nodes=set(known_nodes) | missing_nodes,
+                    time=utcnow()
+                )
+                await self.db.insert_async(cluster_row)
+            except Exception as e:
+                if self.verbose:
+                    tb.print_tb(e.__traceback__)
+                logger.warning(f"Syncing new nodes {new_nodes} for {cluster=} failed. -- {e}")
