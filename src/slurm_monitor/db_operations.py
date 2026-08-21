@@ -32,6 +32,14 @@ class DBManager:
         if app_settings is None:
             app_settings = AppSettings.get_instance()
 
+        # Constructing a database instance builds a new engine + connection
+        # pool (and, for v2, a second async engine + pool, plus schema
+        # introspection/DDL creation) - much too expensive to redo on every
+        # call (e.g. once per API request). Cache and reuse one instance per
+        # schema version instead.
+        if app_settings.db_schema_version in cls._databases:
+            return cls._databases[app_settings.db_schema_version]
+
         logger.info(f"Loading database with: {app_settings.database}")
 
         try:
@@ -44,6 +52,7 @@ class DBManager:
             else:
                 raise RuntimeError("AppSettings.db_schema_version is not set")
 
+            cls._databases[app_settings.db_schema_version] = db
             return db
         except sqlalchemy.exc.OperationalError:
             raise HTTPException(
