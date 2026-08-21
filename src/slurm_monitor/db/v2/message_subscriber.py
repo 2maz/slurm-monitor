@@ -101,6 +101,11 @@ class TerminalDisplay:
 
         self.stop = False
 
+        # self.clusters is written by rx_thread (receive) and read by the main
+        # thread (show); guard it so a cluster showing up mid-render can't
+        # raise "dictionary changed size during iteration" and kill the display
+        self._clusters_lock = threading.Lock()
+
         self.rx_thread = threading.Thread(target=self.receive)
 
         self.log_output = log_output
@@ -129,7 +134,8 @@ class TerminalDisplay:
             if not output:
                 time.sleep(0.1)
             else:
-                self.clusters[output.cluster] = output
+                with self._clusters_lock:
+                    self.clusters[output.cluster] = output
 
     def run(self):
         self.rx_thread.start()
@@ -172,9 +178,16 @@ class TerminalDisplay:
 
             self._screen.erase()
 
+            # Snapshot clusters under the lock so the rest of this render sees
+            # a single consistent view, instead of racing rx_thread as it adds
+            # entries (which could otherwise raise "dictionary changed size
+            # during iteration" and take the whole display down).
+            with self._clusters_lock:
+                clusters_snapshot = dict(self.clusters)
+
             current_cluster = None
-            if self.clusters:
-                current_cluster = list(self.clusters.keys())[self.current_cluster_index]
+            if clusters_snapshot:
+                current_cluster = list(clusters_snapshot.keys())[self.current_cluster_index % len(clusters_snapshot)]
 
             # header
             screenheight, screenwidth = self._screen.getmaxyx()
@@ -184,10 +197,10 @@ class TerminalDisplay:
             self.addstr(2, 0, "   q to quit | l to change log level | t to change tabs (" + ','.join(self.tabs) + ")")
             self.addstr(3, 0, "   c to change the cluster")
             self.addstr(4, 0, " "*screenwidth)
-            self.addstr(5, 0, f"    UI attached to {len(self.clusters)} listeners (last seen):")
+            self.addstr(5, 0, f"    UI attached to {len(clusters_snapshot)} listeners (last seen):")
             y_offset = 6
 
-            for idx, (cluster, output) in enumerate(self.clusters.items(), start=y_offset):
+            for idx, (cluster, output) in enumerate(clusters_snapshot.items(), start=y_offset):
                 if output.highlight:
                     self.addstr(idx, 0, f"        {cluster.ljust(25)}: {output.highlight.time}")
                 else:
@@ -199,7 +212,7 @@ class TerminalDisplay:
             self.addstr(y_offset, 0, f"{'-'*screenwidth}")
 
             if current_cluster:
-                output = self.clusters[current_cluster]
+                output = clusters_snapshot[current_cluster]
                 y_offset +=2
                 self.addstr(y_offset, 0, f"Cluster {output.cluster}", curses.A_BOLD)
                 y_offset+=1
@@ -219,8 +232,8 @@ class TerminalDisplay:
                     self.stop = True
                     self.addstr(0,0, "Received user's request to stop ... ]")
                 elif key == ord('c'):
-                    if self.clusters:
-                        self.current_cluster_index = (self.current_cluster_index + 1) % len(self.clusters)
+                    if clusters_snapshot:
+                        self.current_cluster_index = (self.current_cluster_index + 1) % len(clusters_snapshot)
                 elif key == ord('l'):
                     if current_cluster:
                         log_level = output.log_level
