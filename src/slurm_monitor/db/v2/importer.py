@@ -45,6 +45,16 @@ class Importer:
             time = dt.datetime.fromisoformat(attributes["time"])
             self.update_last_msg(node, time)
 
+    async def insert_batch(self, messages: list[tuple[dict[str, any], bool]], ignore_integrity_errors: bool = False):
+        """
+        Insert a batch of (message, update) pairs. The no-db `Importer` has
+        no database round trips to save, so this just inserts them one by
+        one; `DBJsonImporter.insert_batch` overrides this to actually batch
+        the writes.
+        """
+        for message, update in messages:
+            await self.insert(message, update=update, ignore_integrity_errors=ignore_integrity_errors)
+
     def update_last_msg(self, node: str, time: dt.datetime):
         self.last_msg_per_node[node] = time
 
@@ -484,28 +494,67 @@ class DBJsonImporter(Importer):
                      message: dict[str, any],
                      update: bool = True,
                      ignore_integrity_errors: bool = False):
-        # sync with the current db state once before handling all samples in a message
+        await self.insert_batch([(message, update)], ignore_integrity_errors=ignore_integrity_errors)
+
+    async def insert_batch(self,
+                     messages: list[tuple[dict[str, any], bool]],
+                     ignore_integrity_errors: bool = False):
+        """
+        Parse and write a batch of messages in as few database round trips as
+        possible: one shared GPU-card sync, one insert-or-update transaction
+        for all 'update' rows and one insert transaction for all
+        'insert-only' rows (e.g. sample topic) across the *whole* batch, and
+        one grouped node/cluster sync at the end - instead of each message
+        paying for all of that on its own.
+
+        Example:
+
+        ```python
+        await importer.insert_batch([(msg_a, True), (msg_b, False)])
+        ```
+
+        Args:
+            messages: A list of `(message, update)` pairs, where `update`
+                selects insert-or-update (merge) vs plain insert for that
+                message's rows - same meaning as `insert()`'s `update` arg.
+            ignore_integrity_errors: See `insert()`.
+        """
+        # sync with the current db state once before handling all samples in the batch
         await self.sync_with_db()
 
-        rows = self._flatten_rows(self.parse(message))
-        if not rows:
+        upsert_rows: list[TableBase] = []
+        insert_rows: list[TableBase] = []
+        for message, update in messages:
+            try:
+                rows = self._flatten_rows(self.parse(message))
+            except Exception as e:
+                if self.verbose:
+                    tb.print_tb(e.__traceback__)
+                logger.warning(f"Parsing message failed, skipping: {e}")
+                continue
+
+            (upsert_rows if update else insert_rows).extend(rows)
+
+        if not upsert_rows and not insert_rows:
             return
 
         try:
-            # One transaction for the whole message instead of one per row -
-            # this is the hot path for message throughput, so it matters most
-            # here that db writes are batched and non-blocking (async).
-            if update:
-                await self.db.insert_or_update_async(rows, ignore_integrity_errors=ignore_integrity_errors)
-            else:
-                await self.db.insert_async(rows, ignore_integrity_errors=ignore_integrity_errors)
+            # One transaction per group for the whole batch instead of one
+            # per row (or even one per message) - this is the hot path for
+            # message throughput, so it matters most here that db writes are
+            # batched and non-blocking (async).
+            if upsert_rows:
+                await self.db.insert_or_update_async(upsert_rows, ignore_integrity_errors=ignore_integrity_errors)
+            if insert_rows:
+                await self.db.insert_async(insert_rows, ignore_integrity_errors=ignore_integrity_errors)
         except Exception as e:
             if self.verbose:
                 tb.print_tb(e.__traceback__)
-            logger.warning(f"Inserting {len(rows)} row(s) failed. -- {e}")
+            logger.warning(f"Inserting {len(upsert_rows) + len(insert_rows)} row(s) failed. -- {e}")
             return
 
-        await self._sync_new_nodes_with_cluster([r for r in rows if type(r) is Node])
+        node_rows = [r for r in upsert_rows + insert_rows if type(r) is Node]
+        await self._sync_new_nodes_with_cluster(node_rows)
 
     async def _sync_new_nodes_with_cluster(self, node_rows: list[Node]):
         """

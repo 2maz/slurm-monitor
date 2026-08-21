@@ -350,6 +350,12 @@ class MessageSubscriber:
     lookback_in_h: dict[str, float]
     kafka_consumer_options: dict[str, any]
 
+    # consume() polls up to poll_max_records records, or waits up to
+    # poll_wait_in_s, whichever comes first, then writes that whole batch to
+    # the database in one go instead of one commit per Kafka record.
+    poll_max_records: int
+    poll_wait_in_s: float
+
     state: MessageSubscriber.State
     output: Output
 
@@ -439,7 +445,9 @@ class MessageSubscriber:
             stats_interval_in_s: int = 30,
             log_output: Path | str | None = None,
             log_level: int = logging.INFO,
-            output_fn: Callable[Output] | None = None
+            output_fn: Callable[Output] | None = None,
+            poll_max_records: int = 500,
+            poll_wait_in_s: float = 10
     ):
         self.host = host
         self.port = port
@@ -447,6 +455,9 @@ class MessageSubscriber:
 
         self.stats_output = stats_output
         self.stats_interval_in_s = stats_interval_in_s
+
+        self.poll_max_records = poll_max_records
+        self.poll_wait_in_s = poll_wait_in_s
 
         self.log_output = log_output
         self.log_level = log_level
@@ -582,9 +593,27 @@ class MessageSubscriber:
                 time.sleep(self.retry_timeout_in_s)
                 continue
 
-            logger.debug("Consuming msg records - start")
-            autoupdate_timestamp = None
-            for idx, consumer_record in enumerate(consumer, 1):
+            # Poll for up to poll_max_records records, or wait up to
+            # poll_wait_in_s - whichever comes first - so the whole batch can
+            # be written to the database in one go instead of one commit per
+            # Kafka record. Records stay grouped by partition (each list is
+            # already offset-ordered); flattening partition-by-partition
+            # rather than strictly interleaving is fine since none of the
+            # per-topic bookkeeping below depends on cross-topic ordering.
+            records_by_partition = consumer.poll(
+                timeout_ms=int(self.poll_wait_in_s * 1000),
+                max_records=self.poll_max_records
+            )
+            records = [r for recs in records_by_partition.values() for r in recs]
+            if not records:
+                continue
+
+            logger.debug(f"Consuming msg records - start ({len(records)} polled)")
+            batch: list[tuple[dict, bool]] = []
+            batch_has_job_message = False
+            hard_stop = False
+
+            for consumer_record in records:
                 try:
                     topic = consumer_record.topic
                     if topic in topics:
@@ -602,7 +631,8 @@ class MessageSubscriber:
                                 if not topics:
                                     logger.info("MessageSubscriber.consume: no topics left to listen on. Stopping ...")
                                     self.state = self.State.STOPPING
-                                    return
+                                    hard_stop = True
+                                    break
 
                     if self.state == self.State.INITIALIZING and not startup_offsets:
                         logger.info(f"Startup completed: historic message lookup finished (after {(utcnow() - start_time).total_seconds():.2}s)")
@@ -615,85 +645,46 @@ class MessageSubscriber:
 
                     msg = consumer_record.value.decode("UTF-8")
                     if self.verbose:
-                        logger.info(f"Message: {msg}")
-
+                        logger.info(f"Message: {msg}")
 
                     # If a sample arrives there should be no duplicates in the database - an exception is the initialization
                     # where historic records are retrieved
                     # Default: allow to update / merge existing information
-                    update = sonar.TopicType.infer(topic) != sonar.TopicType.sample
-                    logger.debug(f"DB insert: {topic} {update=} {ignore_integrity_errors=} - start")
-                    await msg_handler.insert(json.loads(msg), update=update, ignore_integrity_errors=ignore_integrity_errors)
-                    logger.debug(f"DB insert: {topic} - completed")
+                    topic_type = sonar.TopicType.infer(topic)
+                    update = topic_type != sonar.TopicType.sample
+                    if topic_type == sonar.TopicType.job:
+                        batch_has_job_message = True
 
-                    # Make the alignment of cluster information from jobs data only when all subsequent job samples have been received
-                    # e.g. during INITIALIZATION a number of subsequent job data will be processed - align once all have been
-                    # processed
-                    trigger_autoupdate = (sonar.TopicType.infer(topic) != sonar.TopicType.job and not autoupdate_timestamp) or (autoupdate_timestamp and (utcnow() - autoupdate_timestamp).total_seconds() > self.stats_interval_in_s)
-                    if trigger_autoupdate:
-                        logging.info("Auto update - aligning cluster information from jobs data - start")
-                        await msg_handler.autoupdate(cluster=self.cluster_name)
-                        logging.info("Auto update - aligning cluster information from jobs data - completed")
-                        autoupdate_timestamp = utcnow()
-
-                    if sonar.TopicType.infer(topic) == sonar.TopicType.job:
-                        autoupdate_timestamp = None # requires an update when processing the next message that is not a job message
+                    batch.append((json.loads(msg), update))
 
                     now = utcnow()
-                    seconds_from_now = (now.timestamp() - consumer_record.timestamp/1000.0)
-
                     self.output.highlight = MessageSubscriber.Highlight(state=self.state.value,
                                                     time=now.isoformat(timespec='milliseconds'),
                                                     last_processed_topic=topic,
                                                     consumer_record_offset=consumer_record.offset,
-                                                    latency_in_s=seconds_from_now
+                                                    latency_in_s=(now.timestamp() - consumer_record.timestamp/1000.0)
                                             )
+                except Exception as e:
+                    if self.verbose:
+                        tb.print_tb(e.__traceback__)
 
-                    self.output.next_stats_update = self.stats_interval_in_s - (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds()
-                    if (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds() > self.stats_interval_in_s:
-                        interval_start_time = dt.datetime.now(dt.timezone.utc)
+                    logger.warning(f"Message processing failed: {e}")
 
-                        msg_timestamps = msg_handler.last_msg_per_node
-                        max_delay = 0
-                        if msg_timestamps:
-                            max_delay = (interval_start_time - min(msg_handler.last_msg_per_node.values())).total_seconds()
-                            self.output.msg_timestamps = msg_timestamps
-                        else:
-                            logger.warning(f"No messages received - {interval_start_time} s")
+            if batch:
+                try:
+                    logger.debug(f"DB insert: batch of {len(batch)} message(s) {ignore_integrity_errors=} - start")
+                    await msg_handler.insert_batch(batch, ignore_integrity_errors=ignore_integrity_errors)
+                    logger.debug(f"DB insert: batch of {len(batch)} message(s) - completed")
 
-                        metrics = consumer.metrics()
-                        listen_status = {
-                                         'positions': { },
-                                         'stats_interval_in_s': self.stats_interval_in_s,
-                                         'interval_start_time': interval_start_time,
-                                         'max_delay': max_delay
-                                        }
-
-                        consumer._fetch_all_topic_metadata()
-                        for tp in consumer.assignment():
-                            current_pos = consumer.position(tp)
-                            highwater = consumer.highwater(tp)
-                            listen_status['positions'][tp.topic] = { 'current': current_pos, 'highwater': highwater }
-
-                            # Include startup cleanup for topics that have received no updates
-                            if tp.topic in startup_offsets:
-                                so = startup_offsets[tp.topic]
-                                if so and current_pos >= so:
-                                    del startup_offsets[tp.topic]
-
-                        metrics['listen'] = listen_status
-                        stats = json.dumps(metrics, indent=4, default=str)
-
-                        if self.stats_output:
-                            stats_output = Path(self.stats_output)
-                            stats_output.parent.mkdir(parents=True, exist_ok=True)
-
-                            with open(stats_output, "w") as f:
-                                f.write(stats)
-
-                        self.output.stats = metrics
-
-                    self.receive_and_notify()
+                    # Align cluster information from jobs data once per
+                    # batch, after this batch's job rows have actually been
+                    # committed - batching already coalesces same-poll job
+                    # messages, so there is no need for a separate per-record
+                    # timing heuristic here.
+                    if batch_has_job_message:
+                        logging.info("Auto update - aligning cluster information from jobs data - start")
+                        await msg_handler.autoupdate(cluster=self.cluster_name)
+                        logging.info("Auto update - aligning cluster information from jobs data - completed")
                 except sqlalchemy.exc.OperationalError as e:
                     logger.warning(
                         "OperationalError of database encountered. For now, assuming it is being (re)started."
@@ -704,7 +695,58 @@ class MessageSubscriber:
                     if self.verbose:
                         tb.print_tb(e.__traceback__)
 
-                    logger.warning(f"Message processing failed: {e}")
+                    logger.warning(f"Batch processing failed: {e}")
+
+            if hard_stop:
+                return
+
+            self.output.next_stats_update = self.stats_interval_in_s - (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds()
+            if (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds() > self.stats_interval_in_s:
+                interval_start_time = dt.datetime.now(dt.timezone.utc)
+                try:
+                    msg_timestamps = msg_handler.last_msg_per_node
+                    max_delay = 0
+                    if msg_timestamps:
+                        max_delay = (interval_start_time - min(msg_handler.last_msg_per_node.values())).total_seconds()
+                        self.output.msg_timestamps = msg_timestamps
+                    else:
+                        logger.warning(f"No messages received - {interval_start_time} s")
+
+                    metrics = consumer.metrics()
+                    listen_status = {
+                                     'positions': { },
+                                     'stats_interval_in_s': self.stats_interval_in_s,
+                                     'interval_start_time': interval_start_time,
+                                     'max_delay': max_delay
+                                    }
+
+                    consumer._fetch_all_topic_metadata()
+                    for tp in consumer.assignment():
+                        current_pos = consumer.position(tp)
+                        highwater = consumer.highwater(tp)
+                        listen_status['positions'][tp.topic] = { 'current': current_pos, 'highwater': highwater }
+
+                        # Include startup cleanup for topics that have received no updates
+                        if tp.topic in startup_offsets:
+                            so = startup_offsets[tp.topic]
+                            if so and current_pos >= so:
+                                del startup_offsets[tp.topic]
+
+                    metrics['listen'] = listen_status
+                    stats = json.dumps(metrics, indent=4, default=str)
+
+                    if self.stats_output:
+                        stats_output = Path(self.stats_output)
+                        stats_output.parent.mkdir(parents=True, exist_ok=True)
+
+                        with open(stats_output, "w") as f:
+                            f.write(stats)
+
+                    self.output.stats = metrics
+                except Exception as e:
+                    logger.warning(f"Updating stats failed: {e}")
+
+            self.receive_and_notify()
 
         await msg_handler.autoupdate(cluster=self.cluster_name)
 

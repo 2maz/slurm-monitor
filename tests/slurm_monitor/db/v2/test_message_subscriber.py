@@ -4,6 +4,9 @@ import datetime as dt
 from pathlib import Path
 import json
 import sqlalchemy
+import time
+
+from kafka import TopicPartition
 
 from slurm_monitor.utils import utcnow
 from slurm_monitor.db.v2.message_subscriber import MessageSubscriber
@@ -116,6 +119,24 @@ async def test_MessageSubscriber_sonar_examples(sonar_msg_files,
         def __iter__(self):
             return iter(self.records)
 
+        def poll(self, timeout_ms=0, max_records=None):
+            """
+            consume() now drives the consumer via poll() (up to max_records,
+            or up to timeout_ms of waiting) instead of the iterator protocol.
+            This mock ignores both bounds and just hands back everything on
+            every call (mirroring the old __iter__ behavior, which likewise
+            replayed the same fixed records on every outer-loop pass), with a
+            small sleep so consume()'s loop doesn't spin unbounded.
+            """
+            if not self.records:
+                return {}
+
+            time.sleep(0.05)
+            by_partition: dict[TopicPartition, list] = {}
+            for record in self.records:
+                by_partition.setdefault(TopicPartition(record.topic, 0), []).append(record)
+            return by_partition
+
     db = test_db_v2__function_scope
 
     consumer = MockKafkaConsumer(sonar_msg_files)
@@ -142,7 +163,7 @@ async def test_MessageSubscriber_sonar_examples(sonar_msg_files,
         with db.make_session() as session:
             results = session.execute(sqlalchemy.text(f"SELECT cluster, nodes, partitions, time from cluster_attributes where cluster = '{cluster_name}' ORDER BY time DESC")).all()
             assert results
-            cluster, nodes, partitions, time = results[0]
+            cluster, nodes, partitions, cluster_time = results[0]
             expected_nodes = expected_clusters[cluster_name]['nodes']
             expected_partitions = expected_clusters[cluster_name]['partitions']
 
