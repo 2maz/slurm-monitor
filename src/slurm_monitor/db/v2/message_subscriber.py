@@ -493,13 +493,13 @@ class MessageSubscriber:
         """
             return tuple of topic name and hours
         """
-        m = re.match(r"[0-9]+(\.[0-9]+)?", lookback)
+        m = re.match(r"[0-9]+(\.[0-9]+)?$", lookback)
         if m:
             return None, float(lookback)
 
-        m = re.match(r"^([^:]+):([0-9]+(\.[0-9]+)?)$", lookback)
+        m = re.match(r"^(?<topic>[^:]+):(?<hours>[0-9]+(\.[0-9]+)?)$", lookback)
         if m:
-            return m.groups()[0], float(m.groups()[1])
+            return m.group("topic"), float(m.group("hours"))
 
         raise ValueError(f"Invalid pattern: {lookback} - could not extract lookback")
 
@@ -514,6 +514,8 @@ class MessageSubscriber:
         for lookback in lookbacks:
             topic_name, lookback_in_h = cls.extract_lookback(lookback)
             if topic_name:
+                if not hasattr(sonar.TopicType, topic_name):
+                    raise ValueError(f"Invalid topic name: {topic_name} - must be one of {[x.name for x in sonar.TopicType]}")
                 topic = getattr(sonar.TopicType, topic_name)
                 lookbacks_in_h[topic] = lookback_in_h
             else:
