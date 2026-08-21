@@ -2,6 +2,8 @@ import datetime as dt
 import logging
 import traceback as tb
 
+from pydantic import BaseModel
+
 from slurm_monitor.utils import utcnow
 from slurm_monitor.db.v2.db_tables import (
     Cluster,
@@ -70,17 +72,31 @@ class Importer:
 
         return sonar.Message(meta=meta, data=data, errors=errors)
 
+class DBJsonImporterConfig(BaseModel):
+    """
+    Configuration for `DBJsonImporter`.
+    """
+
+    # New GPU cards only show up via (low-cadence, ~once/24h) sysinfo
+    # messages, so re-fetching the whole sysinfo_gpu_card table on every
+    # single ingested message (as sync_with_db() used to do) is wasted work.
+    # A periodic refresh is enough to keep ensure_gpu() correct.
+    sysinfo_gpu_cards_sync_interval_in_s: int = 60
+
 class DBJsonImporter(Importer):
     db: ClusterDB
+    config: DBJsonImporterConfig
 
     # Check if the the gpu is known and whether the information is 'complete',
     # i.e., not just a stub entry
     sysinfo_gpu_cards: dict[str, SysinfoGpuCard]
 
-    def __init__(self, db: ClusterDB):
+    def __init__(self, db: ClusterDB, config: DBJsonImporterConfig | None = None):
         super().__init__()
         self.db = db
+        self.config = config or DBJsonImporterConfig()
         self.sysinfo_gpu_cards = {}
+        self._sysinfo_gpu_cards_synced_at: dt.datetime | None = None
 
     def ensure_node(self, cluster: str, node: str, rows: list[TableBase]):
         if self.db.is_known_node(cluster=cluster, node=node):
@@ -90,7 +106,12 @@ class DBJsonImporter(Importer):
             return [Node.create(cluster=cluster, node=node)] + rows
 
     async def sync_with_db(self):
-        await self.update_sysinfo_gpu_cards()
+        stale = (
+            self._sysinfo_gpu_cards_synced_at is None
+            or (utcnow() - self._sysinfo_gpu_cards_synced_at).total_seconds() >= self.config.sysinfo_gpu_cards_sync_interval_in_s
+        )
+        if stale:
+            await self.update_sysinfo_gpu_cards()
 
     async def autoupdate(self, cluster: str):
         await self.db.sync_cluster_and_nodes_with_jobs(cluster=cluster)
@@ -98,18 +119,26 @@ class DBJsonImporter(Importer):
     async def update_sysinfo_gpu_cards(self):
         sysinfo_gpu_cards = await self.db.get_all_sysinfo_gpu_cards()
         self.sysinfo_gpu_cards = { x.uuid: x for x in sysinfo_gpu_cards }
+        self._sysinfo_gpu_cards_synced_at = utcnow()
 
     def ensure_gpu(self, cluster: str, node: str, uuid: str, rows: list[TableBase]):
         if uuid in self.sysinfo_gpu_cards:
             return rows
         else:
             logger.info(f"Creating sysinfo_gpu_card: {cluster=} {node=}")
-            return [SysinfoGpuCard.create(uuid=uuid,
+            stub = SysinfoGpuCard.create(uuid=uuid,
                                           manufacturer='',
                                           model='',
                                           architecture='',
                                           memory=0
-                                          )] + rows
+                                          )
+            # Record locally right away: sync_with_db() only refreshes this
+            # cache periodically, so without this a later message processed
+            # inside that window would think the uuid is still unknown and
+            # create another stub - and if a real sysinfo card had landed for
+            # it in between, that stub would blank the real data out again.
+            self.sysinfo_gpu_cards[uuid] = stub
+            return [stub] + rows
 
     def parse(self, message: dict[str, any]):
         """
@@ -165,11 +194,16 @@ class DBJsonImporter(Importer):
                     logger.debug(f"SysInfo: skipping message from {cluster=} {node=} due to missing 'uuid' {card=}")
                     continue
 
-                gpu_cards.append(SysinfoGpuCard.create(
+                gpu_card = SysinfoGpuCard.create(
                         uuid=gpu_uuid,
                         **data,
                     )
-                )
+                gpu_cards.append(gpu_card)
+                # Update the local cache immediately (rather than waiting for
+                # the next periodic sync_with_db() refresh) so this real card
+                # overwrites any stub, and a subsequent sample message for
+                # this uuid doesn't re-create the stub over it.
+                self.sysinfo_gpu_cards[gpu_uuid] = gpu_card
 
                 gpu_card_configs.append(SysinfoGpuCardConfig.create(
                         cluster=cluster,
