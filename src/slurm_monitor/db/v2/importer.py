@@ -268,6 +268,9 @@ class DBJsonImporter(Importer):
 
         active_gpus = set()
         if system:
+            if "boot" in system:
+                system["boot"] = dt.datetime.fromisoformat(system["boot"])
+
             if "disks" in system:
                 disks = system["disks"]
                 del system["disks"]
