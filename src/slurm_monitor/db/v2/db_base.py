@@ -5,6 +5,7 @@ from sqlalchemy import (
         MetaData,
         create_engine,
         event,
+        inspect,
         select,
         text,
 )
@@ -32,6 +33,11 @@ INTERVAL_2WEEKS = 14*INTERVAL_1DAY
 DEFAULT_HISTORY_INTERVAL_IN_S = INTERVAL_12H
 
 DB_POOL_SIZE = 25
+
+# Above this row count, a plain (non-upsert) bulk insert switches to using COPY instead of
+# a multi-row INSERT statement
+# Particularly implemented to handle large batches of SampleProcess/SampleDisk rows
+COPY_ROW_THRESHOLD = 2000
 
 def create_url(url_str: str, username: str | None, password: str | None) -> URL:
     url = make_url(url_str)
@@ -236,10 +242,75 @@ class Database:
         return groups
 
     @staticmethod
+    def _bulk_values(table_cls: type, rows: list, resolve_defaults: bool) -> list[dict]:
+        """
+        Convert `rows` into value dicts for a bulk INSERT/COPY.
+
+        Args:
+            resolve_defaults: True for a plain insert (a brand-new row) -
+                fills any column left unset with its configured client-side
+                default (`db_tables.Column()` gives nearly every column
+                `nullable=False` plus a default, e.g. `default=0`), matching
+                what `session.add(obj)` does automatically at flush time.
+                A raw attribute read instead sees an unset attribute as
+                `None`, which sends an explicit NULL and fails that same
+                NOT NULL constraint a normal insert would never hit - and
+                postgres has no *server-side* default to fall back on here
+                (`column.default` is Python-side only), so omitting the
+                column doesn't help either.
+
+                False for an upsert - a stub row (e.g. `ensure_node()`'s
+                placeholder `Node`) must not clobber real data already
+                persisted in columns it never touched. `session.merge()`
+                (used by the per-row fallback) only updates attributes
+                actually set on the source object, leaving the rest of the
+                existing row alone; resolving defaults here and pushing them
+                through `ON CONFLICT DO UPDATE SET col = excluded.col` would
+                instead overwrite already-good columns with blank defaults.
+                Unset columns are left out (None) instead, same as before -
+                a genuinely new row with an unset non-nullable column simply
+                falls back to the per-row path, same as it always has.
+        """
+        column_defaults = {}
+        if resolve_defaults:
+            for name, column in table_cls.__table__.columns.items():
+                default = column.default
+                if default is not None and (default.is_scalar or default.is_callable):
+                    column_defaults[name] = default
+
+        all_columns = table_cls.__table__.columns.keys()
+        values = []
+
+        for row in rows:
+            # known_columns() filters to actual columns of the table, rather
+            # than relying on a "doesn't start with _sa_" guess to strip out
+            # SQLAlchemy's own instance-state bookkeeping.
+            set_attrs = table_cls.known_columns(**inspect(row).dict)
+            values.append({
+                name: set_attrs.get(name, Database._resolve_default(column_defaults.get(name)))
+                for name in all_columns
+            })
+
+        return values
+
+    @staticmethod
+    def _resolve_default(default) -> any:
+        """
+        Resolve a `sqlalchemy.Column.default` to its actual value - `None` if
+        there is none, the scalar itself for a scalar default, or the result
+        of calling it for a callable default (e.g. `default=dt.datetime.now`
+        - evaluated per row, so each row gets its own "now" rather than one
+        timestamp shared across the whole batch).
+        """
+        if default is None:
+            return None
+        return default.arg({}) if default.is_callable else default.arg
+
+    @staticmethod
     async def _try_bulk_write(session: AsyncSession, table_cls: type, rows: list, add: bool, ignore_integrity_errors: bool) -> bool:
         """
         Attempt one bulk INSERT (add=True) or upsert (add=False, `INSERT ...
-        ON CONFLICT DO UPDATE`) statement covering all of `rows.
+        ON CONFLICT DO UPDATE`) statement covering all of `rows`.
         The attempt runs behind its own SAVEPOINT so that on failure it rolls
         back to a clean point (rather than leaving the session unable to
         proceed) and the caller can fall back to inserting rows one at a time.
@@ -248,9 +319,23 @@ class Database:
             bool: True if the bulk statement succeeded, False if it failed
                 and the caller should fall back to per-row writes for `rows`.
         """
-        values = [dict(row) for row in rows]
-        stmt = pg_insert(table_cls).values(values)
+        values = Database._bulk_values(table_cls, rows, resolve_defaults=add)
 
+        # Upserts still need the regular ON CONFLICT DO UPDATE statement
+        # below - COPY has no equivalent. A large plain insert uses COPY
+        # either way: straight into the table when conflicts aren't
+        # expected/tolerated, or via a staging table first when they are
+        # (ignore_integrity_errors) - COPY itself has no conflict handling,
+        # so loading a large "some of this may already exist" batch straight
+        # into the table would abort the whole COPY on the first conflict,
+        # discarding every row in the batch - including the genuinely new
+        # ones - not just the conflicting ones.
+        if add and len(values) > COPY_ROW_THRESHOLD:
+            if ignore_integrity_errors:
+                return await Database._copy_ignore_conflicts(session, table_cls, values)
+            return await Database._copy(session, table_cls, values)
+
+        stmt = pg_insert(table_cls).values(values)
         if add:
             if ignore_integrity_errors:
                 stmt = stmt.on_conflict_do_nothing(index_elements=table_cls.primary_key_columns())
@@ -269,6 +354,98 @@ class Database:
             return True
         except Exception as e:
             logger.warning(f"Bulk write of {len(rows)} {table_cls.__tablename__} row(s) failed -- {e}")
+            return False
+
+    @staticmethod
+    async def _asyncpg_connection(session: AsyncSession):
+        """
+        The raw asyncpg connection currently bound to `session` - needed to
+        reach asyncpg-native features (COPY) that have no SQLAlchemy Core
+        equivalent. It's the same physical connection/transaction `session`
+        is using, so anything run on it still participates in whatever
+        SAVEPOINT is currently open on `session`.
+        """
+        connection = await session.connection()
+        raw_connection = await connection.get_raw_connection()
+        return raw_connection.driver_connection
+
+    @staticmethod
+    async def _copy(session: AsyncSession, table_cls: type, values: list[dict]) -> bool:
+        """
+        Bulk-load `values` into `table_cls`'s table via postgres COPY, using
+        asyncpg's native (typed, non-CSV) copy support directly on the
+        connection already bound to `session` - so it still runs inside
+        `session`'s current transaction, behind its own SAVEPOINT, and rolls
+        back cleanly on failure just like the regular bulk-statement path.
+
+        Returns:
+            bool: True if COPY succeeded, False if it failed and the caller
+                should fall back to per-row writes for `values`.
+        """
+        columns = list(values[0].keys())
+        records = [tuple(row[c] for c in columns) for row in values]
+
+        try:
+            async with session.begin_nested():
+                asyncpg_connection = await Database._asyncpg_connection(session)
+                await asyncpg_connection.copy_records_to_table(
+                    table_cls.__tablename__, records=records, columns=columns
+                )
+            return True
+        except Exception as e:
+            logger.warning(f"COPY of {len(records)} {table_cls.__tablename__} row(s) failed -- {e}")
+            return False
+
+    @staticmethod
+    async def _copy_ignore_conflicts(session: AsyncSession, table_cls: type, values: list[dict]) -> bool:
+        """
+        Bulk-load `values` into `table_cls`'s table via postgres COPY while
+        still tolerating rows that conflict with existing data (same intent
+        as `ON CONFLICT DO NOTHING`).
+
+        COPY itself has no conflict-handling clause, so this loads into a
+        per-connection temp staging table first (no constraints there, so it
+        never itself fails on a conflict), then folds it into the real table
+        with one server-side `INSERT ... SELECT ... ON CONFLICT DO NOTHING` -
+        two round trips total, with conflict resolution happening inside
+        postgres over the whole batch at once. The alternative - COPYing
+        straight into the table - would abort the entire COPY on the first
+        conflicting row, discarding every row in the batch, including the
+        genuinely new ones, for what should be the routine case (re-ingesting
+        historic data that partially overlaps what's already stored).
+
+        Returns:
+            bool: True if this succeeded, False if it failed and the caller
+                should fall back to per-row writes for `values`.
+        """
+        columns = list(values[0].keys())
+        records = [tuple(row[c] for c in columns) for row in values]
+        column_list = ", ".join(f'"{c}"' for c in columns)
+        conflict_target = ", ".join(f'"{c}"' for c in table_cls.primary_key_columns())
+        staging_table = f"_copy_staging_{table_cls.__tablename__}"
+
+        try:
+            async with session.begin_nested():
+                asyncpg_connection = await Database._asyncpg_connection(session)
+                # per-connection (temp tables aren't visible across
+                # connections), so reused as-is if this table is COPY'd
+                # again later on the same connection
+                await asyncpg_connection.execute(
+                    f'CREATE TEMP TABLE IF NOT EXISTS "{staging_table}" '
+                    f"(LIKE {table_cls.__tablename__} INCLUDING DEFAULTS)"
+                )
+                await asyncpg_connection.execute(f'TRUNCATE "{staging_table}"')
+                await asyncpg_connection.copy_records_to_table(
+                    staging_table, records=records, columns=columns
+                )
+                await asyncpg_connection.execute(
+                    f"INSERT INTO {table_cls.__tablename__} ({column_list}) "
+                    f'SELECT {column_list} FROM "{staging_table}" '
+                    f"ON CONFLICT ({conflict_target}) DO NOTHING"
+                )
+            return True
+        except Exception as e:
+            logger.warning(f"COPY (ignore-conflicts) of {len(records)} {table_cls.__tablename__} row(s) failed -- {e}")
             return False
 
     @staticmethod
