@@ -2,7 +2,7 @@ import datetime as dt
 import logging
 import traceback as tb
 
-from pydantic import BaseModel
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from slurm_monitor.utils import utcnow
 from slurm_monitor.db.v2.db_tables import (
@@ -89,7 +89,7 @@ class Importer:
 
         return sonar.Message(meta=meta, data=data, errors=errors)
 
-class DBJsonImporterConfig(BaseModel):
+class DBJsonImporterConfig(BaseSettings):
     """
     Configuration for `DBJsonImporter`.
     """
@@ -99,6 +99,15 @@ class DBJsonImporterConfig(BaseModel):
     # single ingested message (as sync_with_db() used to do) is wasted work.
     # A periodic refresh is enough to keep ensure_gpu() correct.
     sysinfo_gpu_cards_sync_interval_in_s: int = 60
+    jobs_blocklist: list[int] = []
+
+    model_config = SettingsConfigDict(
+                    env_file='.env',
+                    env_nested_delimiter='_',
+                    env_prefix='SLURM_MONITOR_LISTEN_',
+                    extra='ignore'
+    )
+
 
 class DBJsonImporter(Importer):
     db: ClusterDB
@@ -317,6 +326,9 @@ class DBJsonImporter(Importer):
         jobs = attributes.get("jobs", [])
         for job in jobs:
             job_id = job['job']
+
+            if job_id in self.config.jobs_blocklist:
+                continue
 
             user = job['user']
             epoch = job.get('epoch', 0)
