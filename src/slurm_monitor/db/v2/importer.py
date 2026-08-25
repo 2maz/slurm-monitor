@@ -1,5 +1,7 @@
 import datetime as dt
 import logging
+from pathlib import Path
+import sys
 import traceback as tb
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -120,7 +122,19 @@ class DBJsonImporter(Importer):
     def __init__(self, db: ClusterDB, config: DBJsonImporterConfig | None = None):
         super().__init__()
         self.db = db
+
         self.config = config or DBJsonImporterConfig()
+        if "--env-file" in sys.argv:
+            idx = sys.argv.index("--env-file")
+            env_file = sys.argv[idx + 1]
+
+            if not Path(env_file).exists():
+                raise FileNotFoundError(
+                    f"DBJsonImporter.initialize: could not find {env_file=} provided via --env-file"
+                )
+
+            self.config = DBJsonImporterConfig(_env_file=env_file)
+
         self.sysinfo_gpu_cards = {}
         self._sysinfo_gpu_cards_synced_at: dt.datetime | None = None
 
@@ -212,8 +226,9 @@ class DBJsonImporter(Importer):
                 data = {}
                 for field in ["manufacturer", "model", "architecture", "memory"]:
                     if field in card:
-                        data[field] = card[field]
-                        del card[field]
+                        if card[field] is not None:
+                            data[field] = card[field]
+                            del card[field]
 
                 gpu_uuid = card['uuid']
                 if gpu_uuid is None or gpu_uuid == '':
@@ -327,11 +342,12 @@ class DBJsonImporter(Importer):
         for job in jobs:
             job_id = job['job']
 
-            if job_id in self.config.jobs_blocklist:
-                continue
-
             user = job['user']
             epoch = job.get('epoch', 0)
+
+            if epoch == 0:
+                if job_id in self.config.jobs_blocklist:
+                    continue
 
             for process in job["processes"]:
                 if 'pid' not in process:
@@ -441,9 +457,16 @@ class DBJsonImporter(Importer):
         time = dt.datetime.fromisoformat(attributes["time"])
         del attributes['time']
 
-
         slurm_job_samples = []
         for job_data in slurm_jobs:
+            epoch = job_data.get('epoch', 0)
+            if epoch == 0:
+                if job_data['job_id'] in self.config.jobs_blocklist:
+                    continue
+
+            if job_data.get('job_step', None) is None:
+                job_data['job_step'] = ''
+
             sacct = None
             if 'sacct' in job_data:
                 sacct = job_data['sacct']
@@ -476,14 +499,14 @@ class DBJsonImporter(Importer):
                 if 'job_step' in job_data:
                     sacct['job_step'] = job_data['job_step']
 
-                slurm_job_samples.append(
-                    SampleSlurmJobAcc.create(
-                        cluster=cluster,
-                        job_id=job_data['job_id'],
-                        **sacct,
-                        time=time
+                    slurm_job_samples.append(
+                        SampleSlurmJobAcc.create(
+                            cluster=cluster,
+                            job_id=job_data['job_id'],
+                            **sacct,
+                            time=time
+                        )
                     )
-                )
         return slurm_job_samples
 
     def parse_errors(self, msg: sonar.Message) -> list[TableBase | list[TableBase]]:

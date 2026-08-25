@@ -446,8 +446,8 @@ class MessageSubscriber:
             log_output: Path | str | None = None,
             log_level: int = logging.INFO,
             output_fn: Callable[Output] | None = None,
-            poll_max_records: int = 500,
-            poll_wait_in_s: float = 10
+            poll_max_records: int = 100,
+            poll_wait_in_s: float = 2,
     ):
         self.host = host
         self.port = port

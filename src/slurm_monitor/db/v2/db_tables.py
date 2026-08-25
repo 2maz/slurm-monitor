@@ -336,7 +336,7 @@ class Node(TableBase):
     cluster = Column(String, primary_key=True)
     node = Column(String, primary_key=True)
 
-    architecture = Column(String)
+    architecture = Column(String, nullable=True)
 
     __table_args__ = (
             { 'info': { 'comment': 'Auxiliary class to permit foreign key constraints on cluster/node' } }
@@ -465,7 +465,7 @@ class SysinfoGpuCard(TableBase):
     # permit to create stub entries
     manufacturer = Column(String, default='')
     model = Column(String, default='')
-    architecture = Column(String, default='')
+    architecture = Column(String, default='', nullable=True)
     memory = Column(BigInteger, default=0)
 
 class SysinfoGpuCardConfig(TableBase):
@@ -484,14 +484,14 @@ class SysinfoGpuCardConfig(TableBase):
     index = Column(Integer, index=True)
     address = Column(String)
 
-    driver = Column(String)
-    firmware = Column(String)
+    driver = Column(String, nullable=True)
+    firmware = Column(String, nullable=True)
 
-    power_limit = Column(BigInteger)
-    max_power_limit = Column(BigInteger)
-    min_power_limit = Column(BigInteger)
-    max_ce_clock = Column(BigInteger)
-    max_memory_clock = Column(BigInteger)
+    power_limit = Column(BigInteger, nullable=True)
+    max_power_limit = Column(BigInteger, nullable=True)
+    min_power_limit = Column(BigInteger, nullable=True)
+    max_ce_clock = Column(BigInteger, nullable=True)
+    max_memory_clock = Column(BigInteger, nullable=True)
 
     # Validity - since the card might not be present for some intervals
     # TDB: do we need to consider this
@@ -1018,8 +1018,8 @@ class SampleSlurmJob(TableBase):
     array_job_id = Column(BigInteger, nullable=True)  # 244843
     array_task_id = Column(Integer, nullable=True)  # 984
 
-    het_job_id = Column(BigInteger)
-    het_job_offset = Column(Integer)
+    het_job_id = Column(BigInteger, nullable=True)
+    het_job_offset = Column(Integer, nullable=True)
 
     user_name = Column(String)
     account = Column(String)
@@ -1096,20 +1096,20 @@ class SampleSlurmJobAcc(TableBase):
 
     ElapsedRaw = Column(BigInteger)
 
-    SystemCPU = Column(BigInteger)
-    UserCPU = Column(BigInteger)
+    SystemCPU = Column(BigInteger, nullable=True)
+    UserCPU = Column(BigInteger, nullable=True)
 
-    AveVMSize = Column(BigInteger)
-    MaxVMSize = Column(BigInteger)
+    AveVMSize = Column(BigInteger, nullable=True)
+    MaxVMSize = Column(BigInteger, nullable=True)
 
-    AveCPU = Column(BigInteger)
-    MinCPU = Column(BigInteger)
+    AveCPU = Column(BigInteger, nullable=True)
+    MinCPU = Column(BigInteger, nullable=True)
 
-    AveRSS = Column(BigInteger)
-    MaxRSS = Column(BigInteger)
+    AveRSS = Column(BigInteger, nullable=True)
+    MaxRSS = Column(BigInteger, nullable=True)
 
-    AveDiskRead = Column(BigInteger)
-    AveDiskWrite = Column(BigInteger)
+    AveDiskRead = Column(BigInteger, nullable=True)
+    AveDiskWrite = Column(BigInteger, nullable=True)
 
     time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
