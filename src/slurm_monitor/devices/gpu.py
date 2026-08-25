@@ -3,9 +3,12 @@ from __future__ import annotations
 from enum import Enum
 import logging
 import socket
-from typing import abstractmethod
-from pydantic import BaseModel
+from typing import abstractmethod, ClassVar
 import datetime as dt
+import re
+from pathlib import Path
+from pydantic import BaseModel
+import yaml
 
 from slurm_monitor.utils.command import Command
 
@@ -90,6 +93,8 @@ class GPU():
 
 
 class GPUInfo:
+    DATASHEETS: ClassVar[Path] = Path(__file__).parent.parent / "resources" / "gpu-datasheets.yaml"
+
     class Framework(str, Enum):
         UNKNOWN = "unknown"
         CUDA = "cuda"
@@ -124,3 +129,28 @@ class GPUInfo:
         yield "memory_total", self.memory_total
         yield "framework", self.framework.value
         yield "versions", self.versions
+
+    @classmethod
+    def get_datasheet(cls, gpu_name: str) -> str | None:
+        with open(cls.DATASHEETS, "r") as f:
+            data = yaml.load(f, Loader=yaml.SafeLoader)
+            known_manufacturers = data.keys()
+
+            manufacturer = None
+            for m in known_manufacturers:
+                if m.lower() in gpu_name.lower():
+                    manufacturer = m
+                    break
+
+            for m, gpus in data.items():
+                if manufacturer and m != manufacturer:
+                    continue
+
+                for gpu, attributes in gpus.items():
+                    tokens = re.split(r"[ -.]", gpu_name.lower())
+
+                    if gpu.lower() in ' '.join(tokens):
+                        url = attributes.get('url', None)
+                        if url:
+                            return url
+        return None

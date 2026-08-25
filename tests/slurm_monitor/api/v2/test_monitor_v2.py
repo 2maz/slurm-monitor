@@ -13,16 +13,19 @@ import jwt
 import copy
 import time
 import datetime as dt
+import yaml
 
 from slurm_monitor.utils import utcnow
+from slurm_monitor.utils.slurm import Slurm
+from slurm_monitor.utils.api import find_endpoint_by_name
+
 from slurm_monitor.v2 import app, prefetch_data
 from slurm_monitor.db_operations import DBManager
-from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.db.v2.db_base import DatabaseSettings
 from slurm_monitor.db.v2.importer import DBJsonImporter
 from slurm_monitor.app_settings import AppSettings
+from slurm_monitor.devices.gpu import GPUInfo
 
-from slurm_monitor.utils.api import find_endpoint_by_name
 
 @pytest.fixture
 def mock_appsettings_with_oauth_required(monkeypatch, timescaledb):
@@ -157,6 +160,27 @@ async def test_ensure_response_from_all_endpoints(endpoint, client, mock_token):
         assert str(response._request.url).endswith(".pdf")
     else:
         assert response.status_code in [200, 204]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gpu_model,expected_vendor,expected_model",
+                         [
+                             ["NVIDIA A100 / PCIe", "nvidia", "a100"],
+                             ["Vega [Radeon Pro VII/Radeon Instinct MI50 32GB]", "amd", "mi50"],
+                             ["Intel(R) Data Center GPU Max 1100", "intel", "max 1100"]
+                         ])
+async def test_spec_gpu(gpu_model, expected_vendor, expected_model, client):
+    """A reported gpu_model can contain a "/" percent-encoded ("%2F") - it must
+    still be routed to `spec_gpu` rather than being split into extra path
+    segments and 404ing on an unmatched route.
+    """
+    from urllib.parse import quote
+
+    with open(GPUInfo.DATASHEETS, "r") as f:
+        data = yaml.load(f, Loader=yaml.SafeLoader)
+
+    response = client.get(f"/api/v2/spec/gpu/{quote(gpu_model, safe='')}")
+    assert str(response._request.url) == data[expected_vendor][expected_model]['url']
 
 
 @pytest.mark.asyncio
