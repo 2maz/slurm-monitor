@@ -31,6 +31,12 @@ from slurm_monitor.devices.gpu import GPUInfo
 def mock_appsettings_with_oauth_required(monkeypatch, timescaledb):
     app_settings = AppSettings.get_instance()
     monkeypatch.setattr(app_settings.oauth, "required", True)
+    # jwks_url is derived from url/realm; PyJWKClient validates its scheme
+    # eagerly on construction, so these must resolve to a valid http(s) URL
+    # even though get_signing_key_from_jwt is mocked and never actually
+    # fetches it.
+    monkeypatch.setattr(app_settings.oauth, "url", "https://example.invalid")
+    monkeypatch.setattr(app_settings.oauth, "realm", "test-realm")
     monkeypatch.setattr(app_settings, "database", DatabaseSettings(uri=timescaledb))
     return app_settings
 
