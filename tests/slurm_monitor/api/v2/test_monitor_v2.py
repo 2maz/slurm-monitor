@@ -17,7 +17,7 @@ import yaml
 
 from slurm_monitor.utils import utcnow
 from slurm_monitor.utils.slurm import Slurm
-from slurm_monitor.utils.api import find_endpoint_by_name
+from slurm_monitor.utils.api import find_endpoint_by_name, flatten_router_routes
 
 from slurm_monitor.v2 import app, prefetch_data
 from slurm_monitor.db_operations import DBManager
@@ -93,6 +93,9 @@ def mock_token(monkeypatch, mock_appsettings_with_oauth_required) -> str:
 def parametrize_route(path,
                       cluster="cluster-0",
                       node="cluster-0-node-0"):
+    # strip any path converter annotation (e.g. "{gpu_name:path}") down to
+    # a plain "{gpu_name}" placeholder before substituting concrete values
+    path = re.sub(r"\{(\w+):\w+\}", r"{\1}", path)
     path = path.replace("{cluster}", cluster)
     path = path.replace("{nodename}", node)
     path = path.replace("{partition}","cluster-0-partition-0")
@@ -111,8 +114,9 @@ def get_routes(identifier: str = "v2", **kwargs):
     routes = []
     for route in app.routes:
         if hasattr(route, "routes") and route.path.endswith(identifier):
-            for api_route in route.routes:
-                if type(api_route) is APIRoute:
+            for api_route in flatten_router_routes(route.routes):
+                original_route = getattr(api_route, "original_route", api_route)
+                if type(original_route) is APIRoute:
                     r = api_route.path
                     r = parametrize_route(r, **kwargs)
 
