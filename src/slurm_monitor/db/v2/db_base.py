@@ -335,26 +335,54 @@ class Database:
                 return await Database._copy_ignore_conflicts(session, table_cls, values)
             return await Database._copy(session, table_cls, values)
 
-        stmt = pg_insert(table_cls).values(values)
-        if add:
-            if ignore_integrity_errors:
-                stmt = stmt.on_conflict_do_nothing(index_elements=table_cls.primary_key_columns())
-            # else: plain insert - let a conflict fail the statement so the
-            # per-row fallback can isolate and report the offending row(s).
-        else:
+        def build_stmt(chunk: list[dict]):
+            stmt = pg_insert(table_cls).values(chunk)
+            if add:
+                if ignore_integrity_errors:
+                    return stmt.on_conflict_do_nothing(index_elements=table_cls.primary_key_columns())
+                # else: plain insert - let a conflict fail the statement so
+                # the per-row fallback can isolate and report the offending
+                # row(s).
+                return stmt
+
             update_cols = table_cls.non_primary_key_columns()
-            stmt = stmt.on_conflict_do_update(
+            return stmt.on_conflict_do_update(
                 index_elements=table_cls.primary_key_columns(),
                 set_={c: stmt.excluded[c] for c in update_cols},
             )
 
         try:
             async with session.begin_nested():
-                await session.execute(stmt)
+                # postgres/asyncpg hard-caps a single statement at 32767
+                # bound parameters, and a multi-row VALUES (...), (...)
+                # binds one per (row, column) pair - a wide table (e.g.
+                # SampleSlurmJob's ~30 columns) can hit that at well under
+                # COPY_ROW_THRESHOLD rows, and upserts never use COPY at all
+                # (ON CONFLICT DO UPDATE has no COPY equivalent), so this
+                # applies regardless of row count or add/upsert.
+                for chunk in Database._chunk_values(values, table_cls):
+                    await session.execute(build_stmt(chunk))
             return True
         except Exception as e:
             logger.warning(f"Bulk write of {len(rows)} {table_cls.__tablename__} row(s) failed -- {e}")
             return False
+
+    # postgres/asyncpg's hard limit on bound parameters in a single statement
+    POSTGRES_MAX_QUERY_PARAMS = 32767
+
+    @staticmethod
+    def _chunk_values(values: list[dict], table_cls: type) -> list[list[dict]]:
+        """
+        Split `values` into chunks that stay under
+        `POSTGRES_MAX_QUERY_PARAMS` bound parameters per statement, based on
+        `table_cls`'s column count.
+        """
+        if not values:
+            return [values]
+
+        num_columns = len(table_cls.__table__.columns)
+        max_rows = max(1, Database.POSTGRES_MAX_QUERY_PARAMS // num_columns)
+        return [values[i:i + max_rows] for i in range(0, len(values), max_rows)]
 
     @staticmethod
     async def _asyncpg_connection(session: AsyncSession):
