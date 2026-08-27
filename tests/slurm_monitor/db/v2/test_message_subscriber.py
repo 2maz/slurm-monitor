@@ -263,8 +263,10 @@ async def test_MessageSubscriber_run_aggregates_per_topic_output(
         monkeypatch):
     """
     _run()'s aggregator loop should surface each topic's own highlight
-    (rather than just a single merged winner) and merge msg_timestamps
-    across topics into the single public `output`.
+    (rather than just a single merged winner), list a subscribed topic that
+    hasn't processed any message yet with a `None` placeholder rather than
+    omitting it, and merge msg_timestamps across topics into the single
+    public `output`.
     """
     db = test_db_v2__function_scope
 
@@ -272,6 +274,12 @@ async def test_MessageSubscriber_run_aggregates_per_topic_output(
     for sonar_msg_file in ["0+job-srl-login3.ex3.simula.no.json", "0+sample-g001.ex3.simula.no.json"]:
         consumer = MockKafkaConsumer([sonar_msg_file], test_data_dir)
         per_topic_consumer[consumer.topics[0]] = consumer
+
+    # a topic with no assigned partitions yet (as if subscribed but no
+    # messages have ever been produced to it) - never processes anything,
+    # so it must show up only via _run() seeding _topics upfront
+    quiet_topic = "ex3.simula.no.quiet"
+    per_topic_consumer[quiet_topic] = MockKafkaConsumer([], test_data_dir)
 
     def fake_kafka_consumer(topic, *args, **kwargs):
         return per_topic_consumer[topic]
@@ -291,7 +299,10 @@ async def test_MessageSubscriber_run_aggregates_per_topic_output(
     await task
 
     assert set(message_subscriber.output.highlights.keys()) == set(per_topic_consumer.keys()), (
-        "Expected one highlight per topic, not just a single merged one"
+        "Expected every subscribed topic to be listed, not just the ones that processed a message"
+    )
+    assert message_subscriber.output.highlights[quiet_topic] is None, (
+        "Expected the quiet topic to be listed with a None placeholder"
     )
     # only the sample/sysinfo topics populate per-node timestamps - the job
     # topic here contributes none, but the sample topic's should still make

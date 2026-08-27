@@ -218,7 +218,10 @@ class TerminalDisplay:
                 y_offset+=1
                 if output.highlights:
                     for topic, highlight in sorted(output.highlights.items()):
-                        self.addstr(y_offset, 0, f"[{topic}] {highlight.to_str()}", curses.A_BOLD)
+                        if highlight:
+                            self.addstr(y_offset, 0, f"[{topic}] {highlight.to_str()}", curses.A_BOLD)
+                        else:
+                            self.addstr(y_offset, 0, f"[{topic}] waiting for messages", curses.A_BOLD)
                         y_offset += 1
                 else:
                     self.addstr(y_offset, 0, "    waiting for messages    ", curses.A_BOLD)
@@ -363,6 +366,10 @@ class MessageSubscriber:
     _stop_event: threading.Event
     _output_lock: threading.Lock
     _topic_snapshots: dict[str, dict[str, any]]
+    # topics _run() spawned a thread for - lets the aggregator loop list
+    # every subscribed topic in `output.highlights`, even one that hasn't
+    # processed a message yet
+    _topics: list[str]
 
     # consume_topic() polls up to poll_max_records records, or waits up to
     # poll_wait_in_s, whichever comes first, then writes that whole batch to
@@ -400,8 +407,10 @@ class MessageSubscriber:
         highlight: MessageSubscriber.Highlight | None
         # per-topic breakdown of `highlight` - one topic's most recently
         # processed message each, rather than just the single most recent
-        # one across all topics
-        highlights: dict[str, MessageSubscriber.Highlight]
+        # one across all topics. Every subscribed topic has an entry from
+        # the start (None until its first message) so a quiet topic still
+        # shows up rather than silently being absent.
+        highlights: dict[str, MessageSubscriber.Highlight | None]
 
         log_level: int
 
@@ -432,7 +441,7 @@ class MessageSubscriber:
             if "highlight" in data:
                 output.highlight = MessageSubscriber.Highlight(**data['highlight'])
             output.highlights = {
-                topic: MessageSubscriber.Highlight(**highlight)
+                topic: (MessageSubscriber.Highlight(**highlight) if highlight else None)
                 for topic, highlight in data.get('highlights', {}).items()
             }
             output.next_stats_update = data['next_stats_update']
@@ -447,7 +456,10 @@ class MessageSubscriber:
             yield "stats", self.stats
             if self.highlight:
                 yield "highlight", self.highlight.model_dump()
-            yield "highlights", {topic: highlight.model_dump() for topic, highlight in self.highlights.items()}
+            yield "highlights", {
+                topic: (highlight.model_dump() if highlight else None)
+                for topic, highlight in self.highlights.items()
+            }
             yield "next_stats_update", self.next_stats_update
             yield "msg_timestamps", self.msg_timestamps
             yield "log_level", self.log_level
@@ -506,6 +518,7 @@ class MessageSubscriber:
         self._stop_event = threading.Event()
         self._output_lock = threading.Lock()
         self._topic_snapshots = {}
+        self._topics = []
 
         # function that will receive the latest output
         self.output_fn = output_fn
@@ -891,10 +904,18 @@ class MessageSubscriber:
         with self._output_lock:
             snapshots = {topic: dict(fields) for topic, fields in self._topic_snapshots.items()}
 
-        highlights = {topic: fields["highlight"] for topic, fields in snapshots.items() if "highlight" in fields}
-        if highlights:
-            self.output.highlights = highlights
-            self.output.highlight = max(highlights.values(), key=lambda h: h.time)
+        # every subscribed topic gets an entry - None until its first
+        # message - so a quiet topic still shows up rather than silently
+        # being absent
+        highlights: dict[str, MessageSubscriber.Highlight | None] = dict.fromkeys(self._topics)
+        for topic, fields in snapshots.items():
+            if "highlight" in fields:
+                highlights[topic] = fields["highlight"]
+        self.output.highlights = highlights
+
+        actual_highlights = [h for h in highlights.values() if h is not None]
+        if actual_highlights:
+            self.output.highlight = max(actual_highlights, key=lambda h: h.time)
 
         msg_timestamps: dict[str, dt.datetime] = {}
         for fields in snapshots.values():
@@ -968,6 +989,7 @@ class MessageSubscriber:
 
         self.state = self.State.INITIALIZING
         self._stop_event.clear()
+        self._topics = topics
 
         logger.info(f"Subscribing to topics: {topics}")
         threads = [
