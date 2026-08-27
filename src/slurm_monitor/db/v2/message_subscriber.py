@@ -218,10 +218,11 @@ class TerminalDisplay:
                 y_offset+=1
                 if output.highlights:
                     for topic, highlight in sorted(output.highlights.items()):
+                        topic_txt = topic.ljust(len(output.cluster)+8,' ')
                         if highlight:
-                            self.addstr(y_offset, 0, f"[{topic}] {highlight.to_str()}", curses.A_BOLD)
+                            self.addstr(y_offset, 0, f"[{topic_txt}] {highlight.to_str()}", curses.A_BOLD)
                         else:
-                            self.addstr(y_offset, 0, f"[{topic}] waiting for messages", curses.A_BOLD)
+                            self.addstr(y_offset, 0, f"[{topic_txt}] waiting for messages", curses.A_BOLD)
                         y_offset += 1
                 else:
                     self.addstr(y_offset, 0, "    waiting for messages    ", curses.A_BOLD)
@@ -394,7 +395,7 @@ class MessageSubscriber:
         latency_in_s: float
 
         def to_str(self):
-            return f"[{self.state}][{self.time}] last processed: topic={self.last_processed_topic} offset={self.consumer_record_offset} latency: {self.latency_in_s:.2f}s"
+            return f"[{self.state.ljust(12,' ')}][{self.time}] last processed: topic={self.last_processed_topic} offset={self.consumer_record_offset} latency: {self.latency_in_s:.2f}s"
 
     class Control(BaseModel):
         log_level: int = 0
