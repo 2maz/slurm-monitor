@@ -81,7 +81,13 @@ class MockKafkaConsumer:
         pass
 
     def assignment(self):
-        return True
+        return {TopicPartition(topic, 0) for topic in self.topic_offsets}
+
+    def position(self, tp):
+        return self.topic_offsets.get(tp.topic, 0)
+
+    def highwater(self, tp):
+        return self.topic_offsets.get(tp.topic, 0)
 
     def partitions_for_topic(self, topic):
         # tells _consume_topic_with_retry's startup-offset lookup there is
@@ -247,3 +253,49 @@ async def test_MessageSubscriber_run_uses_one_db_connection_per_topic(
             "SELECT cluster FROM cluster_attributes WHERE cluster = 'fox.educloud.no'"
         )).all()
         assert result, "Expected the cluster-topic thread's own DB connection to have written its data"
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_MessageSubscriber_run_aggregates_per_topic_output(
+        test_db_v2__function_scope,
+        db_config,
+        test_data_dir,
+        monkeypatch):
+    """
+    _run()'s aggregator loop should surface each topic's own highlight
+    (rather than just a single merged winner) and merge msg_timestamps
+    across topics into the single public `output`.
+    """
+    db = test_db_v2__function_scope
+
+    per_topic_consumer: dict[str, MockKafkaConsumer] = {}
+    for sonar_msg_file in ["0+job-srl-login3.ex3.simula.no.json", "0+sample-g001.ex3.simula.no.json"]:
+        consumer = MockKafkaConsumer([sonar_msg_file], test_data_dir)
+        per_topic_consumer[consumer.topics[0]] = consumer
+
+    def fake_kafka_consumer(topic, *args, **kwargs):
+        return per_topic_consumer[topic]
+
+    monkeypatch.setattr(message_subscriber_module, "KafkaConsumer", fake_kafka_consumer)
+
+    message_subscriber = MessageSubscriber(host="localhost", port="9999",
+                      topics=list(per_topic_consumer.keys()),
+                      cluster_name="unused-cluster-name",
+                      database=db,
+                      stats_interval_in_s=0,
+    )
+
+    task = asyncio.create_task(message_subscriber._run())
+    await asyncio.sleep(3)
+    message_subscriber.request_stop()
+    await task
+
+    assert set(message_subscriber.output.highlights.keys()) == set(per_topic_consumer.keys()), (
+        "Expected one highlight per topic, not just a single merged one"
+    )
+    # only the sample/sysinfo topics populate per-node timestamps - the job
+    # topic here contributes none, but the sample topic's should still make
+    # it through to the merged output
+    assert message_subscriber.output.msg_timestamps, (
+        "Expected the sample topic's per-node timestamps to have been merged into output"
+    )

@@ -216,12 +216,14 @@ class TerminalDisplay:
                 y_offset +=2
                 self.addstr(y_offset, 0, f"Cluster {output.cluster}", curses.A_BOLD)
                 y_offset+=1
-                if output.highlight:
-                    self.addstr(y_offset,0, output.highlight.to_str(), curses.A_BOLD)
+                if output.highlights:
+                    for topic, highlight in sorted(output.highlights.items()):
+                        self.addstr(y_offset, 0, f"[{topic}] {highlight.to_str()}", curses.A_BOLD)
+                        y_offset += 1
                 else:
                     self.addstr(y_offset, 0, "    waiting for messages    ", curses.A_BOLD)
+                    y_offset += 1
 
-                y_offset += 1
                 tab_name = self.tabs[self.current_tab_index]
                 if hasattr(self, f"tab_{tab_name}"):
                     getattr(self, f"tab_{tab_name}")(output=output, y_offset=y_offset, screenwidth=screenwidth)
@@ -278,7 +280,10 @@ class TerminalDisplay:
             self.addstr(y_offset+2, 0, f"{'-'*screenwidth}")
 
             y_offset += 3
-            column_x = max(min(screenwidth / 2, 40), 100)
+            # place the second column at roughly half the screen width,
+            # clamped to [40, 100] so it's neither too narrow to be useful
+            # nor pushed off-screen on a normal-width terminal
+            column_x = int(min(max(screenwidth / 2, 40), 100))
             self.addstr(y_offset, 0, "Recently seen first", curses.A_BOLD)
             for idx, msg in enumerate(reversed(timesorted_messages[-15:])):
                 row = f"{msg[1]} {msg[0]}"
@@ -392,7 +397,11 @@ class MessageSubscriber:
         messages: Iterable[str]
         stats: dict[str, any]
         next_stats_update: int
-        highlight: str
+        highlight: MessageSubscriber.Highlight | None
+        # per-topic breakdown of `highlight` - one topic's most recently
+        # processed message each, rather than just the single most recent
+        # one across all topics
+        highlights: dict[str, MessageSubscriber.Highlight]
 
         log_level: int
 
@@ -407,6 +416,7 @@ class MessageSubscriber:
             self.messages = collections.deque(maxlen=100)
             self.stats = {}
             self.highlight = None
+            self.highlights = {}
 
             self.next_stats_update = -1
             self.msg_timestamps = {}
@@ -421,6 +431,10 @@ class MessageSubscriber:
             output.stats = data['stats']
             if "highlight" in data:
                 output.highlight = MessageSubscriber.Highlight(**data['highlight'])
+            output.highlights = {
+                topic: MessageSubscriber.Highlight(**highlight)
+                for topic, highlight in data.get('highlights', {}).items()
+            }
             output.next_stats_update = data['next_stats_update']
             output.msg_timestamps = data['msg_timestamps']
             output.log_level = data['log_level']
@@ -433,6 +447,7 @@ class MessageSubscriber:
             yield "stats", self.stats
             if self.highlight:
                 yield "highlight", self.highlight.model_dump()
+            yield "highlights", {topic: highlight.model_dump() for topic, highlight in self.highlights.items()}
             yield "next_stats_update", self.next_stats_update
             yield "msg_timestamps", self.msg_timestamps
             yield "log_level", self.log_level
@@ -633,91 +648,94 @@ class MessageSubscriber:
                 max_records=self.poll_max_records
             )
             records = [r for recs in records_by_partition.values() for r in recs]
-            if not records:
-                continue
 
-            logger.debug(f"{topic}: consuming msg records - start ({len(records)} polled)")
-            batch: list[tuple[dict, bool]] = []
-            batch_has_job_message = False
             hard_stop = False
+            if records:
+                logger.debug(f"{topic}: consuming msg records - start ({len(records)} polled)")
+                batch: list[tuple[dict, bool]] = []
+                batch_has_job_message = False
 
-            for consumer_record in records:
-                try:
-                    if upper_bound is not None and consumer_record.offset >= upper_bound:
-                        logger.info(f"MessageSubscriber.consume_topic: {topic.ljust(25)} -- upper bound reached: {upper_bound}. Stopping.")
-                        hard_stop = True
-                        break
+                for consumer_record in records:
+                    try:
+                        if upper_bound is not None and consumer_record.offset >= upper_bound:
+                            logger.info(f"MessageSubscriber.consume_topic: {topic.ljust(25)} -- upper bound reached: {upper_bound}. Stopping.")
+                            hard_stop = True
+                            break
 
-                    if startup_offset is not None and consumer_record.offset >= startup_offset:
-                        startup_offset = None
+                        if startup_offset is not None and consumer_record.offset >= startup_offset:
+                            startup_offset = None
 
-                    if state == self.State.INITIALIZING and startup_offset is None:
-                        logger.info(f"{topic}: startup completed: historic message lookup finished (after {(utcnow() - start_time).total_seconds():.2}s)")
-                        state = self.State.RUNNING
-                        ignore_integrity_errors = False
+                        if state == self.State.INITIALIZING and startup_offset is None:
+                            logger.info(f"{topic}: startup completed: historic message lookup finished (after {(utcnow() - start_time).total_seconds():.2}s)")
+                            state = self.State.RUNNING
+                            ignore_integrity_errors = False
 
-                    if self._stop_event.is_set():
-                        logger.debug(f"{topic}: consuming: stop requested")
-                        break
+                        if self._stop_event.is_set():
+                            logger.debug(f"{topic}: consuming: stop requested")
+                            break
 
-                    msg = consumer_record.value.decode("UTF-8")
-                    if self.verbose:
-                        logger.info(f"Message: {msg}")
+                        msg = consumer_record.value.decode("UTF-8")
+                        if self.verbose:
+                            logger.info(f"Message: {msg}")
 
-                    # If a sample arrives there should be no duplicates in the database - an exception is the initialization
-                    # where historic records are retrieved
-                    # Default: allow to update / merge existing information
-                    topic_type = sonar.TopicType.infer(topic)
-                    update = topic_type != sonar.TopicType.sample
-                    if topic_type == sonar.TopicType.job:
-                        batch_has_job_message = True
+                        # If a sample arrives there should be no duplicates in the database - an exception is the initialization
+                        # where historic records are retrieved
+                        # Default: allow to update / merge existing information
+                        topic_type = sonar.TopicType.infer(topic)
+                        update = topic_type != sonar.TopicType.sample
+                        if topic_type == sonar.TopicType.job:
+                            batch_has_job_message = True
 
-                    batch.append((json.loads(msg), update))
+                        batch.append((json.loads(msg), update))
 
-                    now = utcnow()
-                    self._update_snapshot(topic, highlight=MessageSubscriber.Highlight(
-                                                    state=state.value,
-                                                    time=now.isoformat(timespec='milliseconds'),
-                                                    last_processed_topic=topic,
-                                                    consumer_record_offset=consumer_record.offset,
-                                                    latency_in_s=(now.timestamp() - consumer_record.timestamp/1000.0)
-                                            ))
-                except Exception as e:
-                    if self.verbose:
-                        tb.print_tb(e.__traceback__)
+                        now = utcnow()
+                        self._update_snapshot(topic, highlight=MessageSubscriber.Highlight(
+                                                        state=state.value,
+                                                        time=now.isoformat(timespec='milliseconds'),
+                                                        last_processed_topic=topic,
+                                                        consumer_record_offset=consumer_record.offset,
+                                                        latency_in_s=(now.timestamp() - consumer_record.timestamp/1000.0)
+                                                ))
+                    except Exception as e:
+                        if self.verbose:
+                            tb.print_tb(e.__traceback__)
 
-                    logger.warning(f"{topic}: message processing failed: {e}")
+                        logger.warning(f"{topic}: message processing failed: {e}")
 
-            if batch:
-                try:
-                    logger.debug(f"{topic}: DB insert: batch of {len(batch)} message(s) {ignore_integrity_errors=} - start")
-                    await msg_handler.insert_batch(batch, ignore_integrity_errors=ignore_integrity_errors)
-                    logger.debug(f"{topic}: DB insert: batch of {len(batch)} message(s) - completed")
+                if batch:
+                    try:
+                        logger.debug(f"{topic}: DB insert: batch of {len(batch)} message(s) {ignore_integrity_errors=} - start")
+                        await msg_handler.insert_batch(batch, ignore_integrity_errors=ignore_integrity_errors)
+                        logger.debug(f"{topic}: DB insert: batch of {len(batch)} message(s) - completed")
 
-                    # Align cluster information from jobs data once per
-                    # batch, after this batch's job rows have actually been
-                    # committed - batching already coalesces same-poll job
-                    # messages, so there is no need for a separate per-record
-                    # timing heuristic here.
-                    if batch_has_job_message:
-                        logging.info(f"{topic}: auto update - aligning cluster information from jobs data - start")
-                        await msg_handler.autoupdate(cluster=self.cluster_name)
-                        logging.info(f"{topic}: auto update - aligning cluster information from jobs data - completed")
-                except sqlalchemy.exc.OperationalError as e:
-                    logger.warning(
-                        f"{topic}: OperationalError of database encountered. For now, assuming it is being (re)started."
-                        f"Will sleep for {self.retry_timeout_in_s}s -- details: {e}"
-                    )
-                    time.sleep(self.retry_timeout_in_s)
-                except Exception as e:
-                    if self.verbose:
-                        tb.print_tb(e.__traceback__)
+                        # Align cluster information from jobs data once per
+                        # batch, after this batch's job rows have actually been
+                        # committed - batching already coalesces same-poll job
+                        # messages, so there is no need for a separate per-record
+                        # timing heuristic here.
+                        if batch_has_job_message:
+                            logging.info(f"{topic}: auto update - aligning cluster information from jobs data - start")
+                            await msg_handler.autoupdate(cluster=self.cluster_name)
+                            logging.info(f"{topic}: auto update - aligning cluster information from jobs data - completed")
+                    except sqlalchemy.exc.OperationalError as e:
+                        logger.warning(
+                            f"{topic}: OperationalError of database encountered. For now, assuming it is being (re)started."
+                            f"Will sleep for {self.retry_timeout_in_s}s -- details: {e}"
+                        )
+                        time.sleep(self.retry_timeout_in_s)
+                    except Exception as e:
+                        if self.verbose:
+                            tb.print_tb(e.__traceback__)
 
-                    logger.warning(f"{topic}: batch processing failed: {e}")
+                        logger.warning(f"{topic}: batch processing failed: {e}")
 
             if hard_stop:
                 break
 
+            # Refresh this topic's stats snapshot on a fixed cadence
+            # regardless of whether this particular poll returned any
+            # records - an idle topic should still report its (unchanged)
+            # last-seen timestamps rather than never updating them.
             if (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds() > self.stats_interval_in_s:
                 interval_start_time = dt.datetime.now(dt.timezone.utc)
                 try:
@@ -873,9 +891,10 @@ class MessageSubscriber:
         with self._output_lock:
             snapshots = {topic: dict(fields) for topic, fields in self._topic_snapshots.items()}
 
-        highlights = [fields["highlight"] for fields in snapshots.values() if "highlight" in fields]
+        highlights = {topic: fields["highlight"] for topic, fields in snapshots.items() if "highlight" in fields}
         if highlights:
-            self.output.highlight = max(highlights, key=lambda h: h.time)
+            self.output.highlights = highlights
+            self.output.highlight = max(highlights.values(), key=lambda h: h.time)
 
         msg_timestamps: dict[str, dt.datetime] = {}
         for fields in snapshots.values():
