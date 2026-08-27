@@ -57,6 +57,11 @@ def _listify(obj_or_list):
 
 class Database:
     def __init__(self, db_settings: DatabaseSettings):
+        # kept so callers can construct another, independent `Database` of
+        # the same kind against the same target, e.g. a dedicated
+        # connection per consumer thread
+        self.db_settings = db_settings
+
         db_url = self.db_url = create_url(
             db_settings.uri, db_settings.user, db_settings.password
         )
@@ -120,6 +125,32 @@ class Database:
         #   concentrate=True # Don't try to join the relation lines together
         #)
         #graph.write_png('/tmp/dbschema.png') # write out the file
+
+    def clone(self) -> "Database":
+        """
+        Construct a new, independent instance of this database - own engine
+        and connection pools - against the same settings.
+
+        Use this to give each of several concurrent consumers (e.g. one per
+        thread) its own connection instead of sharing this instance's, and
+        `dispose()` it once that consumer is done.
+
+        Returns:
+            A new instance of `type(self)` built from this instance's `db_settings`.
+        """
+        return type(self)(self.db_settings)
+
+    async def dispose(self):
+        """
+        Dispose this database's connection pools (sync and async engines).
+
+        Intended for a `Database` created for a single, short-lived purpose
+        (e.g. one per consumer thread) that should release its connections
+        once that purpose is done, rather than for the long-lived instance
+        an application constructs once at startup.
+        """
+        self.engine.dispose()
+        await self.async_engine.dispose()
 
     def get_column_description(self, table, column) -> str | None:
         """

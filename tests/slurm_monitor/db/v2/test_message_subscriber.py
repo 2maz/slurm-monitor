@@ -9,8 +9,107 @@ import time
 from kafka import TopicPartition
 
 from slurm_monitor.utils import utcnow
+from slurm_monitor.db.v2 import message_subscriber as message_subscriber_module
 from slurm_monitor.db.v2.message_subscriber import MessageSubscriber
 from slurm_monitor.db.v2.importer import DBJsonImporter
+
+
+class MockKafkaMessageRecord:
+    topic: str
+    offset: int
+    value: bytes
+    timestamp: int
+
+    def __init__(self, topic: str, message_data: str, offset: int = 0, timestamp: int | None = None):
+        self.topic = topic
+        self.value = message_data.encode("UTF-8")
+        self.offset = offset
+        self.timestamp = timestamp if timestamp is not None else int(utcnow().timestamp()*1000)
+
+
+class MockKafkaConsumer:
+    """
+    Stands in for a real `kafka.KafkaConsumer` bound to a single topic's
+    worth of sonar messages (loaded from `message_files`), driven via
+    `poll()` the same way `consume_topic()` drives a real one.
+    """
+    records: list[MockKafkaMessageRecord]
+
+    cluster: str | None
+    topic_offsets: dict[str, int]
+
+    def __init__(self, message_files: list[str], test_data_dir: Path):
+        self.cluster = None
+        self.topic_offsets = {}
+        self.records = []
+
+        for sonar_msg_file in message_files:
+            json_filename = Path(test_data_dir) / "sonar" / sonar_msg_file
+            with open(json_filename, "r") as f:
+                data = json.load(f)
+
+                timestamp = (utcnow() - dt.timedelta(hours=1))
+                cluster = data['data']['attributes']['cluster']
+                data['data']['attributes']['time'] = timestamp.isoformat()
+
+                if not self.cluster:
+                    self.cluster = cluster
+                elif self.cluster != cluster:
+                    raise RuntimeError(f"Cluster expected message for one cluster, but got {self.cluster} and {cluster}")
+
+                topic = cluster + "." + data['data']['type']
+                if topic not in self.topic_offsets:
+                    self.topic_offsets[topic] = 0
+                else:
+                    self.topic_offsets[topic] += 1
+
+                record = MockKafkaMessageRecord(topic=topic,
+                                       offset=self.topic_offsets[topic],
+                                       message_data=json.dumps(data),
+                                       timestamp=int(timestamp.timestamp()*1000)
+                )
+                self.records.append(record)
+
+    @property
+    def topics(self):
+        return list(self.topic_offsets.keys())
+
+    def metrics(self):
+        return {"message": "Test metrics"}
+
+    def _fetch_all_topic_metadata(self):
+        pass
+
+    def assignment(self):
+        return True
+
+    def partitions_for_topic(self, topic):
+        # tells _consume_topic_with_retry's startup-offset lookup there is
+        # no history to search - only exercised by tests that go through
+        # _run()/_consume_topic_with_retry rather than calling
+        # consume_topic() directly
+        return None
+
+    def __iter__(self):
+        return iter(self.records)
+
+    def poll(self, timeout_ms=0, max_records=None):
+        """
+        consume_topic() drives the consumer via poll() (up to max_records,
+        or up to timeout_ms of waiting) instead of the iterator protocol.
+        This mock ignores both bounds and just hands back everything on
+        every call (mirroring the old __iter__ behavior, which likewise
+        replayed the same fixed records on every outer-loop pass), with a
+        small sleep so consume_topic()'s loop doesn't spin unbounded.
+        """
+        if not self.records:
+            return {}
+
+        time.sleep(0.05)
+        by_partition: dict[TopicPartition, list] = {}
+        for record in self.records:
+            by_partition.setdefault(TopicPartition(record.topic, 0), []).append(record)
+        return by_partition
 
 @pytest.mark.parametrize("txt,expected_topic,expected_lower_bound,expected_upper_bound",
     [
@@ -53,93 +152,9 @@ async def test_MessageSubscriber_sonar_examples(sonar_msg_files,
                                              test_db_v2__function_scope,
                                              db_config,
                                              test_data_dir):
-    class MockKafkaMessageRecord:
-        topic: str
-        offset: int = 0
-        value: str
-        timestamp: int
-
-        def __init__(self, topic: str, message_data: str, offset: int = 0, timestamp: int = int(utcnow().timestamp()*1000)):
-            self.topic = topic
-            self.value = message_data.encode("UTF-8")
-            self.offset = offset
-            self.timestamp = timestamp
-
-    class MockKafkaConsumer:
-        records: MockKafkaMessageRecord
-
-        cluster: str | None
-        topic_offsets: dict[str, int]
-
-        def __init__(self, message_files: list[str]):
-            self.cluster = None
-            self.topic_offsets = {}
-            self.records = []
-
-            for sonar_msg_file in sonar_msg_files:
-                json_filename = Path(test_data_dir) / "sonar" / sonar_msg_file
-                with open(json_filename, "r") as f:
-                    data = json.load(f)
-
-                    timestamp = (utcnow() - dt.timedelta(hours=1))
-                    cluster = data['data']['attributes']['cluster']
-                    data['data']['attributes']['time'] = timestamp.isoformat()
-
-                    if not self.cluster:
-                        self.cluster = cluster
-                    elif self.cluster != cluster:
-                        raise RuntimeError(f"Cluster expected message for one cluster, but got {self.cluster} and {cluster}")
-
-                    topic = cluster + "." + data['data']['type']
-                    if topic not in self.topic_offsets:
-                        self.topic_offsets[topic] = 0
-                    else:
-                        self.topic_offsets[topic] += 1
-
-                    record = MockKafkaMessageRecord(topic=topic,
-                                           offset=self.topic_offsets[topic],
-                                           message_data=json.dumps(data),
-                                           timestamp=int(timestamp.timestamp()*1000)
-                    )
-                    self.records.append(record)
-
-        @property
-        def topics(self):
-            return list(self.topic_offsets.keys())
-
-        def metrics(self):
-            return {"message": "Test metrics"}
-
-        def _fetch_all_topic_metadata(self):
-            pass
-
-        def assignment(self):
-            return True
-
-        def __iter__(self):
-            return iter(self.records)
-
-        def poll(self, timeout_ms=0, max_records=None):
-            """
-            consume() now drives the consumer via poll() (up to max_records,
-            or up to timeout_ms of waiting) instead of the iterator protocol.
-            This mock ignores both bounds and just hands back everything on
-            every call (mirroring the old __iter__ behavior, which likewise
-            replayed the same fixed records on every outer-loop pass), with a
-            small sleep so consume()'s loop doesn't spin unbounded.
-            """
-            if not self.records:
-                return {}
-
-            time.sleep(0.05)
-            by_partition: dict[TopicPartition, list] = {}
-            for record in self.records:
-                by_partition.setdefault(TopicPartition(record.topic, 0), []).append(record)
-            return by_partition
-
     db = test_db_v2__function_scope
 
-    consumer = MockKafkaConsumer(sonar_msg_files)
+    consumer = MockKafkaConsumer(sonar_msg_files, test_data_dir)
     message_subscriber = MessageSubscriber(host="localhost", port="9999",
                       topics=list(consumer.topic_offsets.keys()),
                       cluster_name=consumer.cluster,
@@ -149,14 +164,14 @@ async def test_MessageSubscriber_sonar_examples(sonar_msg_files,
 
     message_handler = DBJsonImporter(db)
 
-    task = asyncio.create_task(message_subscriber.consume(
-            topics=consumer.topics,
+    task = asyncio.create_task(message_subscriber.consume_topic(
+            topic=consumer.topics[0],
             consumer=consumer,
             msg_handler=message_handler
     ))
 
     await asyncio.sleep(3)
-    message_subscriber.state = MessageSubscriber.State.STOPPING
+    message_subscriber.request_stop()
     await task
 
     for cluster_name, nodes in expected_clusters.items():
@@ -169,3 +184,66 @@ async def test_MessageSubscriber_sonar_examples(sonar_msg_files,
 
             assert sorted(nodes) == sorted(expected_nodes), f"Expected nodes {expected_nodes} in cluster_attributes, but got {nodes=}"
             assert sorted(partitions) == sorted(expected_partitions), f"Expected partitions {expected_partitions} in cluster_attributes, but got {partitions=}"
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_MessageSubscriber_run_uses_one_db_connection_per_topic(
+        test_db_v2__function_scope,
+        db_config,
+        test_data_dir,
+        monkeypatch):
+    """
+    _run() spawns one consumer thread per topic (via
+    _consume_topic_with_retry); each of those threads must construct its
+    own ClusterDB rather than sharing the MessageSubscriber's, so a
+    connection issue or a leak in one topic can't affect the others.
+    """
+    db = test_db_v2__function_scope
+
+    # One topic per mock consumer, mirroring one file each - a shared
+    # MockKafkaConsumer would reject messages from two different clusters
+    # (see its cluster-mismatch check), same as a real subscription would
+    # only ever see one topic.
+    per_topic_consumer: dict[str, MockKafkaConsumer] = {}
+    for sonar_msg_file in ["0+job-srl-login3.ex3.simula.no.json", "4+cluster.fox.educloud.no.json"]:
+        consumer = MockKafkaConsumer([sonar_msg_file], test_data_dir)
+        per_topic_consumer[consumer.topics[0]] = consumer
+
+    def fake_kafka_consumer(topic, *args, **kwargs):
+        return per_topic_consumer[topic]
+
+    monkeypatch.setattr(message_subscriber_module, "KafkaConsumer", fake_kafka_consumer)
+
+    created_dbs = []
+    original_init = db.__class__.__init__
+
+    def spy_init(self, db_settings):
+        created_dbs.append(self)
+        original_init(self, db_settings)
+
+    monkeypatch.setattr(db.__class__, "__init__", spy_init)
+
+    message_subscriber = MessageSubscriber(host="localhost", port="9999",
+                      topics=list(per_topic_consumer.keys()),
+                      cluster_name="unused-cluster-name",
+                      database=db,
+                      stats_interval_in_s=0,
+    )
+
+    task = asyncio.create_task(message_subscriber._run())
+    await asyncio.sleep(3)
+    message_subscriber.request_stop()
+    await task
+
+    assert len(created_dbs) == len(per_topic_consumer), (
+        f"Expected one ClusterDB per topic ({len(per_topic_consumer)}), got {len(created_dbs)}"
+    )
+    assert len({id(created_db) for created_db in created_dbs}) == len(created_dbs), (
+        "Expected a distinct ClusterDB instance per topic thread"
+    )
+
+    with db.make_session() as session:
+        result = session.execute(sqlalchemy.text(
+            "SELECT cluster FROM cluster_attributes WHERE cluster = 'fox.educloud.no'"
+        )).all()
+        assert result, "Expected the cluster-topic thread's own DB connection to have written its data"

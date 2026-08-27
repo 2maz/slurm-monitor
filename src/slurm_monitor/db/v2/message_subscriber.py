@@ -350,7 +350,16 @@ class MessageSubscriber:
     lookback_in_h: dict[str, float]
     kafka_consumer_options: dict[str, any]
 
-    # consume() polls up to poll_max_records records, or waits up to
+    # one KafkaConsumer + DB connection per topic, each run from its own
+    # thread by _consume_topic_with_retry(); _stop_event is the shared
+    # shutdown signal, and _output_lock guards _topic_snapshots (the
+    # per-topic highlight/stats data that _run()'s aggregator loop merges
+    # into the single public `output` below)
+    _stop_event: threading.Event
+    _output_lock: threading.Lock
+    _topic_snapshots: dict[str, dict[str, any]]
+
+    # consume_topic() polls up to poll_max_records records, or waits up to
     # poll_wait_in_s, whichever comes first, then writes that whole batch to
     # the database in one go instead of one commit per Kafka record.
     poll_max_records: int
@@ -479,6 +488,10 @@ class MessageSubscriber:
         self.state = self.State.UNKNOWN
         self.output = MessageSubscriber.Output(cluster=self.cluster_name)
 
+        self._stop_event = threading.Event()
+        self._output_lock = threading.Lock()
+        self._topic_snapshots = {}
+
         # function that will receive the latest output
         self.output_fn = output_fn
 
@@ -561,34 +574,52 @@ class MessageSubscriber:
                     handler.setLevel(log_level)
 
 
-    async def consume(self,
-                topics: list[str],
+    def _update_snapshot(self, topic: str, **fields):
+        """
+        Merge `fields` into this topic's entry of `_topic_snapshots`, under
+        `_output_lock`. `_run()`'s aggregator loop reads these snapshots to
+        build the single public `output` - this is the only place a
+        per-topic consumer thread touches shared state.
+        """
+        with self._output_lock:
+            self._topic_snapshots.setdefault(topic, {}).update(fields)
+
+    async def consume_topic(self,
+                topic: str,
                 consumer: KafkaConsumer,
                 msg_handler: Importer,
-                startup_offsets: dict[str, int] = {},
-                topic_lb: dict[str, int] = {},
-                topic_ub: dict[str,int] = {}
+                startup_offset: int | None = None,
+                upper_bound: int | None = None,
             ):
+        """
+        Consume a single topic until `_stop_event` is set, its upper bound
+        (if any) is reached, or an unrecoverable error occurs.
 
+        Runs as the body of one consumer thread's event loop (see
+        `_consume_topic_with_retry`) - `consumer` and `msg_handler` are this
+        thread's own, not shared with other topics.
+        """
         start_time = dt.datetime.now(dt.timezone.utc)
 
         if msg_handler is None:
             raise ValueError("MessageHandler must be given")
 
         ignore_integrity_errors = False
-        if startup_offsets:
-            ignore_integrity_errors = True
+        state = self.State.INITIALIZING
+        if startup_offset is None:
+            state = self.State.RUNNING
         else:
-            self.state = self.State.RUNNING
+            ignore_integrity_errors = True
 
-        while topics and not self.state == self.State.STOPPING:
-            interval_start_time = dt.datetime.now(dt.timezone.utc)
-
-            self.receive_and_notify()
+        interval_start_time = dt.datetime.now(dt.timezone.utc)
+        while not self._stop_event.is_set():
+            # output_fn/control-message round-tripping is centralized in
+            # _run()'s aggregator loop (the single thread that owns
+            # `output`) rather than done here per-topic-thread
             consumer._fetch_all_topic_metadata()
             if not consumer.assignment():
                 logger.info(
-                    "No consumer assignment, waiting for partitions to become available"
+                    f"{topic}: no consumer assignment, waiting for partitions to become available"
                 )
                 time.sleep(self.retry_timeout_in_s)
                 continue
@@ -596,10 +627,7 @@ class MessageSubscriber:
             # Poll for up to poll_max_records records, or wait up to
             # poll_wait_in_s - whichever comes first - so the whole batch can
             # be written to the database in one go instead of one commit per
-            # Kafka record. Records stay grouped by partition (each list is
-            # already offset-ordered); flattening partition-by-partition
-            # rather than strictly interleaving is fine since none of the
-            # per-topic bookkeeping below depends on cross-topic ordering.
+            # Kafka record.
             records_by_partition = consumer.poll(
                 timeout_ms=int(self.poll_wait_in_s * 1000),
                 max_records=self.poll_max_records
@@ -608,39 +636,28 @@ class MessageSubscriber:
             if not records:
                 continue
 
-            logger.debug(f"Consuming msg records - start ({len(records)} polled)")
+            logger.debug(f"{topic}: consuming msg records - start ({len(records)} polled)")
             batch: list[tuple[dict, bool]] = []
             batch_has_job_message = False
             hard_stop = False
 
             for consumer_record in records:
                 try:
-                    topic = consumer_record.topic
-                    if topic in topics:
-                        if topic in startup_offsets:
-                            so = startup_offsets[topic]
-                            if so and consumer_record.offset >= so:
-                                del startup_offsets[topic]
+                    if upper_bound is not None and consumer_record.offset >= upper_bound:
+                        logger.info(f"MessageSubscriber.consume_topic: {topic.ljust(25)} -- upper bound reached: {upper_bound}. Stopping.")
+                        hard_stop = True
+                        break
 
-                        if topic in topic_ub:
-                            ub = topic_ub[topic]
-                            if ub and consumer_record.offset >= ub:
-                                logger.info(f"MessageSubscriber.consume: {topic.ljust(25)} -- upper bound reached: {ub}, pausing: {topic}")
-                                consumer.pause(TopicPartition(topic, 0))
-                                topics.remove(topic)
-                                if not topics:
-                                    logger.info("MessageSubscriber.consume: no topics left to listen on. Stopping ...")
-                                    self.state = self.State.STOPPING
-                                    hard_stop = True
-                                    break
+                    if startup_offset is not None and consumer_record.offset >= startup_offset:
+                        startup_offset = None
 
-                    if self.state == self.State.INITIALIZING and not startup_offsets:
-                        logger.info(f"Startup completed: historic message lookup finished (after {(utcnow() - start_time).total_seconds():.2}s)")
-                        self.state = self.State.RUNNING
+                    if state == self.State.INITIALIZING and startup_offset is None:
+                        logger.info(f"{topic}: startup completed: historic message lookup finished (after {(utcnow() - start_time).total_seconds():.2}s)")
+                        state = self.State.RUNNING
                         ignore_integrity_errors = False
 
-                    if self.state == self.State.STOPPING:
-                        logger.debug("Consuming: stop requested")
+                    if self._stop_event.is_set():
+                        logger.debug(f"{topic}: consuming: stop requested")
                         break
 
                     msg = consumer_record.value.decode("UTF-8")
@@ -658,23 +675,24 @@ class MessageSubscriber:
                     batch.append((json.loads(msg), update))
 
                     now = utcnow()
-                    self.output.highlight = MessageSubscriber.Highlight(state=self.state.value,
+                    self._update_snapshot(topic, highlight=MessageSubscriber.Highlight(
+                                                    state=state.value,
                                                     time=now.isoformat(timespec='milliseconds'),
                                                     last_processed_topic=topic,
                                                     consumer_record_offset=consumer_record.offset,
                                                     latency_in_s=(now.timestamp() - consumer_record.timestamp/1000.0)
-                                            )
+                                            ))
                 except Exception as e:
                     if self.verbose:
                         tb.print_tb(e.__traceback__)
 
-                    logger.warning(f"Message processing failed: {e}")
+                    logger.warning(f"{topic}: message processing failed: {e}")
 
             if batch:
                 try:
-                    logger.debug(f"DB insert: batch of {len(batch)} message(s) {ignore_integrity_errors=} - start")
+                    logger.debug(f"{topic}: DB insert: batch of {len(batch)} message(s) {ignore_integrity_errors=} - start")
                     await msg_handler.insert_batch(batch, ignore_integrity_errors=ignore_integrity_errors)
-                    logger.debug(f"DB insert: batch of {len(batch)} message(s) - completed")
+                    logger.debug(f"{topic}: DB insert: batch of {len(batch)} message(s) - completed")
 
                     # Align cluster information from jobs data once per
                     # batch, after this batch's job rows have actually been
@@ -682,12 +700,12 @@ class MessageSubscriber:
                     # messages, so there is no need for a separate per-record
                     # timing heuristic here.
                     if batch_has_job_message:
-                        logging.info("Auto update - aligning cluster information from jobs data - start")
+                        logging.info(f"{topic}: auto update - aligning cluster information from jobs data - start")
                         await msg_handler.autoupdate(cluster=self.cluster_name)
-                        logging.info("Auto update - aligning cluster information from jobs data - completed")
+                        logging.info(f"{topic}: auto update - aligning cluster information from jobs data - completed")
                 except sqlalchemy.exc.OperationalError as e:
                     logger.warning(
-                        "OperationalError of database encountered. For now, assuming it is being (re)started."
+                        f"{topic}: OperationalError of database encountered. For now, assuming it is being (re)started."
                         f"Will sleep for {self.retry_timeout_in_s}s -- details: {e}"
                     )
                     time.sleep(self.retry_timeout_in_s)
@@ -695,60 +713,122 @@ class MessageSubscriber:
                     if self.verbose:
                         tb.print_tb(e.__traceback__)
 
-                    logger.warning(f"Batch processing failed: {e}")
+                    logger.warning(f"{topic}: batch processing failed: {e}")
 
             if hard_stop:
-                return
+                break
 
-            self.output.next_stats_update = self.stats_interval_in_s - (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds()
             if (dt.datetime.now(dt.timezone.utc) - interval_start_time).total_seconds() > self.stats_interval_in_s:
                 interval_start_time = dt.datetime.now(dt.timezone.utc)
                 try:
-                    msg_timestamps = msg_handler.last_msg_per_node
+                    msg_timestamps = dict(msg_handler.last_msg_per_node)
                     max_delay = 0
                     if msg_timestamps:
-                        max_delay = (interval_start_time - min(msg_handler.last_msg_per_node.values())).total_seconds()
-                        self.output.msg_timestamps = msg_timestamps
+                        max_delay = (interval_start_time - min(msg_timestamps.values())).total_seconds()
                     else:
-                        logger.warning(f"No messages received - {interval_start_time} s")
+                        logger.warning(f"{topic}: no messages received - {interval_start_time} s")
+
+                    positions = {}
+                    consumer._fetch_all_topic_metadata()
+                    for tp in consumer.assignment():
+                        current_pos = consumer.position(tp)
+                        highwater = consumer.highwater(tp)
+                        positions[tp.topic] = { 'current': current_pos, 'highwater': highwater }
+
+                        # Include startup cleanup for a topic that has
+                        # received no updates during this interval
+                        if startup_offset is not None and current_pos >= startup_offset:
+                            startup_offset = None
 
                     metrics = consumer.metrics()
-                    listen_status = {
-                                     'positions': { },
+                    metrics['listen'] = {
+                                     'positions': positions,
                                      'stats_interval_in_s': self.stats_interval_in_s,
                                      'interval_start_time': interval_start_time,
                                      'max_delay': max_delay
                                     }
 
-                    consumer._fetch_all_topic_metadata()
-                    for tp in consumer.assignment():
-                        current_pos = consumer.position(tp)
-                        highwater = consumer.highwater(tp)
-                        listen_status['positions'][tp.topic] = { 'current': current_pos, 'highwater': highwater }
-
-                        # Include startup cleanup for topics that have received no updates
-                        if tp.topic in startup_offsets:
-                            so = startup_offsets[tp.topic]
-                            if so and current_pos >= so:
-                                del startup_offsets[tp.topic]
-
-                    metrics['listen'] = listen_status
-                    stats = json.dumps(metrics, indent=4, default=str)
-
-                    if self.stats_output:
-                        stats_output = Path(self.stats_output)
-                        stats_output.parent.mkdir(parents=True, exist_ok=True)
-
-                        with open(stats_output, "w") as f:
-                            f.write(stats)
-
-                    self.output.stats = metrics
+                    self._update_snapshot(topic, msg_timestamps=msg_timestamps, metrics=metrics)
                 except Exception as e:
-                    logger.warning(f"Updating stats failed: {e}")
-
-            self.receive_and_notify()
+                    logger.warning(f"{topic}: updating stats failed: {e}")
 
         await msg_handler.autoupdate(cluster=self.cluster_name)
+
+    def _consume_topic_with_retry(self,
+                topic: str,
+                lower_bound: int | None,
+                upper_bound: int | None,
+            ):
+        """
+        Thread target: own a single topic's `KafkaConsumer` and DB
+        connection for as long as this `MessageSubscriber` runs, retrying on
+        connection failure, until `_stop_event` is set or `consume_topic`
+        returns (its upper bound reached, or an unrecoverable error).
+        """
+        db = None
+        if self.database:
+            db = self.database.clone()
+            msg_handler = DBJsonImporter(db=db)
+        else:
+            msg_handler = Importer()
+
+        try:
+            while not self._stop_event.is_set():
+                try:
+                    logger.info(f"{topic}: subscribing")
+                    # https://kafka-python.readthedocs.io/en/master/apidoc/KafkaConsumer.html
+                    consumer = KafkaConsumer(
+                                topic,
+                                bootstrap_servers=f"{self.host}:{self.port}",
+                                **self.kafka_consumer_options
+                                )
+                    consumer._fetch_all_topic_metadata()
+
+                    # In particular sysinfo messages are expected to run with
+                    # low cadence (every 24\,h). While the default
+                    # KafkaConsumer seeks to the end of the partition,
+                    # sysinfo messages might not appear for hours. Hence, if
+                    # no explicit lower bound was given, look back in
+                    # history so already-recorded sysinfo messages are
+                    # picked up.
+                    startup_offset = None
+                    if lower_bound is None:
+                        tp = TopicPartition(topic, 0)
+                        if consumer.partitions_for_topic(topic):
+                            topic_type = sonar.TopicType.infer(topic=topic)
+                            timelimit = utcnow() - dt.timedelta(seconds=int(self.lookback_in_h.get(topic_type, LOOKBACK_IN_H_DEFAULT)*3600))
+                            logger.info(f"{topic=}: search offset for {timelimit=}")
+                            offset_and_timestamp = consumer.offsets_for_times({ tp: int(timelimit.timestamp()*1000) })[tp]
+                            if offset_and_timestamp:
+                                offset = offset_and_timestamp.offset
+                                timestamp_in_s = offset_and_timestamp.timestamp / 1000
+                                logger.info(f"{topic=}: found {offset=} for {dt.datetime.fromtimestamp(timestamp_in_s)}")
+                                lower_bound = offset
+                                startup_offset = consumer.end_offsets([tp])[tp]
+
+                    if lower_bound is not None:
+                        logger.info(f"{topic=}: seek to {lower_bound}")
+                        consumer.seek(TopicPartition(topic, 0), lower_bound)
+
+                    asyncio.run(self.consume_topic(topic, consumer, msg_handler,
+                                  startup_offset=startup_offset,
+                                  upper_bound=upper_bound))
+                    return
+                except kafka.errors.NoBrokersAvailable as e:
+                    msg = f"{topic}: no brokers available using bootstrap_servers: {self.host}:{self.port} retrying in {self.retry_timeout_in_s}s (check {self.log_output}) - {e}"
+                    logger.warning(msg)
+                    warnings.warn(msg)
+                    time.sleep(self.retry_timeout_in_s)
+                except TimeoutError:
+                    raise
+                except Exception as e:
+                    msg = f"{topic}: connection failed - retrying in {self.retry_timeout_in_s}s (see {self.log_output}) - {e}"
+                    logger.warning(msg)
+                    warnings.warn(msg)
+                    time.sleep(self.retry_timeout_in_s)
+        finally:
+            if db:
+                asyncio.run(db.dispose())
 
     @classmethod
     def extract_offset_bounds(cls, txt) -> TopicBound:
@@ -771,17 +851,71 @@ class MessageSubscriber:
 
         return TopicBound(topic, lower_bound, upper_bound)
 
+    def request_stop(self):
+        """Signal every topic thread (and `_run()`'s aggregator loop) to stop."""
+        self.state = self.State.STOPPING
+        self._stop_event.set()
+
+    def _merge_output(self, last_stats_output_time: dt.datetime) -> dt.datetime:
+        """
+        Merge each topic's latest snapshot (as pushed by its consumer
+        thread via `_update_snapshot`) into the single public `output` -
+        the shape `listen.py`/`TerminalDisplay` and the stats JSON file
+        expect, unchanged by this being backed by several topic threads now.
+
+        Args:
+            last_stats_output_time: when `output.stats` (and the stats
+                file, if configured) were last refreshed.
+
+        Returns:
+            The (possibly updated) `last_stats_output_time` for the next call.
+        """
+        with self._output_lock:
+            snapshots = {topic: dict(fields) for topic, fields in self._topic_snapshots.items()}
+
+        highlights = [fields["highlight"] for fields in snapshots.values() if "highlight" in fields]
+        if highlights:
+            self.output.highlight = max(highlights, key=lambda h: h.time)
+
+        msg_timestamps: dict[str, dt.datetime] = {}
+        for fields in snapshots.values():
+            msg_timestamps.update(fields.get("msg_timestamps", {}))
+        if msg_timestamps:
+            self.output.msg_timestamps = msg_timestamps
+
+        now = dt.datetime.now(dt.timezone.utc)
+        self.output.next_stats_update = self.stats_interval_in_s - (now - last_stats_output_time).total_seconds()
+        if (now - last_stats_output_time).total_seconds() <= self.stats_interval_in_s:
+            return last_stats_output_time
+
+        stats = {topic: fields["metrics"] for topic, fields in snapshots.items() if "metrics" in fields}
+        if stats:
+            self.output.stats = stats
+            if self.stats_output:
+                try:
+                    stats_output = Path(self.stats_output)
+                    stats_output.parent.mkdir(parents=True, exist_ok=True)
+                    with open(stats_output, "w") as f:
+                        f.write(json.dumps(stats, indent=4, default=str))
+                except Exception as e:
+                    logger.warning(f"Writing stats file failed: {e}")
+
+        return now
+
     def run(self):
         try:
             asyncio.run(self._run())
         except KeyboardInterrupt:
             print("Keyboard interrupt received - stopping")
-            self.state = self.State.STOPPING
-
+            self.request_stop()
 
     async def _run(self):
         """
-        Set up a kafka consumer that subscribes to a list of topics
+        Spawn one consumer thread per topic, each with its own KafkaConsumer
+        and DB connection, and run this call's own thread as an aggregator:
+        periodically merging every topic's latest status into the single
+        public `output`, and forwarding/receiving control messages via
+        `receive_and_notify()`.
 
         Note that a topic can be defined with a lower bound and and upper bound offset, e.g., as "<topic_name>:<lb-offset>-<ub-offset>.
             - when an lower bound offset is defined: start the consumption of messages for the related topic at this message offset
@@ -791,10 +925,7 @@ class MessageSubscriber:
         if self.strict_mode:
             TableBase.__extra_values__ = 'forbid'
 
-        msg_handler = Importer()
-        if self.database:
-            msg_handler = DBJsonImporter(db=self.database)
-        else:
+        if not self.database:
             print("MessageSubscriber: no database specified. Will only print messages to console")
 
         topic_lb = {}
@@ -817,65 +948,31 @@ class MessageSubscriber:
             topics = processed_topics
 
         self.state = self.State.INITIALIZING
-        while self.state != self.State.STOPPING:
-            try:
-                # https://kafka-python.readthedocs.io/en/master/apidoc/KafkaConsumer.html
-                logger.info(f"Subscribing to topics: {topics}")
-                consumer = KafkaConsumer(
-                            *topics,
-                            bootstrap_servers=f"{self.host}:{self.port}",
-                            **self.kafka_consumer_options
-                            )
-                logger.debug("KafkaConsumer: fetching topic metadata - start")
-                consumer._fetch_all_topic_metadata()
-                logger.debug("KafkaConsumer: fetching topic metadata - completed")
+        self._stop_event.clear()
 
-                # In particular sysinfo message are expected to run with low
-                # cadence (every 24\,h)
-                # While the default KafkaConsumer seeks to the end of the partition
-                # sysinfo message might not appear for hours.
-                # Hence, in cases where sysinfo message have been already recorded
-                # ensure that the listener picks them up
-                startup_offsets = {}
-                for topic in topics:
-                    if topic not in topic_lb:
-                        tp = TopicPartition(topic, 0)
-                        if not consumer.partitions_for_topic(topic):
-                            continue
+        logger.info(f"Subscribing to topics: {topics}")
+        threads = [
+            threading.Thread(
+                target=self._consume_topic_with_retry,
+                args=(topic, topic_lb.get(topic), topic_ub.get(topic)),
+                name=f"consume-{topic}",
+                daemon=True,
+            )
+            for topic in topics
+        ]
+        for thread in threads:
+            thread.start()
 
-                        # go back in history to search for topic messages
-                        topic_type = sonar.TopicType.infer(topic=topic)
-                        timelimit = utcnow() - dt.timedelta(seconds=int(self.lookback_in_h.get(topic_type, LOOKBACK_IN_H_DEFAULT)*3600))
-                        logger.info(f"{topic=}: search offset for {timelimit=}")
-                        offset_and_timestamp = consumer.offsets_for_times({ tp: int(timelimit.timestamp()*1000) })[tp]
-                        if not offset_and_timestamp:
-                            continue
-
-                        offset = offset_and_timestamp.offset
-                        timestamp_in_s = offset_and_timestamp.timestamp / 1000
-                        logger.info(f"{topic=}: found {offset=} for {dt.datetime.fromtimestamp(timestamp_in_s)}")
-                        topic_lb[topic] = offset
-                        startup_offsets[topic] = consumer.end_offsets([tp])[tp]
-
-                for topic, lb in topic_lb.items():
-                    logger.info(f"{topic=}: seek to {lb}")
-                    consumer.seek(TopicPartition(topic, 0), lb)
-
-                await self.consume(topics, consumer,
-                              msg_handler=msg_handler,
-                              startup_offsets=startup_offsets,
-                              topic_lb=topic_lb, topic_ub=topic_ub)
-            except kafka.errors.NoBrokersAvailable as e:
-                msg = f"No brokers available using bootstrap_servers: {self.host}:{self.port} retrying in {self.retry_timeout_in_s} (check {self.log_output}) - {e}"
-                logger.warning(msg)
-                warnings.warn(msg)
-                time.sleep(self.retry_timeout_in_s)
-            except TimeoutError:
-                raise
-            except Exception as e:
-                msg = f"Connection failed - retrying in {self.retry_timeout_in_s}s (see {self.log_output}) - {e}"
-                logger.warning(msg)
-                warnings.warn(msg)
-                time.sleep(self.retry_timeout_in_s)
+        self.state = self.State.RUNNING
+        last_stats_output_time = dt.datetime.now(dt.timezone.utc)
+        try:
+            while not self._stop_event.is_set() and any(t.is_alive() for t in threads):
+                last_stats_output_time = self._merge_output(last_stats_output_time)
+                self.receive_and_notify()
+                await asyncio.sleep(self.poll_wait_in_s)
+        finally:
+            self.request_stop()
+            for thread in threads:
+                thread.join()
 
         logger.info("All tasks gracefully stopped")
