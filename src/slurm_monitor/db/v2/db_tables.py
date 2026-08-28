@@ -369,7 +369,14 @@ class NodeState(TableBase):
 
 class Partition(TableBase):
     __tablename__ = "partition"
+    cluster = Column(String, primary_key=True, index=True)
+    partition = Column(String, primary_key=True, index=True)
+    nodes = Column(ARRAY(String))
+    nodes_compact = Column(ARRAY(String))
+    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
+
     __table_args__ = (
+        Index(f"{ExtraIndexPrefix}partition__cluster_time", "cluster", time.desc()),
         {
             'info' : {
                       'sonar_spec' : "ClusterAttributes.partitions"
@@ -386,11 +393,6 @@ class Partition(TableBase):
             }
         }
     )
-    cluster = Column(String, primary_key=True, index=True)
-    partition = Column(String, primary_key=True, index=True)
-    nodes = Column(ARRAY(String))
-    nodes_compact = Column(ARRAY(String))
-    time = Column(DateTimeTZAware, default=dt.datetime.now, primary_key=True)
 
 class SysinfoAttributes(TableBase):
     __tablename__ = "sysinfo_attributes"
@@ -1128,6 +1130,7 @@ class SampleSlurmJobAcc(TableBase):
             #'AveDiskRead',
             #'AveDiskWrite'
         ),
+        Index(f"{ExtraIndexPrefix}sample_slurm_job_acc__cluster_job_id_job_step_time", "cluster", "job_id", "job_step", time.desc()),
         {
             'info': { 'sonar_spec': 'SlurmJob.sacct' },
             'timescaledb_hypertable': {
