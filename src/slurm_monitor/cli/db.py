@@ -65,7 +65,12 @@ class DBParser(BaseParser):
         initial_status = DBManager.get_status(app_settings.database.uri)
 
         app_settings.database.create_missing = args.apply_changes or args.init
-        db = DBManager.get_database(app_settings)
+        # use_cache=False: this is a one-shot invocation, and constructing a
+        # Database also runs create_all() when create_missing is set - a
+        # cached instance from an earlier call in this process (e.g. a
+        # prior CLI invocation in the same test run) would skip that,
+        # silently failing to apply schema changes.
+        db = DBManager.get_database(app_settings, use_cache=False)
 
         schema = DBManager.get_schema(db)
         tables_in_schema = schema.keys()

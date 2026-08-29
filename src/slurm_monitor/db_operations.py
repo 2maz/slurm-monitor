@@ -30,18 +30,36 @@ class DBManager:
     _lock: ClassVar[threading.Lock] = threading.Lock()
 
     @classmethod
-    def get_database(cls, app_settings: AppSettings | None = None):
+    def get_database(cls, app_settings: AppSettings | None = None, use_cache: bool = True):
+        """
+        Get the `Database` instance for `app_settings.db_schema_version`.
+
+        Args:
+            app_settings: Settings to build the database from; defaults to
+                the process-wide `AppSettings` singleton.
+            use_cache: When True (default), reuse the cached instance across
+                calls - appropriate for a long-lived server process holding
+                one connection pool open. Pass False for a one-shot CLI
+                invocation: constructing a `Database` also runs
+                `create_all()` when `create_missing` is set, so a cached
+                instance would silently skip re-applying schema changes on
+                a later call within the same process (e.g. repeated
+                in-process CLI invocations in tests).
+
+        Returns:
+            The `Database` instance for the requested schema version.
+        """
         if app_settings is None:
             app_settings = AppSettings.get_instance()
 
         # Constructing a database instance builds a new engine + connection
-        if app_settings.db_schema_version in cls._databases:
+        if use_cache and app_settings.db_schema_version in cls._databases:
             return cls._databases[app_settings.db_schema_version]
 
         with cls._lock:
             # Recheck since another thread may have built it already
             # while waiting for the lock
-            if app_settings.db_schema_version in cls._databases:
+            if use_cache and app_settings.db_schema_version in cls._databases:
                 return cls._databases[app_settings.db_schema_version]
 
             logger.info(f"Loading database with: {app_settings.database}")
@@ -56,7 +74,8 @@ class DBManager:
                 else:
                     raise RuntimeError("AppSettings.db_schema_version is not set")
 
-                cls._databases[app_settings.db_schema_version] = db
+                if use_cache:
+                    cls._databases[app_settings.db_schema_version] = db
                 return db
             except sqlalchemy.exc.OperationalError:
                 raise HTTPException(
