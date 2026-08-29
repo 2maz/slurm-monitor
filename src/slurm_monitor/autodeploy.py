@@ -55,7 +55,10 @@ class AutoDeployer:
             allow_list: list[str] | None = None
         ):
         self.app_settings = app_settings
-        self.dbi = DBManager.get_database(app_settings=app_settings)
+
+        # Disable cache to run dbi from its own dedicated thread with its own
+        # (freshly created) event loop
+        self.dbi = DBManager.get_database(app_settings=app_settings, use_cache=False)
 
         self.thread = Thread(target=self.run, args=())
         self._sampling_interval_in_s = sampling_interval_in_s
