@@ -48,6 +48,20 @@ class MCPParser(BaseParser):
                             help="Set the MCP endpoint path (http/sse/streamable-http transports only)"
         )
 
+        parser.add_argument("--ssl-keyfile", type=str,
+                            default=app_settings.ssl.keyfile,
+                            help="Serve the MCP server's own endpoint over HTTPS using this keyfile "
+                                 "(http/sse/streamable-http transports only), "
+                                 f"default is {app_settings.ssl.keyfile}"
+        )
+
+        parser.add_argument("--ssl-certfile", type=str,
+                            default=app_settings.ssl.certfile,
+                            help="Serve the MCP server's own endpoint over HTTPS using this certfile "
+                                 "(http/sse/streamable-http transports only), "
+                                 f"default is {app_settings.ssl.certfile}"
+        )
+
         parser.add_argument("--bearer-token", type=str,
                             default=None,
                             help="Bearer token to authenticate against the RESTAPI, "
@@ -67,7 +81,7 @@ class MCPParser(BaseParser):
         # serving (including a remote or differently-versioned one).
         openapi_url = f"{args.api_url.rstrip('/')}/openapi.json"
         try:
-            response = httpx.get(openapi_url, headers=headers, timeout=10)
+            response = httpx.get(openapi_url, headers=headers, timeout=10, verify=False)
             response.raise_for_status()
         except httpx.HTTPError as e:
             raise RuntimeError(
@@ -86,4 +100,15 @@ class MCPParser(BaseParser):
         if args.transport == "stdio":
             mcp.run(transport="stdio")
         else:
-            mcp.run(transport=args.transport, host=args.host, port=args.port, path=args.path)
+            uvicorn_config = {}
+            if args.ssl_keyfile or args.ssl_certfile:
+                uvicorn_config["ssl_keyfile"] = args.ssl_keyfile
+                uvicorn_config["ssl_certfile"] = args.ssl_certfile
+
+            mcp.run(
+                transport=args.transport,
+                host=args.host,
+                port=args.port,
+                path=args.path,
+                uvicorn_config=uvicorn_config or None,
+            )
