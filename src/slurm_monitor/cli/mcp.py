@@ -68,6 +68,12 @@ class MCPParser(BaseParser):
                                  "required only if the RESTAPI has OAuth enabled"
         )
 
+        parser.add_argument("--insecure", action="store_true",
+                            help="Skip TLS certificate verification when connecting to "
+                                 "--api-url (e.g. a self-signed cert). Off by default - "
+                                 "only pass this for a RESTAPI you trust."
+        )
+
     def execute(self, args):
         super().execute(args)
 
@@ -75,13 +81,15 @@ class MCPParser(BaseParser):
         if args.bearer_token:
             headers["Authorization"] = f"Bearer {args.bearer_token}"
 
+        verify = not args.insecure
+
         # Fetch the live OpenAPI schema from the running RESTAPI instance,
         # rather than importing api_v2_app and calling .openapi() locally,
         # so this always reflects whatever that instance is actually
         # serving (including a remote or differently-versioned one).
         openapi_url = f"{args.api_url.rstrip('/')}/openapi.json"
         try:
-            response = httpx.get(openapi_url, headers=headers, timeout=10, verify=False)
+            response = httpx.get(openapi_url, headers=headers, timeout=10, verify=verify)
             response.raise_for_status()
         except httpx.HTTPError as e:
             raise RuntimeError(
@@ -89,7 +97,7 @@ class MCPParser(BaseParser):
                 f"is 'slurm-monitor restapi' running there? ({e})"
             ) from e
 
-        client = httpx.AsyncClient(base_url=args.api_url, headers=headers)
+        client = httpx.AsyncClient(base_url=args.api_url, headers=headers, verify=verify)
 
         mcp = FastMCP.from_openapi(
             openapi_spec=response.json(),
