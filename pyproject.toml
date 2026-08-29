@@ -59,7 +59,8 @@ dependencies = [
     "sqlalchemy-schemadisplay",
     "tqdm",
     "typing_inspect",
-    "uvicorn"
+    "uvicorn",
+    "fastmcp>=3.4.7",
 ]
 
 [project.urls]
