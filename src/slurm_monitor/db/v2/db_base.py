@@ -9,7 +9,7 @@ from sqlalchemy import (
         select,
         text,
 )
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, InterfaceError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import (
         AsyncSession,
@@ -563,6 +563,14 @@ class Database:
                 raise Exception(
                     "Found potentially modified state in a non-writable session"
                 )
+        except InterfaceError:
+            # the underlying DBAPI connection itself is broken (e.g.
+            # asyncpg's "another operation is in progress") - a plain
+            # rollback() would just hand the same broken connection back to
+            # the pool for the next checkout to fail on too, so discard it
+            # instead.
+            await session.invalidate()
+            raise
         except:
             await session.rollback()
             raise
@@ -575,6 +583,11 @@ class Database:
         try:
             yield session
             await session.commit()
+        except InterfaceError:
+            # see make_async_session for why this is invalidate() rather
+            # than rollback()
+            await session.invalidate()
+            raise
         except:
             await session.rollback()
             raise

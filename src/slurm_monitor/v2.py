@@ -129,8 +129,13 @@ async def runtime_exception_handler(request: Request, exc: Exception):
     logger.warning(exc)
     traceback.print_tb(exc.__traceback__)
 
-    raise HTTPException(status_code=500,
-            detail=f"Internal Error: {exc}")
+    # An exception handler must return a Response, not raise - raising here
+    # (as this used to) leaves the ASGI response cycle for this request
+    # unfinished, which can surface as unrelated failures on later requests.
+    return await exception_handlers.http_exception_handler(
+        request,
+        HTTPException(status_code=500, detail=f"Internal Error: {exc}")
+    )
 
 async def prefetch_data():
     logger.info("Prefetch starting")
