@@ -35,6 +35,7 @@ from sqlalchemy.dialects.postgresql import (
 )
 from sqlalchemy.sql.functions import GenericFunction
 from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.sql.type_api import TypeEngine
 
 import slurm_monitor.timescaledb as timescaledb # noqa
 
@@ -70,11 +71,10 @@ def compile_epoch_fn_timescaledb(expr, compiler, **kwargs):
 def compile_epoch_fn_sqlite(expr, compiler, **kwargs):
     return f"strftime('%s', {compiler.process(expr.clauses.clauses[0], **kwargs)})"
 
-def Column(*args, **kwargs):
+def Column(column_type: type[TypeEngine[T]] | TypeEngine[T], *args: Any, **kwargs: Any):
     if "nullable" not in kwargs:
         kwargs.setdefault("nullable", False)
 
-    column_type = args[0]
     if 'default' not in kwargs:
         if column_type in [Integer, BigInteger, Float]:
             kwargs.setdefault('default', 0)
@@ -93,7 +93,7 @@ def Column(*args, **kwargs):
     if comment:
         kwargs["comment"] = json.dumps(comment)
 
-    return sqlalchemy.Column(*args, **kwargs)
+    return sqlalchemy.Column(column_type, *args, **kwargs)
 
 
 def ensure_non_negative(*column_names) -> list[CheckConstraint]:
