@@ -113,7 +113,6 @@ class JobResponse(TimestampedModel):
     partition: str = Field(description="Name of the partition this job is associated with")
     reservation: str
     nodes: list[str] | None = Field(default=None, description="List of nodes that are requested by this job")
-    reservation: str
     priority: int
     distribution: str
 
@@ -126,12 +125,11 @@ class JobResponse(TimestampedModel):
     requested_memory_per_node: int = Field(description="Requested memory in kilobytes per node")
     requested_node_count: int = Field(description="Requested number of nodes")
 
-    minimum_cpus_per_node: int | None = Field(default=None, description="DEPRECATED: Minimum required CPUs per node, use requested_cpus")
+    minimum_cpus_per_node: int = Field(description="DEPRECATED: Minimum required CPUs per node, use requested_cpus")
 
     # computed field: list of the actually used GPU uuids
     #    what can be oberved in the process data)
-    used_gpu_uuids: list[str] | None = Field(default=None,
-            description="UUIDs of GPUs that are actually used with this job "
+    used_gpu_uuids: list[str] = Field(description="UUIDs of GPUs that are actually used with this job "
             "- this might be different to the number of reserved GPUs "
             "(this a field computed by slurm-monitor)")
 

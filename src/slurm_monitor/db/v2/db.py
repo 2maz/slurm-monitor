@@ -2285,9 +2285,7 @@ class ClusterDB(Database):
 
             gpu_uuids = list((await session.execute(gpus_query)).scalars().all())
 
-            job_data['used_gpu_uuids'] = gpu_uuids
-
-            return JobResponse(**job_data)
+            return JobResponse(**job_data, used_gpu_uuids=gpu_uuids)
 
     @ttl_cache_async(ttl=600, maxsize=1024)
     async def query_jobs(self,
@@ -2623,18 +2621,18 @@ class ClusterDB(Database):
 
         report = JobReport()
         async with self.make_async_session() as session:
-            attributes = ["resident_memory", "virtual_memory",
-                          "cpu_util",
-                          "num_threads",
-                          "data_read", "data_written", "data_cancelled"]
-
-            select_args = []
-            for attr in attributes:
-                field = getattr(SampleProcess, attr)
-                select_args.append(func.sum(field).label(f"sum_{attr}"))
+            attributes = (
+                SampleProcess.resident_memory,
+                SampleProcess.virtual_memory,
+                SampleProcess.cpu_util,
+                SampleProcess.num_threads,
+                SampleProcess.data_read,
+                SampleProcess.data_written,
+                SampleProcess.data_cancelled,
+            )
 
             subquery = select(
-                    *select_args
+                    *(func.sum(col).label(f"sum_{col.name}") for col in attributes)
                 ).where(
                     (SampleProcess.cluster == cluster),
                     (SampleProcess.job == job.job_id),
@@ -2643,17 +2641,14 @@ class ClusterDB(Database):
                     SampleProcess.time
                 ).subquery()
 
-            select_args = []
-            for attr in attributes:
-                field = getattr(SampleProcess, attr)
-                select_args.append(func.max(getattr(subquery.c, f"sum_{attr}")).label(f"max_{attr}"))
-                select_args.append(func.min(getattr(subquery.c, f"sum_{attr}")).label(f"min_{attr}"))
-                select_args.append(func.avg(getattr(subquery.c, f"sum_{attr}")).label(f"avg_{attr}"))
-                select_args.append(func.stddev(getattr(subquery.c, f"sum_{attr}")).label(f"stddev_{attr}"))
 
-            job_process_query = select(
-                *select_args
-            ).select_from(
+            AGGREGATES = {"max": func.max, "min": func.min, "avg": func.avg, "stddev": func.stddev}
+
+            job_process_query = select(*(
+                agg(subquery.c[col.key]).label(f"{name}_{col.key}")
+                for col in attributes
+                for name, agg in AGGREGATES.items()
+            )).select_from(
                 subquery
             )
 
@@ -2664,7 +2659,7 @@ class ClusterDB(Database):
 
                 idx = 0
                 for attribute in attributes:
-                    setattr(report, attribute, { 'max': data[idx], 'min': data[idx+1], 'mean': data[idx+2], 'stddev': data[idx+3] })
+                    setattr(report, attribute.name, { 'max': data[idx], 'min': data[idx+1], 'mean': data[idx+2], 'stddev': data[idx+3] })
                     idx += 4
 
                 report.requested_cpus = job.requested_cpus
