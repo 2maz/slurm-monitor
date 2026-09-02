@@ -2604,7 +2604,7 @@ class ClusterDB(Database):
         user: str | None = None,
         time_in_s: float | None = None,
         interval_in_s: int = INTERVAL_2WEEKS
-    ) -> Awaitable[dict[str, dict[str, float]]]:
+    ) -> JobReport:
         if time_in_s is None:
             time_in_s = utcnow().timestamp()
 
@@ -2615,6 +2615,8 @@ class ClusterDB(Database):
                 end_time_in_s=time_in_s,
                 states=["RUNNING", "COMPLETED"]
         )
+        if job is None:
+            raise ValueError(f"Job {job_id} not found")
 
         if user and job.user_name != user:
             raise RuntimeError(f"Job Report for {job_id=} on {cluster=} cannot be provided. The job belongs a different user (current {user=})")

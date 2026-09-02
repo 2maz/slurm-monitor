@@ -300,7 +300,7 @@ class GPUIdList(types.TypeDecorator):
             logger.error(f"Processing result value failed: {value} -- {e}")
             raise
 
-class UUID(types.TypeDecorator):
+class UUID(types.TypeDecorator[str]):
     impl = String
     cache_ok = True
 
