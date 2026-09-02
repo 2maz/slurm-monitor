@@ -2616,7 +2616,7 @@ class ClusterDB(Database):
                 states=["RUNNING", "COMPLETED"]
         )
         if job is None:
-            raise ValueError(f"Job {job_id} not found")
+           raise ValueError(f"Database.get_job_report: {job_id=} did not match any jobs")
 
         if user and job.user_name != user:
             raise RuntimeError(f"Job Report for {job_id=} on {cluster=} cannot be provided. The job belongs a different user (current {user=})")
