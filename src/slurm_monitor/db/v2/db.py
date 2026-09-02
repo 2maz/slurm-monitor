@@ -2277,18 +2277,17 @@ class ClusterDB(Database):
                 )
 
         async with self.make_async_session() as session:
-            data = (await session.execute(query)).all()
-            gpus = [x[0] for x in (await session.execute(gpus_query)).all()]
-
-            if data:
-                slurm_data =  dict(data[0][0])
-                if gpus:
-                    slurm_data['used_gpu_uuids'] = gpus
-                else:
-                    slurm_data['used_gpu_uuids'] = []
-                return JobResponse(**slurm_data)
-            else:
+            slurm_data = (await session.execute(query)).scalars().first()
+            if slurm_data is None:
                 return None
+
+            job_data = dict(slurm_data)
+
+            gpu_uuids = list((await session.execute(gpus_query)).scalars().all())
+
+            job_data['used_gpu_uuids'] = gpu_uuids
+
+            return JobResponse(**job_data)
 
     @ttl_cache_async(ttl=600, maxsize=1024)
     async def query_jobs(self,
