@@ -1,7 +1,10 @@
 import datetime as dt
 import logging
-import sqlalchemy
+from pathlib import Path
+import sys
 import traceback as tb
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from slurm_monitor.utils import utcnow
 from slurm_monitor.db.v2.db_tables import (
@@ -36,6 +39,13 @@ class Importer:
         self.verbose = False
 
     async def insert(self, message: sonar.Message, update: bool, ignore_integrity_errors: bool):
+        """
+        Base implementation for the insertion (can be used in the calling handler)
+        Args:
+            message (sonar.Message): the sonar message
+            update (bool): Whether this is an update and shall be merged rather than just added
+            ignore_integrity_errors (bool): True to ignore (expected) integrity error message, False otherwise
+        """
         msg = self.to_message(message)
         attributes = msg.data.attributes
 
@@ -43,6 +53,16 @@ class Importer:
             node = attributes['node']
             time = dt.datetime.fromisoformat(attributes["time"])
             self.update_last_msg(node, time)
+
+    async def insert_batch(self, messages: list[tuple[dict[str, any], bool]], ignore_integrity_errors: bool = False):
+        """
+        Insert a batch of (message, update) pairs. The no-db `Importer` has
+        no database round trips to save, so this just inserts them one by
+        one; `DBJsonImporter.insert_batch` overrides this to actually batch
+        the writes.
+        """
+        for message, update in messages:
+            await self.insert(message, update=update, ignore_integrity_errors=ignore_integrity_errors)
 
     def update_last_msg(self, node: str, time: dt.datetime):
         self.last_msg_per_node[node] = time
@@ -71,17 +91,52 @@ class Importer:
 
         return sonar.Message(meta=meta, data=data, errors=errors)
 
+class DBJsonImporterConfig(BaseSettings):
+    """
+    Configuration for `DBJsonImporter`.
+    """
+
+    # New GPU cards only show up via (low-cadence, ~once/24h) sysinfo
+    # messages, so re-fetching the whole sysinfo_gpu_card table on every
+    # single ingested message (as sync_with_db() used to do) is wasted work.
+    # A periodic refresh is enough to keep ensure_gpu() correct.
+    sysinfo_gpu_cards_sync_interval_in_s: int = 60
+    jobs_blocklist: list[int] = []
+
+    model_config = SettingsConfigDict(
+                    env_file='.env',
+                    env_nested_delimiter='_',
+                    env_prefix='SLURM_MONITOR_LISTEN_',
+                    extra='ignore'
+    )
+
+
 class DBJsonImporter(Importer):
     db: ClusterDB
+    config: DBJsonImporterConfig
 
     # Check if the the gpu is known and whether the information is 'complete',
     # i.e., not just a stub entry
     sysinfo_gpu_cards: dict[str, SysinfoGpuCard]
 
-    def __init__(self, db: ClusterDB):
+    def __init__(self, db: ClusterDB, config: DBJsonImporterConfig | None = None):
         super().__init__()
         self.db = db
+
+        self.config = config or DBJsonImporterConfig()
+        if "--env-file" in sys.argv:
+            idx = sys.argv.index("--env-file")
+            env_file = sys.argv[idx + 1]
+
+            if not Path(env_file).exists():
+                raise FileNotFoundError(
+                    f"DBJsonImporter.initialize: could not find {env_file=} provided via --env-file"
+                )
+
+            self.config = DBJsonImporterConfig(_env_file=env_file)
+
         self.sysinfo_gpu_cards = {}
+        self._sysinfo_gpu_cards_synced_at: dt.datetime | None = None
 
     def ensure_node(self, cluster: str, node: str, rows: list[TableBase]):
         if self.db.is_known_node(cluster=cluster, node=node):
@@ -91,7 +146,12 @@ class DBJsonImporter(Importer):
             return [Node.create(cluster=cluster, node=node)] + rows
 
     async def sync_with_db(self):
-        await self.update_sysinfo_gpu_cards()
+        stale = (
+            self._sysinfo_gpu_cards_synced_at is None
+            or (utcnow() - self._sysinfo_gpu_cards_synced_at).total_seconds() >= self.config.sysinfo_gpu_cards_sync_interval_in_s
+        )
+        if stale:
+            await self.update_sysinfo_gpu_cards()
 
     async def autoupdate(self, cluster: str):
         await self.db.sync_cluster_and_nodes_with_jobs(cluster=cluster)
@@ -99,18 +159,26 @@ class DBJsonImporter(Importer):
     async def update_sysinfo_gpu_cards(self):
         sysinfo_gpu_cards = await self.db.get_all_sysinfo_gpu_cards()
         self.sysinfo_gpu_cards = { x.uuid: x for x in sysinfo_gpu_cards }
+        self._sysinfo_gpu_cards_synced_at = utcnow()
 
     def ensure_gpu(self, cluster: str, node: str, uuid: str, rows: list[TableBase]):
         if uuid in self.sysinfo_gpu_cards:
             return rows
         else:
             logger.info(f"Creating sysinfo_gpu_card: {cluster=} {node=}")
-            return [SysinfoGpuCard.create(uuid=uuid,
+            stub = SysinfoGpuCard.create(uuid=uuid,
                                           manufacturer='',
                                           model='',
                                           architecture='',
                                           memory=0
-                                          )] + rows
+                                          )
+            # Record locally right away: sync_with_db() only refreshes this
+            # cache periodically, so without this a later message processed
+            # inside that window would think the uuid is still unknown and
+            # create another stub - and if a real sysinfo card had landed for
+            # it in between, that stub would blank the real data out again.
+            self.sysinfo_gpu_cards[uuid] = stub
+            return [stub] + rows
 
     def parse(self, message: dict[str, any]):
         """
@@ -158,19 +226,25 @@ class DBJsonImporter(Importer):
                 data = {}
                 for field in ["manufacturer", "model", "architecture", "memory"]:
                     if field in card:
-                        data[field] = card[field]
-                        del card[field]
+                        if card[field] is not None:
+                            data[field] = card[field]
+                            del card[field]
 
                 gpu_uuid = card['uuid']
                 if gpu_uuid is None or gpu_uuid == '':
                     logger.debug(f"SysInfo: skipping message from {cluster=} {node=} due to missing 'uuid' {card=}")
                     continue
 
-                gpu_cards.append(SysinfoGpuCard.create(
+                gpu_card = SysinfoGpuCard.create(
                         uuid=gpu_uuid,
                         **data,
                     )
-                )
+                gpu_cards.append(gpu_card)
+                # Update the local cache immediately (rather than waiting for
+                # the next periodic sync_with_db() refresh) so this real card
+                # overwrites any stub, and a subsequent sample message for
+                # this uuid doesn't re-create the stub over it.
+                self.sysinfo_gpu_cards[gpu_uuid] = gpu_card
 
                 gpu_card_configs.append(SysinfoGpuCardConfig.create(
                         cluster=cluster,
@@ -218,6 +292,9 @@ class DBJsonImporter(Importer):
 
         active_gpus = set()
         if system:
+            if "boot" in system:
+                system["boot"] = dt.datetime.fromisoformat(system["boot"])
+
             if "disks" in system:
                 disks = system["disks"]
                 del system["disks"]
@@ -267,6 +344,10 @@ class DBJsonImporter(Importer):
 
             user = job['user']
             epoch = job.get('epoch', 0)
+
+            if epoch == 0:
+                if job_id in self.config.jobs_blocklist:
+                    continue
 
             for process in job["processes"]:
                 if 'pid' not in process:
@@ -376,13 +457,30 @@ class DBJsonImporter(Importer):
         time = dt.datetime.fromisoformat(attributes["time"])
         del attributes['time']
 
-
         slurm_job_samples = []
         for job_data in slurm_jobs:
+            epoch = job_data.get('epoch', 0)
+            if epoch == 0:
+                if job_data['job_id'] in self.config.jobs_blocklist:
+                    continue
+
+            if job_data.get('job_step', None) is None:
+                job_data['job_step'] = ''
+
             sacct = None
             if 'sacct' in job_data:
                 sacct = job_data['sacct']
                 del job_data['sacct']
+
+            # start_time/submit_time/end_time arrive as ISO8601 strings (or ''
+            # when unset, e.g. a still-PENDING job). SampleSlurmJob expects
+            # real datetime objects: the sync (psycopg2) driver silently
+            # accepted the raw strings via implicit text->timestamp casting,
+            # but asyncpg's typed protocol rejects them outright, so this
+            # needs to be a real conversion rather than a pass-through.
+            for date_field in ("start_time", "submit_time", "end_time"):
+                if date_field in job_data:
+                    job_data[date_field] = dt.datetime.fromisoformat(job_data[date_field]) if job_data[date_field] else None
 
             if 'nodes' in job_data:
                 if job_data['nodes'] == ['None allocated']:
@@ -401,14 +499,14 @@ class DBJsonImporter(Importer):
                 if 'job_step' in job_data:
                     sacct['job_step'] = job_data['job_step']
 
-                slurm_job_samples.append(
-                    SampleSlurmJobAcc.create(
-                        cluster=cluster,
-                        job_id=job_data['job_id'],
-                        **sacct,
-                        time=time
+                    slurm_job_samples.append(
+                        SampleSlurmJobAcc.create(
+                            cluster=cluster,
+                            job_id=job_data['job_id'],
+                            **sacct,
+                            time=time
+                        )
                     )
-                )
         return slurm_job_samples
 
     def parse_errors(self, msg: sonar.Message) -> list[TableBase | list[TableBase]]:
@@ -420,41 +518,120 @@ class DBJsonImporter(Importer):
             error_messages.append(ErrorMessage.create(**error))
         return error_messages
 
+    @staticmethod
+    def _flatten_rows(rows: list[TableBase | list[TableBase]]) -> list[TableBase]:
+        """
+        DBJsonImporter.parse_<msgtype> returns a list where entries are
+        either a single row, or (for parse_sample) a list of rows - flatten
+        that into one plain list of rows, dropping empty/falsy entries.
+        """
+        flat = []
+        for row in rows:
+            if not row:
+                continue
+            if isinstance(row, (list, tuple)):
+                flat.extend(r for r in row if r)
+            else:
+                flat.append(row)
+        return flat
+
     async def insert(self,
                      message: dict[str, any],
                      update: bool = True,
                      ignore_integrity_errors: bool = False):
-        # sync with the current db state once before handling all samples in a message
+        await self.insert_batch([(message, update)], ignore_integrity_errors=ignore_integrity_errors)
+
+    async def insert_batch(self,
+                     messages: list[tuple[dict[str, any], bool]],
+                     ignore_integrity_errors: bool = False):
+        """
+        Parse and write a batch of messages in as few database round trips as
+        possible: one shared GPU-card sync, one insert-or-update transaction
+        for all 'update' rows and one insert transaction for all
+        'insert-only' rows (e.g. sample topic) across the *whole* batch, and
+        one grouped node/cluster sync at the end - instead of each message
+        paying for all of that on its own.
+
+        Example:
+
+        ```python
+        await importer.insert_batch([(msg_a, True), (msg_b, False)])
+        ```
+
+        Args:
+            messages: A list of `(message, update)` pairs, where `update`
+                selects insert-or-update (merge) vs plain insert for that
+                message's rows - same meaning as `insert()`'s `update` arg.
+            ignore_integrity_errors: See `insert()`.
+        """
+        # sync with the current db state once before handling all samples in the batch
         await self.sync_with_db()
 
-        rows = self.parse(message)
-        for row in rows:
-            if row:
-                try:
-                    if update:
-                        self.db.insert_or_update(row)
-                    else:
-                        self.db.insert(row)
+        upsert_rows: list[TableBase] = []
+        insert_rows: list[TableBase] = []
+        for message, update in messages:
+            try:
+                rows = self._flatten_rows(self.parse(message))
+            except Exception as e:
+                if self.verbose:
+                    tb.print_tb(e.__traceback__)
+                logger.warning(f"Parsing message failed, skipping: {e}")
+                continue
 
-                    if type(row) is Node:
-                        nodes = await self.db.get_nodes(cluster=row.cluster, ensure_sysinfo=False)
-                        if row.node not in nodes:
-                            updated_nodes = set(nodes)
-                            updated_nodes.add(row.node)
+            (upsert_rows if update else insert_rows).extend(rows)
 
-                            # Update the associated cluster at the same time
-                            cluster = Cluster.create(
-                                cluster=row.cluster,
-                                slurm=False,
-                                partitions=[],
-                                nodes=updated_nodes,
-                                time=utcnow()
-                            )
-                            self.db.insert(cluster)
-                except Exception as e:
-                    if ignore_integrity_errors and type(e) is sqlalchemy.exc.IntegrityError:
-                        continue
-                    else:
-                        if self.verbose:
-                            tb.print_tb(e.__traceback__)
-                        logger.warning(f"Inserting {row=} failed. -- {e}")
+        if not upsert_rows and not insert_rows:
+            return
+
+        try:
+            # One transaction per group for the whole batch instead of one
+            # per row (or even one per message) - this is the hot path for
+            # message throughput, so it matters most here that db writes are
+            # batched and non-blocking (async).
+            if upsert_rows:
+                await self.db.insert_or_update_async(upsert_rows, ignore_integrity_errors=ignore_integrity_errors)
+            if insert_rows:
+                await self.db.insert_async(insert_rows, ignore_integrity_errors=ignore_integrity_errors)
+        except Exception as e:
+            if self.verbose:
+                tb.print_tb(e.__traceback__)
+            logger.warning(f"Inserting {len(upsert_rows) + len(insert_rows)} row(s) failed. -- {e}")
+            return
+
+        node_rows = [r for r in upsert_rows + insert_rows if type(r) is Node]
+        await self._sync_new_nodes_with_cluster(node_rows)
+
+    async def _sync_new_nodes_with_cluster(self, node_rows: list[Node]):
+        """
+        Keep each Cluster row's denormalized node list in sync when new nodes
+        show up in this message - grouped per cluster, so a message with many
+        Node rows (e.g. a 'cluster' topic message) costs at most one
+        `get_nodes` read and one `Cluster` upsert per cluster, instead of one
+        of each per node.
+        """
+        if not node_rows:
+            return
+
+        nodes_by_cluster: dict[str, set[str]] = {}
+        for row in node_rows:
+            nodes_by_cluster.setdefault(row.cluster, set()).add(row.node)
+
+        for cluster, new_nodes in nodes_by_cluster.items():
+            try:
+                known_nodes = await self.db.get_nodes(cluster=cluster, ensure_sysinfo=False)
+                missing_nodes = new_nodes - set(known_nodes)
+                if not missing_nodes:
+                    continue
+
+                cluster_row = Cluster.create(
+                    cluster=cluster,
+                    slurm=False,
+                    partitions=[],
+                    nodes=set(known_nodes) | missing_nodes,
+                    time=utcnow()
+                )
+                await self.db.insert_async(cluster_row)
+            except Exception as e:
+                if self.verbose:
+                    tb.print_tb(e.__traceback__)
+                logger.warning(f"Syncing new nodes {new_nodes} for {cluster=} failed. -- {e}")

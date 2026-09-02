@@ -6,6 +6,7 @@ import fastapi
 from fastapi_cache import FastAPICache
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
+import httpx
 import re
 from pathlib import Path
 import json
@@ -13,21 +14,31 @@ import jwt
 import copy
 import time
 import datetime as dt
+import yaml
 
 from slurm_monitor.utils import utcnow
-from slurm_monitor.v2 import app, prefetch_data
-from slurm_monitor.db_operations import DBManager
 from slurm_monitor.utils.slurm import Slurm
+from slurm_monitor.utils.api import find_endpoint_by_name, flatten_router_routes
+
+from slurm_monitor.v2 import app, prefetch_data
+from slurm_monitor.api.v2.router import app as api_v2_app
+from slurm_monitor.db_operations import DBManager
 from slurm_monitor.db.v2.db_base import DatabaseSettings
 from slurm_monitor.db.v2.importer import DBJsonImporter
 from slurm_monitor.app_settings import AppSettings
+from slurm_monitor.devices.gpu import GPUInfo
 
-from slurm_monitor.utils.api import find_endpoint_by_name
 
 @pytest.fixture
 def mock_appsettings_with_oauth_required(monkeypatch, timescaledb):
     app_settings = AppSettings.get_instance()
     monkeypatch.setattr(app_settings.oauth, "required", True)
+    # jwks_url is derived from url/realm; PyJWKClient validates its scheme
+    # eagerly on construction, so these must resolve to a valid http(s) URL
+    # even though get_signing_key_from_jwt is mocked and never actually
+    # fetches it.
+    monkeypatch.setattr(app_settings.oauth, "url", "https://example.invalid")
+    monkeypatch.setattr(app_settings.oauth, "realm", "test-realm")
     monkeypatch.setattr(app_settings, "database", DatabaseSettings(uri=timescaledb))
     return app_settings
 
@@ -84,6 +95,9 @@ def mock_token(monkeypatch, mock_appsettings_with_oauth_required) -> str:
 def parametrize_route(path,
                       cluster="cluster-0",
                       node="cluster-0-node-0"):
+    # strip any path converter annotation (e.g. "{gpu_name:path}") down to
+    # a plain "{gpu_name}" placeholder before substituting concrete values
+    path = re.sub(r"\{(\w+):\w+\}", r"{\1}", path)
     path = path.replace("{cluster}", cluster)
     path = path.replace("{nodename}", node)
     path = path.replace("{partition}","cluster-0-partition-0")
@@ -102,8 +116,9 @@ def get_routes(identifier: str = "v2", **kwargs):
     routes = []
     for route in app.routes:
         if hasattr(route, "routes") and route.path.endswith(identifier):
-            for api_route in route.routes:
-                if type(api_route) is APIRoute:
+            for api_route in flatten_router_routes(route.routes):
+                original_route = getattr(api_route, "original_route", api_route)
+                if type(original_route) is APIRoute:
                     r = api_route.path
                     r = parametrize_route(r, **kwargs)
 
@@ -112,7 +127,7 @@ def get_routes(identifier: str = "v2", **kwargs):
 
 v2_routes = get_routes(identifier="v2")
 
-@pytest_asyncio.fixture(loop_scope="module")
+@pytest_asyncio.fixture(loop_scope="module", scope="module")
 def client(mock_slurm_command_hint, test_db_v2, timescaledb, monkeypatch_module):
     Slurm._BIN_HINTS = [ mock_slurm_command_hint ]
 
@@ -122,6 +137,34 @@ def client(mock_slurm_command_hint, test_db_v2, timescaledb, monkeypatch_module)
 
     with TestClient(app) as c:
         yield c
+
+@pytest_asyncio.fixture(loop_scope="function")
+async def client__function_scope(mock_slurm_command_hint, timescaledb, monkeypatch):
+    """
+    Same as `client`, but issues requests on the test's own event loop
+    instead of `TestClient`'s independent portal thread/loop.
+
+    `TestClient` always runs the ASGI app on its own dedicated thread and
+    event loop, regardless of any pytest-asyncio loop scope - so a test that
+    both awaits DB calls directly (e.g. via a DBJsonImporter) *and* issues
+    requests through a `TestClient` ends up driving one async engine's
+    connection pool from two different event loops, which surfaces as
+    `InterfaceError: another operation is in progress` on a later,
+    unrelated query. Using `httpx.AsyncClient` over an in-process
+    `ASGITransport` keeps everything on the single loop the test runs on;
+    the app's lifespan (cache/database setup) has to be driven manually
+    since `ASGITransport` doesn't do that itself.
+    """
+    Slurm._BIN_HINTS = [ mock_slurm_command_hint ]
+
+    monkeypatch.setenv("SLURM_MONITOR_DATABASE_URI", f"{timescaledb}")
+    monkeypatch.setenv("SLURM_MONITOR_JOBS_COLLECTOR", "false")
+    monkeypatch.setenv("SLURM_MONITOR_PREFETCH_ENABLED", "false")
+
+    async with app.router.lifespan_context(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
+            yield c
 
 @pytest.mark.asyncio
 async def test_metrics(client):
@@ -157,6 +200,27 @@ async def test_ensure_response_from_all_endpoints(endpoint, client, mock_token):
         assert str(response._request.url).endswith(".pdf")
     else:
         assert response.status_code in [200, 204]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gpu_model,expected_vendor,expected_model",
+                         [
+                             ["NVIDIA A100 / PCIe", "nvidia", "a100"],
+                             ["Vega [Radeon Pro VII/Radeon Instinct MI50 32GB]", "amd", "mi50"],
+                             ["Intel(R) Data Center GPU Max 1100", "intel", "max 1100"]
+                         ])
+async def test_spec_gpu(gpu_model, expected_vendor, expected_model, client):
+    """A reported gpu_model can contain a "/" percent-encoded ("%2F") - it must
+    still be routed to `spec_gpu` rather than being split into extra path
+    segments and 404ing on an unmatched route.
+    """
+    from urllib.parse import quote
+
+    with open(GPUInfo.DATASHEETS, "r") as f:
+        data = yaml.load(f, Loader=yaml.SafeLoader)
+
+    response = client.get(f"/api/v2/spec/gpu/{quote(gpu_model, safe='')}")
+    assert str(response._request.url) == data[expected_vendor][expected_model]['url']
 
 
 @pytest.mark.asyncio
@@ -250,7 +314,7 @@ async def test_ensure_response_with_partial_rows(endpoint,
     [
       ["api/v2", "cluster"]
     ])
-async def test_ensure_response_for_prefetch(prefix, name, client, db_config, monkeypatch):
+async def test_ensure_response_for_prefetch(prefix, name, client, test_db_v2, db_config, monkeypatch):
     clear_cache = find_endpoint_by_name(app=app, name="clear_cache", prefix=prefix)
 
     # Ensure to disable the TTLCache (that cache queries at db interface level)
@@ -261,7 +325,14 @@ async def test_ensure_response_for_prefetch(prefix, name, client, db_config, mon
 
     monkeypatch.setattr(TTLCache, "__getitem__", mock_TTLCache__getitem__)
 
-    dbi = DBManager.get_database()
+    # NOT DBManager.get_database(): that instance's connections are bound to
+    # `client`'s portal loop (module-scoped, shared across the whole
+    # module), while this test calls the endpoint functions directly on its
+    # own per-test event loop - a cross-loop mismatch that surfaces as
+    # `InterfaceError: another operation is in progress`. `test_db_v2` is
+    # never touched by any HTTP request through `client`, so its first use
+    # here binds it consistently to this test's own loop.
+    dbi = test_db_v2
     endpoint = find_endpoint_by_name(app=app, name="cluster", prefix=prefix)
     clusters = await endpoint(token_payload=None, dbi=dbi)
 
@@ -357,7 +428,7 @@ async def test_ensure_response_for_prefetch(prefix, name, client, db_config, mon
 )
 async def test_app_with_sonar_examples(sonar_msg_files,
                                      expected_clusters,
-                                     client,
+                                     client__function_scope,
                                      test_db_v2__function_scope,
                                      db_config,
                                      test_data_dir,
@@ -369,6 +440,16 @@ async def test_app_with_sonar_examples(sonar_msg_files,
     def mock_get_database():
         return db
 
+    # `Depends(DBManager.get_database)` captures the bound classmethod at
+    # import time, so `monkeypatch.setattr(DBManager, "get_database", ...)`
+    # never reaches endpoints using it as a dependency - they'd keep calling
+    # the real, process-wide cached get_database() instead of this test's
+    # db. FastAPI's dependency_overrides is needed for those - keyed by the
+    # *original* bound method, captured before it gets patched below. But
+    # prefetch_data() calls DBManager.get_database() directly (not via
+    # Depends), so it still needs the plain attribute patch too - both are
+    # required, not just one.
+    monkeypatch.setitem(api_v2_app.dependency_overrides, DBManager.get_database, mock_get_database)
     monkeypatch.setattr(DBManager, "get_database", mock_get_database)
 
     importer = DBJsonImporter(db=db)
@@ -400,7 +481,7 @@ async def test_app_with_sonar_examples(sonar_msg_files,
     # available
     for cluster, nodes in expected_clusters.items():
         for node in nodes:
-            response = client.get(
+            response = await client__function_scope.get(
                     f"/api/v2/cluster/{cluster}/nodes/{node}/info",
                     headers={"Authorization": f"Bearer {mock_token}"}
             )
@@ -422,7 +503,7 @@ async def test_node_sysinfo_interval(sonar_msg_files,
                                      expected_clusters,
                                      last_sysinfo_in_days,
                                      expected_nodeinfo,
-                                     client,
+                                     client__function_scope,
                                      test_db_v2__function_scope,
                                      db_config,
                                      test_data_dir,
@@ -433,6 +514,8 @@ async def test_node_sysinfo_interval(sonar_msg_files,
     def mock_get_database():
         return db
 
+    # see test_app_with_sonar_examples for why both of these are needed
+    monkeypatch.setitem(api_v2_app.dependency_overrides, DBManager.get_database, mock_get_database)
     monkeypatch.setattr(DBManager, "get_database", mock_get_database)
     importer = DBJsonImporter(db=db)
 
@@ -462,7 +545,7 @@ async def test_node_sysinfo_interval(sonar_msg_files,
         # available
         for cluster, nodes in expected_clusters.items():
             for node in nodes:
-                response = client.get(
+                response = await client__function_scope.get(
                         f"/api/v2/cluster/{cluster}/nodes/{node}/info",
                         headers={"Authorization": f"Bearer {mock_token}"}
                 )

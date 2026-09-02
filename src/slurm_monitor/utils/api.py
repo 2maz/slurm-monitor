@@ -61,9 +61,41 @@ def createFastAPI(**kwargs):
     return app
 
 
+def flatten_router_routes(routes):
+    """Recursively resolve FastAPI's lazy ``_IncludedRouter`` wrappers (as
+    produced by ``APIRouter.include_router``) into concrete route-like
+    objects exposing ``.path``/``.name``/``.endpoint``.
+
+    Newer FastAPI versions no longer flatten an included router's routes
+    into the parent router's `.routes` list; instead each `include_router()`
+    call appends a single internal `_IncludedRouter` wrapper that resolves
+    its effective routes lazily via `.effective_candidates()`. This walks
+    that structure so callers can keep iterating a flat list of routes. We
+    duck-type on `effective_candidates` rather than importing the private
+    `_IncludedRouter` class, since its exact type is a FastAPI internal.
+
+    Args:
+        routes: Routes as found on a FastAPI/APIRouter `.routes` attribute.
+
+    Returns:
+        A flat list of route-like objects with resolved `.path`, `.name`,
+        and `.endpoint`.
+    """
+    flattened = []
+    for route in routes:
+        effective_candidates = getattr(route, "effective_candidates", None)
+        if callable(effective_candidates):
+            flattened.extend(flatten_router_routes(effective_candidates()))
+        else:
+            flattened.append(route)
+    return flattened
+
+
 def find_endpoint_by_name(app: FastAPI, name: str, prefix: str = "api/v2"):
     router = [x for x in app.routes if x.name == prefix][0]
-    matching_routes = [x for x in router.routes if x.name == name]
+    matching_routes = [
+        x for x in flatten_router_routes(router.routes) if x.name == name
+    ]
     if not matching_routes:
         raise KeyError(f"find_endpoint_by_name: could not find route {name}")
 

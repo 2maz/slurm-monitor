@@ -31,7 +31,7 @@ amd:
   mi100:
     url: https://www.amd.com/content/dam/amd/en/documents/instinct-business-docs/product-briefs/instinct-mi100-brochure.pdf
   mi210:
-    url: https://www.amd.com/en/products/accelerators/instinct/mi200/mi250.html
+    url: https://www.amd.com/en/products/accelerators/instinct/mi200/mi210.html
   mi250:
     url: https://www.amd.com/en/products/accelerators/instinct/mi200/mi250.html
   mi250x:

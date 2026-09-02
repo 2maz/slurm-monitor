@@ -13,6 +13,7 @@ import yaml
 
 from slurm_monitor.db.v2.db import ClusterDB
 from slurm_monitor.utils import utcnow
+from slurm_monitor.devices.gpu import GPUInfo
 from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.db_operations import DBManager
 from slurm_monitor.api.v2.routes import (
@@ -328,36 +329,15 @@ def benchmarks(
 
 
 @api_router.get(
-        "/spec/gpu/{gpu_name}",
+        "/spec/gpu/{gpu_name:path}", # gpu_name might include forward slashes, so catching everything using the :path instruction
         summary="Get available gpu spec sheet",
         tags=["gpu"]
 )
 def spec_gpu(gpu_name: str):
-    datasheets_yaml = Path(__file__).parent.parent.parent / "resources" / "gpu-datasheets.yaml"
 
-    with open(datasheets_yaml, "r") as f:
-        data = yaml.load(f, Loader=yaml.SafeLoader)
-        known_manufactorers = data.keys()
-
-        manufactorer = None
-        for m in known_manufactorers:
-            if m.lower() in gpu_name.lower():
-                manufactorer = m
-                break
-
-        for m, gpus in data.items():
-            if manufactorer and m != manufactorer:
-                continue
-
-            candidates = {}
-            for gpu, attributes in gpus.items():
-                tokens = re.split(r"[ -.]", gpu_name.lower())
-                for t in tokens:
-                    if t == gpu.lower():
-                        url = attributes.get('url', None)
-                        if url:
-                            logger.info(f"Redirecting to: {url=}")
-                            return RedirectResponse(url)
+        datasheet_url = GPUInfo.get_datasheet(gpu_name) 
+        if datasheet_url:
+            return RedirectResponse(url=datasheet_url)
 
         return HTTPException(
                 status_code=404,

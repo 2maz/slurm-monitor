@@ -378,20 +378,26 @@ class ClusterDB(Database):
                                                      "cards"],
                                              )
 
+        # fetch jobs for the whole cluster once and group them by partition,
+        # instead of re-querying (and re-scanning SampleProcess) per partition
+        all_jobs = await self.get_slurm_jobs(
+                cluster=cluster,
+                states=["PENDING", "RUNNING"],
+                start_time_in_s=time_in_s - 5*60,
+                end_time_in_s=time_in_s + 5*60,
+        )
+        jobs_by_partition: dict[str, list] = {}
+        for job in all_jobs:
+            jobs_by_partition.setdefault(job["partition"], []).append(job)
+
         partitions = []
         async with self.make_async_session() as session:
             rows = (await session.execute(query)).all()
-            for x in tqdm(rows, total=len(rows), desc="Query partitions"):
+            for x in rows:
                 partition_name = x[1]
                 partition_nodes = x[2]
 
-                jobs = await self.get_slurm_jobs(
-                        cluster=cluster,
-                        partition=partition_name,
-                        states=["PENDING","RUNNING"],
-                        start_time_in_s=time_in_s - 5*60,
-                        end_time_in_s=time_in_s + 5*60,
-                )
+                jobs = jobs_by_partition.get(partition_name, [])
 
                 pending_jobs = [x for x in jobs if x["job_state"] == "PENDING"]
                 running_jobs = [x for x in jobs if x["job_state"] == "RUNNING"]
@@ -400,14 +406,16 @@ class ClusterDB(Database):
                 total_cpus = []
                 total_gpus = 0
                 cards_in_use = []
-                for node, y in nodes.items():
-                    if node in partition_nodes:
-                        total_cpus.append(y['cores_per_socket']*y['sockets']*y['threads_per_core'])
-                        total_gpus += len(y['cards'])
-                        for card in y['cards']:
-                            last_active = card['last_active']
-                            if last_active and time_in_s - last_active.timestamp() < 5*60:
-                                cards_in_use.append(card['uuid'])
+                for node in partition_nodes:
+                    y = nodes.get(node)
+                    if y is None:
+                        continue
+                    total_cpus.append(y['cores_per_socket']*y['sockets']*y['threads_per_core'])
+                    total_gpus += len(y['cards'])
+                    for card in y['cards']:
+                        last_active = card['last_active']
+                        if last_active and time_in_s - last_active.timestamp() < 5*60:
+                            cards_in_use.append(card['uuid'])
 
                 total_cpus = sum(total_cpus)
 

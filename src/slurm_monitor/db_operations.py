@@ -1,6 +1,7 @@
 from logging import getLogger, Logger
 import re
 import sqlalchemy
+import threading
 
 from fastapi import HTTPException
 from typing import ClassVar, Iterable
@@ -26,30 +27,61 @@ class DBManager:
     INDEXES: str = 'indexes'
 
     _databases: ClassVar[dict[str, any]] = {}
+    _lock: ClassVar[threading.Lock] = threading.Lock()
 
     @classmethod
-    def get_database(cls, app_settings: AppSettings | None = None):
+    def get_database(cls, app_settings: AppSettings | None = None, use_cache: bool = True):
+        """
+        Get the `Database` instance for `app_settings.db_schema_version`.
+
+        Args:
+            app_settings: Settings to build the database from; defaults to
+                the process-wide `AppSettings` singleton.
+            use_cache: When True (default), reuse the cached instance across
+                calls - appropriate for a long-lived server process holding
+                one connection pool open. Pass False for a one-shot CLI
+                invocation: constructing a `Database` also runs
+                `create_all()` when `create_missing` is set, so a cached
+                instance would silently skip re-applying schema changes on
+                a later call within the same process (e.g. repeated
+                in-process CLI invocations in tests).
+
+        Returns:
+            The `Database` instance for the requested schema version.
+        """
         if app_settings is None:
             app_settings = AppSettings.get_instance()
 
-        logger.info(f"Loading database with: {app_settings.database}")
+        # Constructing a database instance builds a new engine + connection
+        if use_cache and app_settings.db_schema_version in cls._databases:
+            return cls._databases[app_settings.db_schema_version]
 
-        try:
-            if app_settings.db_schema_version == "v1":
-                from slurm_monitor.db.v1.db import SlurmMonitorDB
-                db = SlurmMonitorDB(app_settings.database)
-            elif app_settings.db_schema_version == "v2":
-                from slurm_monitor.db.v2.db import ClusterDB
-                db = ClusterDB(app_settings.database)
-            else:
-                raise RuntimeError("AppSettings.db_schema_version is not set")
+        with cls._lock:
+            # Recheck since another thread may have built it already
+            # while waiting for the lock
+            if use_cache and app_settings.db_schema_version in cls._databases:
+                return cls._databases[app_settings.db_schema_version]
 
-            return db
-        except sqlalchemy.exc.OperationalError:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Cannot access monitor database - {app_settings.database.uri}",
-            )
+            logger.info(f"Loading database with: {app_settings.database}")
+
+            try:
+                if app_settings.db_schema_version == "v1":
+                    from slurm_monitor.db.v1.db import SlurmMonitorDB
+                    db = SlurmMonitorDB(app_settings.database)
+                elif app_settings.db_schema_version == "v2":
+                    from slurm_monitor.db.v2.db import ClusterDB
+                    db = ClusterDB(app_settings.database)
+                else:
+                    raise RuntimeError("AppSettings.db_schema_version is not set")
+
+                if use_cache:
+                    cls._databases[app_settings.db_schema_version] = db
+                return db
+            except sqlalchemy.exc.OperationalError:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Cannot access monitor database - {app_settings.database.uri}",
+                )
 
     @classmethod
     def get_status(cls, db_uri):

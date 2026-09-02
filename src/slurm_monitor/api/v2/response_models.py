@@ -43,20 +43,20 @@ class SAcctResponse(BaseModel):
     AllocTRES: str = Field(description=f"Allocated Trackable resources (TRES) {doc_sacct}")
     ElapsedRaw: int = Field(description=f"The job's elapsed time in seconds {doc_sacct}")
 
-    SystemCPU: int = Field(description=f"The amount of CPU time used by the job or job step. {doc_sacct}")
-    UserCPU: int = Field(description=f"The amount of user CPU time used by the job or job step. {doc_sacct}")
+    SystemCPU: int | None = Field(description=f"The amount of CPU time used by the job or job step. {doc_sacct}")
+    UserCPU: int | None = Field(description=f"The amount of user CPU time used by the job or job step. {doc_sacct}")
 
-    AveVMSize: int = Field(description=f"Average virtual memory size {doc_sacct}")
-    MaxVMSize: int = Field(description=f"Maximum virtual memory size {doc_sacct}")
+    AveVMSize: int | None = Field(description=f"Average virtual memory size {doc_sacct}")
+    MaxVMSize: int | None = Field(description=f"Maximum virtual memory size {doc_sacct}")
 
-    AveCPU: int = Field(description=f"Average CPU usage {doc_sacct}")
-    MinCPU: int = Field(description=f"Minimum CPU usage {doc_sacct}")
+    AveCPU: int | None = Field(description=f"Average CPU usage {doc_sacct}")
+    MinCPU: int | None = Field(description=f"Minimum CPU usage {doc_sacct}")
 
-    AveRSS: int = Field(description=f"Average resident set size of all tasks in job {doc_sacct}")
-    MaxRSS: int = Field(description=f"Maximum resident set size of all tasks in job {doc_sacct}")
+    AveRSS: int | None = Field(description=f"Average resident set size of all tasks in job {doc_sacct}")
+    MaxRSS: int | None = Field(description=f"Maximum resident set size of all tasks in job {doc_sacct}")
 
-    AveDiskRead: int = Field(description=f"Average number of bytes read by all tasks in job {doc_sacct}")
-    AveDiskWrite: int = Field(description=f"Average number of bytes written by all tasks in job {doc_sacct}")
+    AveDiskRead: int | None = Field(description=f"Average number of bytes read by all tasks in job {doc_sacct}")
+    AveDiskWrite: int | None = Field(description=f"Average number of bytes written by all tasks in job {doc_sacct}")
 
 class JobResponse(TimestampedModel):
     cluster: str = Field(description='Name of the cluster')
@@ -92,13 +92,13 @@ class JobResponse(TimestampedModel):
         slurm: `JOB_INFO.array_task_id`.
         """)
 
-    het_job_id: int = Field(description="Id of the het(erogeneous) job "
+    het_job_id: int | None = Field(description="Id of the het(erogeneous) job "
         "(see <a href='https://slurm.schedmd.com/heterogeneous_jobs.html'>SLURM documentation</a>)")
-    het_job_offset: int = Field(description="Unique sequence number (starting with 0) the het(erogeneous) "
+    het_job_offset: int | None = Field(description="Unique sequence number (starting with 0) the het(erogeneous) "
             " job component (see <a href='https://slurm.schedmd.com/heterogeneous_jobs.html'>SLURM documentation</a>)")
 
     user_name: str = Field(description="Name of the user that started the job")
-    account: str = Field(description="Name of the account")
+    account: str | None = Field(description="Name of the account")
 
     # Pending jobs might have no start time set
     start_time: AwareDatetime | None = Field(default=None, description="Time at which the job started "
@@ -180,7 +180,7 @@ class GPUCardResponse(TimestampedModel):
     uuid: str = Field(description="UUID as reported by card")
     manufacturer: str = Field(description="A manufacturer: 'NVIDIA', 'AMD', 'INTEL' (other TBD)")
     model: str = Field(description="card dependent, manufacturer's model string")
-    architecture: str = Field(description=
+    architecture: str | None = Field(description=
             "card-dependent, manufacturer's arch string, for NVIDIA this is 'Turing', 'Volta', etc.")
     memory: int = Field(description="Memory of card in KiB")
 
@@ -189,12 +189,12 @@ class GPUCardResponse(TimestampedModel):
     index: int = Field(description="Local card index, may change at boot")
     address: str = Field(description="Indicates an intra-system card address, e.g., PCI adress")
     driver: str = Field(description="card-dependent, the manufacturer's driver string")
-    firmware: str = Field(description="card-dependant, the manufacturer's firmware string")
+    firmware: str | None = Field(description="card-dependant, the manufacturer's firmware string")
 
-    max_power_limit: int = Field(description="card-dependent, max power the card can draw in W(atts)")
-    min_power_limit: int = Field(description="card-dependent: min power the card will draw in W(atts)")
-    max_ce_clock: int = Field(description="card-dependent, maximum clock of compute element")
-    max_memory_clock: int = Field(description="card-dependent, maximum clock of GPU memory")
+    max_power_limit: int | None = Field(description="card-dependent, max power the card can draw in W(atts)")
+    min_power_limit: int | None = Field(description="card-dependent: min power the card will draw in W(atts)")
+    max_ce_clock: int | None = Field(description="card-dependent, maximum clock of compute element")
+    max_memory_clock: int | None = Field(description="card-dependent, maximum clock of GPU memory")
 
     last_active: AwareDatetime | None = Field(description="Timezone Aware timestamp", default=None)
 
