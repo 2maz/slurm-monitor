@@ -10,6 +10,7 @@ from slurm_monitor.cli.probe import ProbeParser
 from slurm_monitor.cli.listen import ListenParser, ListenUiParser
 from slurm_monitor.cli.system_info import SystemInfoParser
 from slurm_monitor.cli.autodeploy import AutoDeployParser
+from slurm_monitor.cli.mcp import MCPParser
 from slurm_monitor.cli.query import QueryParser
 from slurm_monitor.cli.restapi import RestapiParser
 from slurm_monitor.cli.spec import SpecParser
@@ -99,6 +100,12 @@ def run():
         subcommand="listen-ui",
         help="Display status of listener",
         parser_klass=ListenUiParser
+    )
+
+    main_parser.attach_subcommand_parser(
+        subcommand="mcp",
+        help="Start a Model Context Protocol (MCP) server for the RESTAPI",
+        parser_klass=MCPParser
     )
 
     main_parser.attach_subcommand_parser(

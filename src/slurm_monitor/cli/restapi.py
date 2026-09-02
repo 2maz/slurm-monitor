@@ -1,7 +1,9 @@
 from argparse import ArgumentParser
+import ctypes
 import json
 import logging
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import yaml
@@ -11,6 +13,24 @@ from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.v2 import api_v2_app
 
 logger = logging.getLogger(__name__)
+
+# linux-only: value of PR_SET_PDEATHSIG for prctl(2)
+_PR_SET_PDEATHSIG = 1
+
+
+def _set_pdeathsig():
+    """
+    Run as the uvicorn child's `preexec_fn`: ask the kernel to deliver
+    SIGTERM to it if this (parent) process dies for any reason - including
+    SIGKILL, which the parent has no way to react to itself. Without this,
+    a forcibly-killed 'slurm-monitor restapi' leaves its uvicorn child
+    running forever, since Popen doesn't tie child lifetime to the parent's.
+    """
+    try:
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        libc.prctl(_PR_SET_PDEATHSIG, signal.SIGTERM)
+    except OSError as e:
+        logger.warning(f"Could not set PR_SET_PDEATHSIG on the uvicorn child: {e}")
 
 class RestapiParser(BaseParser):
     def __init__(self, parser: ArgumentParser):
@@ -94,11 +114,14 @@ class RestapiParser(BaseParser):
         logger.info(f"Execute: {cmd_txt}")
         returncode = 0
         try:
-            with subprocess.Popen(cmd) as process:
-                process.wait()
+            with subprocess.Popen(cmd, preexec_fn=_set_pdeathsig) as process:  # noqa: PLW1509
+                signal.signal(signal.SIGTERM, lambda signum, frame: process.terminate())
 
+                process.wait()
                 returncode = process.returncode
         except KeyboardInterrupt:
             logger.info("Shutdown completed (after KeyboardInterrupt)")
+            process.terminate()
+            process.wait()
 
         sys.exit(returncode)

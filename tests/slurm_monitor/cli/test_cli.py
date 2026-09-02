@@ -25,6 +25,27 @@ from slurm_monitor.utils.command import Command
 from slurm_monitor.db.v2.db_tables import SampleDisk
 from slurm_monitor.app_settings import SLURM_MONITOR_RESTAPI_PORT
 
+
+def _wait_for_restapi(url: str, timeout: float = 30) -> httpx.Response:
+    """
+    Poll `url` until the RESTAPI responds or `timeout` seconds elapse.
+
+    uvicorn startup time varies with system load, so a fixed sleep before
+    the first request is either too short (flaky - a "connection refused"
+    exception here would otherwise skip the caller's cleanup) or wastes
+    time padding for the worst case.
+    """
+    deadline = time.time() + timeout
+    last_error = None
+    while time.time() < deadline:
+        try:
+            return httpx.get(url, timeout=2)
+        except httpx.HTTPError as e:
+            last_error = e
+            time.sleep(0.5)
+    raise RuntimeError(f"RESTAPI at '{url}' did not become reachable within {timeout}s") from last_error
+
+
 @pytest.fixture
 def subparsers():
     return [
@@ -128,12 +149,14 @@ async def test_restapi_env_file_via_args(script_runner, tmp_path, test_db_v2, db
         f.write(f"SLURM_MONITOR_PORT={port}\n")
 
     p = subprocess.Popen(['slurm-monitor', 'restapi', '--env-file', str(tmp_path / 'existing-envfile')])
-
-    time.sleep(5)
-    response = httpx.get(f"http://localhost:{port}/api/v2/docs")
-
-    p.kill()
-    p.wait()
+    try:
+        response = _wait_for_restapi(f"http://localhost:{port}/api/v2/docs")
+    finally:
+        # guaranteed even if the request above raises (e.g. the server
+        # wasn't up yet) - otherwise the subprocess (and the uvicorn it
+        # spawns) is silently left running
+        p.kill()
+        p.wait()
 
     assert response.status_code == 200
 
@@ -150,12 +173,11 @@ async def test_restapi_env_file_via_env(script_runner, tmp_path, test_db_v2, db_
     env = os.environ.copy()
     env['SLURM_MONITOR_ENV_FILE'] = str(tmp_path / 'existing-envfile')
     p = subprocess.Popen(['slurm-monitor', 'restapi'], env=env)
-
-    time.sleep(5)
-    response = httpx.get(f"http://localhost:{port}/api/v2/docs")
-
-    p.kill()
-    p.wait()
+    try:
+        response = _wait_for_restapi(f"http://localhost:{port}/api/v2/docs")
+    finally:
+        p.kill()
+        p.wait()
 
     assert response.status_code == 200
 
@@ -177,13 +199,12 @@ async def test_restapi_env_file_with_overrides(script_runner, tmp_path, test_db_
 
     env = os.environ.copy()
     env['SLURM_MONITOR_ENV_FILE'] = str(tmp_path / '.a.env')
-    p = subprocess.Popen(['slurm-monitor', 'restapi', '--env-file', '.b.env'], env=env)
-
-    time.sleep(5)
-    response = httpx.get(f"http://localhost:{port}/api/v2/docs")
-
-    p.kill()
-    p.wait()
+    p = subprocess.Popen(['slurm-monitor', 'restapi', '--env-file', str(tmp_path / '.b.env')], env=env)
+    try:
+        response = _wait_for_restapi(f"http://localhost:{port}/api/v2/docs")
+    finally:
+        p.kill()
+        p.wait()
 
     assert response.status_code == 200
 
@@ -196,11 +217,10 @@ async def test_restapi_settings_from_env(script_runner, tmp_path, test_db_v2, db
     env['SLURM_MONITOR_DATABASE_URI'] = timescaledb
 
     p = subprocess.Popen(['slurm-monitor', 'restapi'], env=env)
-
-    time.sleep(5)
-    response = httpx.get(f"http://localhost:{SLURM_MONITOR_RESTAPI_PORT}/api/v2/docs")
-
-    p.kill()
-    p.wait()
+    try:
+        response = _wait_for_restapi(f"http://localhost:{SLURM_MONITOR_RESTAPI_PORT}/api/v2/docs")
+    finally:
+        p.kill()
+        p.wait()
 
     assert response.status_code == 200
