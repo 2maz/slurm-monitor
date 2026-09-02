@@ -1,3 +1,5 @@
+from typing import AsyncGenerator
+
 from sqlalchemy.orm import sessionmaker
 from contextlib import contextmanager, asynccontextmanager
 from sqlalchemy.engine.url import URL, make_url
@@ -555,7 +557,7 @@ class Database:
             session.close()
 
     @asynccontextmanager
-    async def make_async_session(self) -> AsyncSession:
+    async def make_async_session(self) -> AsyncGenerator[AsyncSession, None]:
         session = self.async_session_factory()
         try:
             yield session
@@ -578,7 +580,7 @@ class Database:
             await session.close()
 
     @asynccontextmanager
-    async def make_writeable_async_session(self) -> AsyncSession:
+    async def make_writeable_async_session(self) -> AsyncGenerator[AsyncSession, None]:
         session = self.async_session_factory()
         try:
             yield session

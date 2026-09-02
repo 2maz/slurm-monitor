@@ -2227,8 +2227,8 @@ class ClusterDB(Database):
             job_id: int,
             epoch: int,
             user: str | None = None,
-            start_time_in_s: int | None = None,
-            end_time_in_s: int | None = None,
+            start_time_in_s: float | None = None,
+            end_time_in_s: float | None = None,
             states: list[str] | None = None,
         ) -> JobResponse | None:
 
@@ -2248,8 +2248,8 @@ class ClusterDB(Database):
             cluster: str,
             job_id: int,
             user: str | None = None,
-            start_time_in_s: int | None = None,
-            end_time_in_s: int | None = None,
+            start_time_in_s: float | None = None,
+            end_time_in_s: float | None = None,
             states: list[str] | None = None,
         ) -> JobResponse | None:
         """
@@ -2285,18 +2285,17 @@ class ClusterDB(Database):
                 )
 
         async with self.make_async_session() as session:
-            data = (await session.execute(query)).all()
-            gpus = [x[0] for x in (await session.execute(gpus_query)).all()]
-
-            if data:
-                slurm_data =  dict(data[0][0])
-                if gpus:
-                    slurm_data['used_gpu_uuids'] = gpus
-                else:
-                    slurm_data['used_gpu_uuids'] = []
-                return JobResponse(**slurm_data)
-            else:
+            slurm_data = (await session.execute(query)).scalars().first()
+            if slurm_data is None:
                 return None
+
+            job_data = dict(slurm_data)
+
+            gpu_uuids = list((await session.execute(gpus_query)).scalars().all())
+
+            job_data['used_gpu_uuids'] = gpu_uuids
+
+            return JobResponse(**job_data)
 
     @ttl_cache_async(ttl=600, maxsize=1024)
     async def query_jobs(self,
@@ -2611,9 +2610,9 @@ class ClusterDB(Database):
         cluster: str,
         job_id: int,
         user: str | None = None,
-        time_in_s: int | None = None,
+        time_in_s: float | None = None,
         interval_in_s: int = INTERVAL_2WEEKS
-    ) -> Awaitable[dict[str, dict[str, float]]]:
+    ) -> JobReport:
         if time_in_s is None:
             time_in_s = utcnow().timestamp()
 
@@ -2624,6 +2623,8 @@ class ClusterDB(Database):
                 end_time_in_s=time_in_s,
                 states=["RUNNING", "COMPLETED"]
         )
+        if job is None:
+           raise ValueError(f"Database.get_job_report: {job_id=} did not match any jobs")
 
         if user and job.user_name != user:
             raise RuntimeError(f"Job Report for {job_id=} on {cluster=} cannot be provided. The job belongs a different user (current {user=})")
