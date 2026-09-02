@@ -489,7 +489,7 @@ class ClusterDB(Database):
 
     async def get_partitions_base(self,
             cluster: str,
-            time_in_s: int | None = None,
+            time_in_s: float | None = None,
             interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S
             ) -> dict[str, list[str]]:
 
@@ -2665,10 +2665,13 @@ class ClusterDB(Database):
                 report.requested_cpus = job.requested_cpus
                 report.requested_memory_per_node = job.requested_memory_per_node
 
-                requested_resources = AllocTRES(**Slurm.parse_sacct_tres(job.requested_resources))
-                report.requested_gpus = requested_resources.gpu
 
-                report.nodes = job.nodes
+                if job.requested_resources:
+                    parsed = Slurm.parse_sacct_tres(job.requested_resources)
+                    requested_resources = AllocTRES(**parsed)
+                    report.requested_gpus = requested_resources.gpu
+
+                report.nodes = job.nodes if job.nodes is not None or []
                 report.used_gpu_uuids = job.used_gpu_uuids
 
             report.generate()
