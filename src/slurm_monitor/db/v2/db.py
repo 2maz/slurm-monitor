@@ -2219,8 +2219,8 @@ class ClusterDB(Database):
             job_id: int,
             epoch: int,
             user: str | None = None,
-            start_time_in_s: int | None = None,
-            end_time_in_s: int | None = None,
+            start_time_in_s: float | None = None,
+            end_time_in_s: float | None = None,
             states: list[str] | None = None,
         ) -> JobResponse | None:
 
@@ -2240,8 +2240,8 @@ class ClusterDB(Database):
             cluster: str,
             job_id: int,
             user: str | None = None,
-            start_time_in_s: int | None = None,
-            end_time_in_s: int | None = None,
+            start_time_in_s: float | None = None,
+            end_time_in_s: float | None = None,
             states: list[str] | None = None,
         ) -> JobResponse | None:
         """
@@ -2603,7 +2603,7 @@ class ClusterDB(Database):
         cluster: str,
         job_id: int,
         user: str | None = None,
-        time_in_s: int | None = None,
+        time_in_s: float | None = None,
         interval_in_s: int = INTERVAL_2WEEKS
     ) -> Awaitable[dict[str, dict[str, float]]]:
         if time_in_s is None:
