@@ -26,16 +26,16 @@ from slurm_monitor.db.v2.db_tables import SampleDisk
 from slurm_monitor.app_settings import SLURM_MONITOR_RESTAPI_PORT
 
 
-def _wait_for_restapi(url: str, timeout: float = 30) -> httpx.Response:
+def _wait_for_restapi(url: str, timeout_in_s: float = 30) -> httpx.Response:
     """
-    Poll `url` until the RESTAPI responds or `timeout` seconds elapse.
+    Poll `url` until the RESTAPI responds or `timeout_in_s` seconds elapse.
 
     uvicorn startup time varies with system load, so a fixed sleep before
     the first request is either too short (flaky - a "connection refused"
     exception here would otherwise skip the caller's cleanup) or wastes
     time padding for the worst case.
     """
-    deadline = time.time() + timeout
+    deadline = time.time() + timeout_in_s
     last_error = None
     while time.time() < deadline:
         try:
@@ -43,7 +43,7 @@ def _wait_for_restapi(url: str, timeout: float = 30) -> httpx.Response:
         except httpx.HTTPError as e:
             last_error = e
             time.sleep(0.5)
-    raise RuntimeError(f"RESTAPI at '{url}' did not become reachable within {timeout}s") from last_error
+    raise RuntimeError(f"RESTAPI at '{url}' did not become reachable within {timeout_in_s}s") from last_error
 
 
 @pytest.fixture
@@ -163,15 +163,15 @@ async def test_restapi_env_file_via_args(script_runner, tmp_path, test_db_v2, db
 @pytest.mark.asyncio(loop_scope="function")
 async def test_restapi_env_file_via_env(script_runner, tmp_path, test_db_v2, db_config, timescaledb):
     """
-    Set the SLURM_MONITOR_ENV_FILE to point to the envfile which should be used
+    Set the SLURM_MONITOR_ENVFILE to point to the envfile which should be used
     """
-    port = 55555
+    port = 55556
     with open(tmp_path / "existing-envfile", "w") as f:
         f.write(f"SLURM_MONITOR_DATABASE_URI={timescaledb}\n")
         f.write(f"SLURM_MONITOR_PORT={port}\n")
 
     env = os.environ.copy()
-    env['SLURM_MONITOR_ENV_FILE'] = str(tmp_path / 'existing-envfile')
+    env['SLURM_MONITOR_ENVFILE'] = str(tmp_path / 'existing-envfile')
     p = subprocess.Popen(['slurm-monitor', 'restapi'], env=env)
     try:
         response = _wait_for_restapi(f"http://localhost:{port}/api/v2/docs")
@@ -187,18 +187,18 @@ async def test_restapi_env_file_with_overrides(script_runner, tmp_path, test_db_
     Using --env-file <filename> to point to the envfile which should be used, should take precedence over
     environment variables
     """
-    port = 55554
+    port = 55557
     with open(tmp_path / ".a.env", "w") as f:
         f.write(f"SLURM_MONITOR_DATABASE_URI={timescaledb}\n")
         f.write(f"SLURM_MONITOR_PORT={port}\n")
 
-    port = 55555
+    port = 55558
     with open(tmp_path / ".b.env", "w") as f:
         f.write(f"SLURM_MONITOR_DATABASE_URI={timescaledb}\n")
         f.write(f"SLURM_MONITOR_PORT={port}\n")
 
     env = os.environ.copy()
-    env['SLURM_MONITOR_ENV_FILE'] = str(tmp_path / '.a.env')
+    env['SLURM_MONITOR_ENVFILE'] = str(tmp_path / '.a.env')
     p = subprocess.Popen(['slurm-monitor', 'restapi', '--env-file', str(tmp_path / '.b.env')], env=env)
     try:
         response = _wait_for_restapi(f"http://localhost:{port}/api/v2/docs")
