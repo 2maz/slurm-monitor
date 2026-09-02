@@ -14,7 +14,7 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         package: ["slurm-monitor"]
-        python-version: ["3.10"]
+        python-version: ["3.14"]
       fail-fast: false
     runs-on:  ${{ matrix.os }}
     steps:
