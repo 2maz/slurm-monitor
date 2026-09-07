@@ -60,7 +60,7 @@ dependencies = [
     "tqdm",
     "typing_inspect",
     "uvicorn",
-    "fastmcp>=3.4.7",
+    "fastmcp>=4.0.2",
 ]
 
 [project.urls]
