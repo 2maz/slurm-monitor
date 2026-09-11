@@ -2292,10 +2292,9 @@ class ClusterDB(Database):
             job_data = dict(slurm_data)
 
             gpu_uuids = list((await session.execute(gpus_query)).scalars().all())
-
             job_data['used_gpu_uuids'] = gpu_uuids
 
-            return JobResponse(**job_data)
+            return JobResponse.model_validate(job_data)
 
     @ttl_cache_async(ttl=600, maxsize=1024)
     async def query_jobs(self,
