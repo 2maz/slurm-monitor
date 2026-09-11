@@ -51,7 +51,7 @@ class ListenParser(BaseParser):
         parser.add_argument("--db-uri",
                             type=str,
                             default=app_settings.database.uri,
-                            help=f"Set the database connection sqlite:////tmp/sqlite.db or timescaledb://slurmuser:test@localhost:7000/ex3cluster"
+                            help=f"Set the database connection sqlite:////tmp/sqlite.db or timescaledb://slurmuser:test@localhost:7654/ex3cluster"
                                 f" default is {app_settings.database.uri}"
         )
 
