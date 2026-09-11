@@ -497,7 +497,7 @@ class ClusterDB(Database):
 
     async def get_partitions_base(self,
             cluster: str,
-            time_in_s: int | None = None,
+            time_in_s: float | None = None,
             interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S
             ) -> dict[str, list[str]]:
 

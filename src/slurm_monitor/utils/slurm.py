@@ -105,7 +105,7 @@ class Slurm:
         """
         Parse TRES and return a dictionary mapping cpu, mem, gpu to the actual count
         """
-        values = {x: 0 for x in TRES_KEYS}
+        values: dict[str, int | float] = {x: 0 for x in TRES_KEYS}
 
         for field in txt.split(","):
             m = TRES_REGEXP.search(field)
