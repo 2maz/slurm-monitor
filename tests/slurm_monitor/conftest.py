@@ -79,51 +79,55 @@ def test_db(test_db_uri, number_of_nodes, number_of_cpus, number_of_gpus, number
         db.insert_or_update(Nodes(name=nodename, cpu_count=number_of_cpus, cpu_model='Intel Xeon', memory_total=256*1024**2))
 
         start_time = utcnow() - dt.timedelta(seconds=number_of_samples)
-        for c in range(0, number_of_cpus):
-            for s in range(0, number_of_samples):
-                sample = CPUStatus(
-                    node=nodename,
-                    local_id=c,
-                    cpu_percent=25,
-                    timestamp=start_time + dt.timedelta(seconds=s)
-                )
-                db.insert(sample)
 
-        for s in range(0, number_of_samples):
-            sample = MemoryStatus(
-                **virtual_memory,
+        db.insert([
+            CPUStatus(
                 node=nodename,
+                local_id=c,
+                cpu_percent=25,
                 timestamp=start_time + dt.timedelta(seconds=s)
             )
-            db.insert(sample)
+            for s in range(number_of_samples) for c in range(number_of_cpus)
+        ])
 
+        db.insert([
+            MemoryStatus(**virtual_memory, node=nodename, timestamp=start_time + dt.timedelta(seconds=s))
+            for s in range(number_of_samples)
+        ])
+
+        gpus = []
+        local_indexed_gpus = []
+        gpu_statuses = []
         for g in range(0, number_of_gpus):
-            for s in range(0, number_of_samples):
-                uuid=f"GPU-{nodename}:{g}"
-                db.insert_or_update(GPUs(
-                    uuid=uuid,
-                    model="Tesla V100",
-                    local_id=g,
-                    node=nodename,
-                    memory_total=16*1024**3
-                ))
-                db.insert_or_update(LocalIndexedGPUs(
-                    uuid=uuid,
-                    local_id=g,
-                    node=nodename,
-                    start_time=dt.datetime(2024,6,1),
-                    end_time=dt.datetime(2050,5,31),
-                ))
+            uuid = f"GPU-{nodename}:{g}"
+            gpus.append(GPUs(
+                uuid=uuid,
+                model="Tesla V100",
+                local_id=g,
+                node=nodename,
+                memory_total=16*1024**3
+            ))
+            local_indexed_gpus.append(LocalIndexedGPUs(
+                uuid=uuid,
+                local_id=g,
+                node=nodename,
+                start_time=dt.datetime(2024,6,1),
+                end_time=dt.datetime(2050,5,31),
+            ))
 
-                sample = GPUStatus(
+            for s in range(0, number_of_samples):
+                gpu_statuses.append(GPUStatus(
                         uuid=uuid,
                         power_draw=30,
                         temperature_gpu=30,
                         utilization_memory=10,
                         utilization_gpu=12,
                         timestamp=start_time + dt.timedelta(seconds=s)
-                )
-                db.insert(sample)
+                ))
+
+        db.insert_or_update(gpus)
+        db.insert_or_update(local_indexed_gpus)
+        db.insert(gpu_statuses)
 
         job_id = i
         sample_count = 100
@@ -166,19 +170,18 @@ def test_db(test_db_uri, number_of_nodes, number_of_cpus, number_of_gpus, number
             )
         )
 
+        process_statuses = []
         for pid in range(1, 10):
-            samples = []
             for idx in range(1, sample_count+1):
                 timestamp = end_time - dt.timedelta(seconds=idx)
-                samples.append(ProcessStatus(
+                process_statuses.append(ProcessStatus(
                         pid=pid, node=nodename,
                         job_id=job_id, job_submit_time=submit_time,
                         cpu_percent=0.5, memory_percent=0.2,
                         timestamp=timestamp
                         )
                 )
-            samples.reverse()
-            db.insert(samples)
+        db.insert(process_statuses)
     return db
 
 
