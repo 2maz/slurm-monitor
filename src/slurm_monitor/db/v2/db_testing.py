@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-from pathlib import Path
 
 import slurm_monitor.timescaledb as timescaledb
 from slurm_monitor.db.v2.db import ClusterDB, DatabaseSettings
@@ -20,8 +19,6 @@ from slurm_monitor.db.v2.db_tables import (
 )
 import datetime as dt
 from slurm_monitor.utils import utcnow
-from slurm_monitor.utils.command import Command
-from time import sleep
 
 import logging
 
@@ -42,52 +39,6 @@ class TestDBConfig(BaseModel):
     number_of_jobs: int = 4
     number_of_samples: int = 25
     sampling_interval_in_s: int = 30
-
-def start_timescaledb_container(
-        port: int = 7654,
-        password: str = "test",
-        user: str = "test",
-        db_name: str = "test",
-        container_name: str = "timescaledb-test",
-        image: str = "timescale/timescaledb:latest-pg18",
-        stats: bool = False
-    ):
-    container = Command.run(f"docker ps -f name={container_name} -q").strip()
-    if container != "":
-        Command.run(f"docker stop {container_name}")
-
-    volumes = ""
-    start_postgres = ""
-    if stats:
-        path = Path(__file__).parent / "postgresql.conf"
-        if path.exists():
-            conf_dir="/var/lib/postgresql/conf"
-            volumes += f" -v {path.resolve()}:{conf_dir}/postgresql.conf -e POSTGRESQL_CONF_DIR={conf_dir}"
-            start_postgres = f"postgres -c \"config_file={conf_dir}/postgresql.conf\""
-        else:
-            raise RuntimeError(f"Could not file config file {path=}")
-
-    cmd = f"docker run -d --rm --name {container_name} {volumes} " \
-        f"-p {port}:5432 -e POSTGRES_DB=test -e POSTGRES_PASSWORD={password} -e POSTGRES_USER={user} {image}"
-    if start_postgres:
-        cmd += f" {start_postgres}"
-
-    logger.info(cmd)
-    Command.run(cmd)
-
-    for i in range(0, 3):
-        sleep(2)
-        container = Command.run(f"docker ps -f name={container_name} -q")
-        if container:
-            break
-
-    sleep(5)
-    logger.info(f"{container_name=} is ready")
-    if stats:
-        Command.run(f"docker exec -it {container_name} psql -U {user} -c 'CREATE EXTENSION pg_stat_statements'")
-        logging.info("pg_stat_statements - enabled")
-
-    return f"timescaledb://{user}:{password}@localhost:{port}/{db_name}"
 
 
 def create_test_db(
