@@ -4,10 +4,9 @@ import subprocess
 import psutil
 import datetime as dt
 from pathlib import Path
-import sqlalchemy
+from sqlalchemy.exc import OperationalError
 import time
 
-import slurm_monitor.timescaledb # noqa
 from slurm_monitor.utils import utcnow
 from slurm_monitor.devices.gpu import GPU
 from slurm_monitor.utils.command import Command
@@ -515,53 +514,39 @@ def mock_gpu(gpu_type, gpu_responses, monkeypatch):
 def db_config() -> db_v2_testing.TestDBConfig:
     return db_v2_testing.TestDBConfig()
 
-@pytest.fixture(scope="module")
-def timescaledb(request):
-    container_name = "timescaledb-pytest"
-    port=7001
-    # using this mechanism one can parametrize the fixture via
-    #   @pytest.mark.parametrize("timescaledb", [{'port': 7002}], indirect=["timescaledb"])
-    #   def test_XXX(timescaledb, ...):
-    #
-    if hasattr(request, "param"):
-        if 'port' in request.param:
-            port = request.param['port']
-        if 'container-suffix' in request.param:
-            container_name += request.param['container-suffix']
+@pytest.fixture(scope="session")
+def timescaledb(pytestconfig):
 
-    uri = db_v2_testing.start_timescaledb_container(
-            port=port,
-            container_name=container_name
-    )
+    db_uri = pytestconfig.getoption("db_uri")
+    if not db_uri:
+        raise pytest.UsageError(
+            "This test needs --db-uri (run via `tox -e timescaledb`, which "
+            "starts and passes it automatically)."
+        )
+    return db_uri
 
-    def teardown():
-        Command.run(f"docker stop {container_name}")
 
-    request.addfinalizer(teardown)
-    return uri
+@pytest.fixture
+def timescaledb_db(timescaledb):
+    # test_db_parser wipes and reseeds whatever database it's pointed at, so
+    # it needs its own - tox creates `test_db_parser` alongside the main `test`
+    # database in commands_pre; just point at it.
+    return timescaledb.rsplit("/", 1)[0] + "/test_db_parser"
 
-@pytest.fixture(scope="module")
-def test_db_v2(timescaledb,
-        db_config) -> db_v2.db.ClusterDB:
-    for i in range(0,3):
-        try:
-            db_test = db_v2_testing.create_test_db(timescaledb, db_config)
-            time.sleep(2)
-        except sqlalchemy.exc.OperationalError as e:
-            if i < 2 and "server closed" in str(e):
-                pass
-            raise
+
+def _make_test_db_v2(request, uri, db_config) -> db_v2.db.ClusterDB:
+    db_test = db_v2_testing.create_test_db(uri, db_config)
+    request.addfinalizer(lambda: (
+        db_test.engine.dispose(),
+        db_test.async_engine.sync_engine.dispose(close=False),
+    ))
     return db_test
+
+@pytest.fixture(scope="module")
+def test_db_v2(request, timescaledb, db_config) -> db_v2.db.ClusterDB:
+    return _make_test_db_v2(request, timescaledb, db_config)
+
 
 @pytest.fixture(scope="function")
-def test_db_v2__function_scope(timescaledb,
-        db_config) -> db_v2.db.ClusterDB:
-    for i in range(0,3):
-        try:
-            db_test = db_v2_testing.create_test_db(timescaledb, db_config)
-            time.sleep(2)
-        except sqlalchemy.exc.OperationalError as e:
-            if i < 2 and "server closed" in str(e):
-                pass
-            raise
-    return db_test
+def test_db_v2__function_scope(request, timescaledb, db_config) -> db_v2.db.ClusterDB:
+    return _make_test_db_v2(request, timescaledb, db_config)
