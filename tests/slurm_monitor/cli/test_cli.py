@@ -102,12 +102,11 @@ def test_spec(script_runner):
     result = script_runner.run(['slurm-monitor', 'spec'])
     assert re.search("implemented", result.stdout) is not None, "Implemented"
 
-@pytest.mark.parametrize("timescaledb", [{'port': 7002, 'container-suffix': '-db_parser'}], indirect=["timescaledb"])
-def test_db_parser(script_runner, timescaledb):
+def test_db_parser(script_runner, timescaledb_db):
     cluster = "my-test-cluster"
-    result = script_runner.run(['slurm-monitor', 'db', '--db-uri', timescaledb, "--insert-test-samples", cluster])
+    result = script_runner.run(['slurm-monitor', 'db', '--db-uri', timescaledb_db, "--insert-test-samples", cluster])
     assert result.returncode == 0
-    cluster_result = Command.run("docker exec timescaledb-pytest-db_parser psql -U test test -tAq -c 'SELECT cluster from cluster_attributes'")
+    cluster_result = Command.run("docker exec timescaledb-pytest psql -U test -d test_db_parser -tAq -c 'SELECT cluster from cluster_attributes'")
 
     cluster_entries = cluster_result.split("\n")
     assert len(cluster_entries) == 2
