@@ -1,41 +1,50 @@
-from __future__ import annotations
-from slurm_monitor.db.v2.db_base import Database
-from typing import ClassVar, Awaitable
+from abc import ABC, abstractmethod
+from typing import Any, ClassVar
+
 import pandas as pd
+from sqlalchemy import text
+from sqlalchemy.sql.expression import Executable
 
-from sqlalchemy import (
-        text
-)
+from slurm_monitor.db.v2.db_base import Database
 
-class Query:
-    statement: str = None
+
+class Query(ABC):
+
+
+    @property
+    @abstractmethod
+    def statement(self) -> str | None: ...
 
     _db: Database
-    _parameters: dict[str, str]
+    _parameters: dict[str, Any]
 
-    def __init__(self, db: Database, parameters: dict[str, str] = {}):
+    def __init__(self, db: Database, parameters: dict[str, Any] = {}):
         self._db = db
         self._parameters = parameters
 
-    def _execute(self, query: str, params: dict[str, any] = {}):
+    def _execute(self, query: Executable, params: dict[str, Any] = {}):
         with self._db.make_session() as session:
             result = session.execute(query, params)
-            return pd.DataFrame(result.fetchall(), columns=result.keys())
+            keys: list[str] = list(result.keys())
+            return pd.DataFrame(result.fetchall(), columns=keys)
 
     def execute(self) -> pd.DataFrame:
-        return self._execute(text(self.statement), {})
+        statement = self.statement or ""
+        return self._execute(text(statement), {})
 
-    async def _execute_async(self, query: str, params: dict[str, any] = {}):
+    async def _execute_async(self, query: Executable, params: dict[str, Any] = {}):
         async with self._db.make_async_session() as session:
             result = await session.execute(query, params)
-            return pd.DataFrame(result.fetchall(), columns=result.keys())
+            keys: list[str] = list(result.keys())
+            return pd.DataFrame(result.fetchall(), columns=keys)
 
 
-    async def execute_async(self) -> Awaitable[pd.DataFrame]:
-        return await self._execute_async(text(self.statement), {})
+    async def execute_async(self) -> pd.DataFrame:
+        statement = self.statement or ""
+        return await self._execute_async(text(statement), {})
 
 
-    def ensure_parameter(self, name):
+    def ensure_parameter(self, name: str) -> Any:
         """
         Check if a parameter exist in the list of given parameters
         """
@@ -96,7 +105,10 @@ class UserSuccessJobResults(Query):
         number_of_jobs (total), avg_time (per job),
         min_time, max_time, avg_cpu_count, avg_node_count
     """
-    statement: str = """
+
+    @property
+    def statement(self) -> str | None:
+        return """
         SELECT row_number() OVER(ORDER BY  user_name) as anon_user,
             user_name,
             COUNT(distinct job_id) AS number_of_successful_jobs,
@@ -131,7 +143,10 @@ class UserFailedJobResults(Query):
         number_of_jobs (total), avg_time (per job),
         min_time, max_time, avg_cpu_count, avg_node_count
     """
-    statement: str = """
+
+    @property
+    def statement(self) -> str | None:
+        return """
         SELECT row_number() OVER(ORDER BY  user_name) as anon_user,
             user_name,
             COUNT(distinct job_id) AS number_of_failed_jobs,
@@ -202,7 +217,7 @@ class PopularPartitionsByNumberOfJobs(Query):
 class QueryMaker:
     db: Database
 
-    _queries: ClassVar[dict[str, Query]] = {
+    _queries: ClassVar[dict[str, type[Query]]] = {
             "user-job-results": UserJobResults,
             "user-success-job-results": UserSuccessJobResults,
             "user-failed-job-results": UserFailedJobResults,
@@ -212,7 +227,7 @@ class QueryMaker:
     def __init__(self, db: Database):
         self.db = db
 
-    def create(self, name: str, parameters: dict[str, any] = {}) -> Query:
+    def create(self, name: str, parameters: dict[str, Any] = {}) -> Query:
         if name not in self._queries:
             raise ValueError(f"{self.__class__} .run: no query '{name}' exists")
 
@@ -220,4 +235,4 @@ class QueryMaker:
 
     @classmethod
     def list_available(cls) -> list[str]:
-        return sorted(list(cls._queries.keys()))
+        return sorted(cls._queries.keys())

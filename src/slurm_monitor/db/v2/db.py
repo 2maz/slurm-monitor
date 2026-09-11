@@ -1,5 +1,6 @@
 from collections.abc import Awaitable
 import datetime as dt
+from decimal import Decimal
 import networkx as nx
 import re
 import sqlalchemy
@@ -497,7 +498,7 @@ class ClusterDB(Database):
 
     async def get_partitions_base(self,
             cluster: str,
-            time_in_s: int | None = None,
+            time_in_s: float | None = None,
             interval_in_s: int = DEFAULT_HISTORY_INTERVAL_IN_S
             ) -> dict[str, list[str]]:
 
@@ -2292,10 +2293,9 @@ class ClusterDB(Database):
             job_data = dict(slurm_data)
 
             gpu_uuids = list((await session.execute(gpus_query)).scalars().all())
-
             job_data['used_gpu_uuids'] = gpu_uuids
 
-            return JobResponse(**job_data)
+            return JobResponse.model_validate(job_data)
 
     @ttl_cache_async(ttl=600, maxsize=1024)
     async def query_jobs(self,
@@ -2631,18 +2631,18 @@ class ClusterDB(Database):
 
         report = JobReport()
         async with self.make_async_session() as session:
-            attributes = ["resident_memory", "virtual_memory",
-                          "cpu_util",
-                          "num_threads",
-                          "data_read", "data_written", "data_cancelled"]
-
-            select_args = []
-            for attr in attributes:
-                field = getattr(SampleProcess, attr)
-                select_args.append(func.sum(field).label(f"sum_{attr}"))
+            attributes = (
+                SampleProcess.resident_memory,
+                SampleProcess.virtual_memory,
+                SampleProcess.cpu_util,
+                SampleProcess.num_threads,
+                SampleProcess.data_read,
+                SampleProcess.data_written,
+                SampleProcess.data_cancelled,
+            )
 
             subquery = select(
-                    *select_args
+                    *(func.sum(col).label(f"sum_{col.name}") for col in attributes)
                 ).where(
                     (SampleProcess.cluster == cluster),
                     (SampleProcess.job == job.job_id),
@@ -2651,37 +2651,41 @@ class ClusterDB(Database):
                     SampleProcess.time
                 ).subquery()
 
-            select_args = []
-            for attr in attributes:
-                field = getattr(SampleProcess, attr)
-                select_args.append(func.max(getattr(subquery.c, f"sum_{attr}")).label(f"max_{attr}"))
-                select_args.append(func.min(getattr(subquery.c, f"sum_{attr}")).label(f"min_{attr}"))
-                select_args.append(func.avg(getattr(subquery.c, f"sum_{attr}")).label(f"avg_{attr}"))
-                select_args.append(func.stddev(getattr(subquery.c, f"sum_{attr}")).label(f"stddev_{attr}"))
 
-            job_process_query = select(
-                *select_args
-            ).select_from(
+            AGGREGATES = {"max": func.max, "min": func.min, "avg": func.avg, "stddev": func.stddev}
+
+            job_process_query = select(*(
+                agg(subquery.c[f"sum_{col.name}"]).label(f"{name}_{col.name}")
+                for col in attributes
+                for name, agg in AGGREGATES.items()
+            )).select_from(
                 subquery
             )
 
             job_process = (await session.execute(job_process_query)).all()
+
+
+            def _num(x: float | Decimal) -> float:
+                return float(x) if isinstance(x, Decimal) else x
 
             if job_process:
                 data = job_process[0]
 
                 idx = 0
                 for attribute in attributes:
-                    setattr(report, attribute, { 'max': data[idx], 'min': data[idx+1], 'mean': data[idx+2], 'stddev': data[idx+3] })
+                    setattr(report, attribute.name, { 'max': _num(data[idx]), 'min': _num(data[idx+1]), 'mean': _num(data[idx+2]), 'stddev': _num(data[idx+3]) })
                     idx += 4
 
                 report.requested_cpus = job.requested_cpus
                 report.requested_memory_per_node = job.requested_memory_per_node
 
-                requested_resources = AllocTRES(**Slurm.parse_sacct_tres(job.requested_resources))
-                report.requested_gpus = requested_resources.gpu
 
-                report.nodes = job.nodes
+                if job.requested_resources:
+                    parsed = Slurm.parse_sacct_tres(job.requested_resources)
+                    requested_resources = AllocTRES(**parsed)
+                    report.requested_gpus = requested_resources.gpu
+
+                report.nodes = job.nodes if job.nodes is not None else []
                 report.used_gpu_uuids = job.used_gpu_uuids
 
             report.generate()

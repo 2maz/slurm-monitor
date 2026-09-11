@@ -274,12 +274,12 @@ async def list_queries(
     return { 'queries': QueryMaker.list_available() }
 
 @api_router.get("/cluster/{cluster}/queries/{query_name}",
-    summary="Execute a the 'named' query",
+    summary="Execute the 'named' query",
     tags=["cluster"],
     response_model=None
 )
 async def queries(
-    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    _: Annotated[TokenPayload, Depends(get_token_payload)],
     cluster: str,
     query_name: str,
     dbi: ClusterDB = Depends(DBManager.get_database)

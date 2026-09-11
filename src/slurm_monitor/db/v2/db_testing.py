@@ -44,7 +44,7 @@ class TestDBConfig(BaseModel):
     sampling_interval_in_s: int = 30
 
 def start_timescaledb_container(
-        port: int = 7000,
+        port: int = 7654,
         password: str = "test",
         user: str = "test",
         db_name: str = "test",

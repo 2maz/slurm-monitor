@@ -163,7 +163,7 @@ async def test_restapi_env_file_via_args(script_runner, tmp_path, test_db_v2, db
 @pytest.mark.asyncio(loop_scope="function")
 async def test_restapi_env_file_via_env(script_runner, tmp_path, test_db_v2, db_config, timescaledb):
     """
-    Set the SLURM_MONITOR_ENV_FILE to point to the envfile which should be used
+    Set the SLURM_MONITOR_ENVFILE to point to the envfile which should be used
     """
     port = 55555
     with open(tmp_path / "existing-envfile", "w") as f:
@@ -171,7 +171,7 @@ async def test_restapi_env_file_via_env(script_runner, tmp_path, test_db_v2, db_
         f.write(f"SLURM_MONITOR_PORT={port}\n")
 
     env = os.environ.copy()
-    env['SLURM_MONITOR_ENV_FILE'] = str(tmp_path / 'existing-envfile')
+    env['SLURM_MONITOR_ENVFILE'] = str(tmp_path / 'existing-envfile')
     p = subprocess.Popen(['slurm-monitor', 'restapi'], env=env)
     try:
         response = _wait_for_restapi(f"http://localhost:{port}/api/v2/docs")
@@ -198,7 +198,7 @@ async def test_restapi_env_file_with_overrides(script_runner, tmp_path, test_db_
         f.write(f"SLURM_MONITOR_PORT={port}\n")
 
     env = os.environ.copy()
-    env['SLURM_MONITOR_ENV_FILE'] = str(tmp_path / '.a.env')
+    env['SLURM_MONITOR_ENVFILE'] = str(tmp_path / '.a.env')
     p = subprocess.Popen(['slurm-monitor', 'restapi', '--env-file', str(tmp_path / '.b.env')], env=env)
     try:
         response = _wait_for_restapi(f"http://localhost:{port}/api/v2/docs")
