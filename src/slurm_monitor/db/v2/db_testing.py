@@ -86,16 +86,16 @@ def create_test_db(
             )
         )
 
-        for p in partitions:
-            dbi.insert(
-                Partition(
-                    cluster=cluster_name,
-                    partition=p,
-                    # just add all nodes
-                    nodes=nodes,
-                    nodes_compact=[f"{cluster_name}-node-[0,{config.number_of_nodes-1}]"],
-                    time=time
+        dbi.insert([
+            Partition(
+                cluster=cluster_name,
+                partition=p,
+                # just add all nodes
+                nodes=nodes,
+                nodes_compact=[f"{cluster_name}-node-[0,{config.number_of_nodes-1}]"],
+                time=time
             )
+            for p in partitions]
         )
 
         for nIdx, n in enumerate(nodes):
@@ -163,8 +163,11 @@ def create_test_db(
 
                 start_time = time - dt.timedelta(seconds=config.number_of_samples*config.sampling_interval_in_s)
                 sample_time = start_time
+
+                gpu_samples = []
+
                 for s in range(0, config.number_of_samples):
-                    dbi.insert(
+                    gpu_samples.append(
                         SampleGpu(
                             uuid=uuid,
                             index=gpu,
@@ -185,6 +188,7 @@ def create_test_db(
                     )
                     sample_time += dt.timedelta(seconds=config.sampling_interval_in_s)
 
+                dbi.insert(gpu_samples)
 
             dbi.insert(
                 SysinfoAttributes(
@@ -209,8 +213,12 @@ def create_test_db(
                 jobId = nIdx*len(nodes)*config.number_of_jobs + j
                 start_time = time - dt.timedelta(seconds=config.number_of_samples*config.sampling_interval_in_s)
                 sample_time = start_time
+                sample_slurm_jobs = []
+                sample_slurm_jobs_acc = []
+                sample_process = []
+                sample_process_gpu = []
                 for s in range(0, config.number_of_samples):
-                    dbi.insert(
+                    sample_slurm_jobs.append(
                             SampleSlurmJob(
                                 cluster=cluster_name,
                                 job_id=jobId,
@@ -246,7 +254,7 @@ def create_test_db(
                                 time=sample_time
                             )
                     )
-                    dbi.insert(
+                    sample_slurm_jobs_acc.append(
                             SampleSlurmJobAcc(
                                 cluster=cluster_name,
                                 job_id=jobId,
@@ -261,7 +269,8 @@ def create_test_db(
                                 time=sample_time
                             )
                     )
-                    dbi.insert(SampleProcess(
+                    sample_process.append(
+                            SampleProcess(
                             cluster=cluster_name,
                             node=n,
                             job=jobId,
@@ -280,7 +289,7 @@ def create_test_db(
                     )
 
                     for cIdx, card in enumerate(cards):
-                        dbi.insert(
+                        sample_process_gpu.append(
                             SampleProcessGpu(
                                 cluster=cluster_name,
                                 node=n,
@@ -296,4 +305,9 @@ def create_test_db(
                             )
                         )
                     sample_time += dt.timedelta(seconds=config.sampling_interval_in_s)
+
+                dbi.insert(sample_process)
+                dbi.insert(sample_process_gpu)
+                dbi.insert(sample_slurm_jobs)
+                dbi.insert(sample_slurm_jobs_acc)
     return dbi
