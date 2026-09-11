@@ -72,6 +72,20 @@ class Database:
         spec.augment(TableBase.metadata.tables)
 
         engine_kwargs = {}
+        async_engine_kwargs = {}
+        if db_url.get_dialect().name == "timescaledb":
+            # These are different because we use psycopg for sync,
+            # and asyncpg for async, which have different names for the
+            # connection timeout option.
+            engine_kwargs = {
+                "connect_args": {"connect_timeout": 10},
+                "pool_pre_ping": True,
+            }
+            async_engine_kwargs = {
+                "connect_args": {"timeout": 10},
+                "pool_pre_ping": True,
+            }
+
         self.engine = create_engine(db_url, **engine_kwargs)
         logger.info(
             f"Database with dialect: '{db_url.get_dialect().name}' detected - uri: {db_settings.uri}."
@@ -110,7 +124,7 @@ class Database:
             )
 
         self.async_engine = create_async_engine(
-            async_db_url, pool_size=DB_POOL_SIZE, **engine_kwargs
+            async_db_url, pool_size=DB_POOL_SIZE, **async_engine_kwargs
         )
         self.async_session_factory = async_sessionmaker(
             self.async_engine, expire_on_commit=False
