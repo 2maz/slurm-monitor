@@ -1,5 +1,6 @@
 from collections.abc import Awaitable
 import datetime as dt
+from decimal import Decimal
 import networkx as nx
 import re
 import sqlalchemy
@@ -2663,12 +2664,16 @@ class ClusterDB(Database):
 
             job_process = (await session.execute(job_process_query)).all()
 
+
+            def _num(x: float | Decimal) -> float:
+                return float(x) if isinstance(x, Decimal) else x
+
             if job_process:
                 data = job_process[0]
 
                 idx = 0
                 for attribute in attributes:
-                    setattr(report, attribute.name, { 'max': data[idx], 'min': data[idx+1], 'mean': data[idx+2], 'stddev': data[idx+3] })
+                    setattr(report, attribute.name, { 'max': _num(data[idx]), 'min': _num(data[idx+1]), 'mean': _num(data[idx+2]), 'stddev': _num(data[idx+3]) })
                     idx += 4
 
                 report.requested_cpus = job.requested_cpus
