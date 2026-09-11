@@ -92,9 +92,13 @@ def start_timescaledb_container(
 
 def create_test_db(
         uri: str,
-        config: TestDBConfig = TestDBConfig(),
+        config: TestDBConfig | None = None,
         clear_existing: bool = True
     ) -> ClusterDB:
+
+    # init here to avoid sharing the same config across calls
+    if config is None:
+        config = TestDBConfig()
 
     db_settings = DatabaseSettings(uri=uri)
     dbi = ClusterDB(db_settings)
