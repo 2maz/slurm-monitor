@@ -26,4 +26,4 @@ jobs:
         run: python -m pip install tox
 
       - name: Test default
-        run: tox
+        run: tox -e timescaledb
