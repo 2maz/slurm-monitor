@@ -1,4 +1,5 @@
 import re
+import socket
 import sys
 from argparse import ArgumentParser
 
@@ -7,6 +8,15 @@ import httpx
 import os
 import subprocess
 import time
+
+
+def _get_free_port() -> int:
+    """
+    Ask the OS for a currently-unused TCP port.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
 
 import slurm_monitor.cli.main as cli_main
 from slurm_monitor.cli.db import DBParser
@@ -142,7 +152,7 @@ async def test_restapi_env_file_via_args(script_runner, tmp_path, test_db_v2, db
     """
     Use --env-file <filename> to point to the envfile which should be used
     """
-    port = 55555
+    port = _get_free_port()
     with open(tmp_path / "existing-envfile", "w") as f:
         f.write(f"SLURM_MONITOR_DATABASE_URI={timescaledb}\n")
         f.write(f"SLURM_MONITOR_PORT={port}\n")
@@ -164,7 +174,7 @@ async def test_restapi_env_file_via_env(script_runner, tmp_path, test_db_v2, db_
     """
     Set the SLURM_MONITOR_ENVFILE to point to the envfile which should be used
     """
-    port = 55555
+    port = _get_free_port()
     with open(tmp_path / "existing-envfile", "w") as f:
         f.write(f"SLURM_MONITOR_DATABASE_URI={timescaledb}\n")
         f.write(f"SLURM_MONITOR_PORT={port}\n")
@@ -186,12 +196,12 @@ async def test_restapi_env_file_with_overrides(script_runner, tmp_path, test_db_
     Using --env-file <filename> to point to the envfile which should be used, should take precedence over
     environment variables
     """
-    port = 55554
+    shadowed_port = _get_free_port()
     with open(tmp_path / ".a.env", "w") as f:
         f.write(f"SLURM_MONITOR_DATABASE_URI={timescaledb}\n")
-        f.write(f"SLURM_MONITOR_PORT={port}\n")
+        f.write(f"SLURM_MONITOR_PORT={shadowed_port}\n")
 
-    port = 55555
+    port = _get_free_port()
     with open(tmp_path / ".b.env", "w") as f:
         f.write(f"SLURM_MONITOR_DATABASE_URI={timescaledb}\n")
         f.write(f"SLURM_MONITOR_PORT={port}\n")
