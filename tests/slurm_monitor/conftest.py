@@ -91,7 +91,22 @@ def test_db(test_db_uri, number_of_nodes, number_of_cpus, number_of_gpus, number
         ])
 
         db.insert([
-            MemoryStatus(**virtual_memory, node=nodename, timestamp=start_time + dt.timedelta(seconds=s))
+            MemoryStatus(
+                total=virtual_memory['total'],
+                available=virtual_memory['available'],
+                percent=virtual_memory['percent'],
+                used=virtual_memory['used'],
+                free=virtual_memory['free'],
+                # not present in psutil.virtual_memory() on macOS/BSD - default to 0
+                active=virtual_memory.get('active', 0),
+                inactive=virtual_memory.get('inactive', 0),
+                buffers=virtual_memory.get('buffers', 0),
+                cached=virtual_memory.get('cached', 0),
+                shared=virtual_memory.get('shared', 0),
+                slab=virtual_memory.get('slab', 0),
+                node=nodename,
+                timestamp=start_time + dt.timedelta(seconds=s)
+            )
             for s in range(number_of_samples)
         ])
 
