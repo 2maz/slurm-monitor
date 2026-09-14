@@ -43,7 +43,7 @@ class Slurm:
         if not prefix.startswith("/"):
             prefix = f"/{prefix}"
 
-        cmd = f'echo -e "GET {cls.API_PREFIX}{prefix} HTTP/1.1\r\n" | {cls.SLURMRESTD} -a rest_auth/local'
+        cmd = f'printf "GET {cls.API_PREFIX}{prefix} HTTP/1.1\r\n" | {cls.SLURMRESTD} -a rest_auth/local'
         response = Command.run(command=cmd)
 
         header, content = response.split("{", 1)
