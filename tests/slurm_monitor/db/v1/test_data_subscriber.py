@@ -1,7 +1,10 @@
 import pytest
 import json
+import os
 import time
 import signal
+
+from psutil import Process
 
 import slurm_monitor.devices.gpu as gpu
 
@@ -19,10 +22,13 @@ from slurm_monitor.db.v1.db_tables import (
         GPUProcessStatus
 )
 from slurm_monitor.db.v1.data_subscriber import main
+from slurm_monitor.utils.process import JobMonitor
 from slurm_monitor.utils.slurm import Slurm
 
-def test_get_node_status(test_db, mocker, mock_slurm_command_hint):
+def test_get_node_status(test_db, mocker, mock_slurm_command_hint, monkeypatch):
     Slurm._BIN_HINTS = [mock_slurm_command_hint]
+
+    monkeypatch.setattr(JobMonitor, "get_process", lambda p: Process(os.getpid()))
 
     mock_consumer = mocker.patch("slurm_monitor.db.v1.data_subscriber.KafkaConsumer")
     mock_consumer_instance = mock_consumer.return_value
