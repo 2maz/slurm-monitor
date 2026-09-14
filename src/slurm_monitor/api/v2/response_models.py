@@ -129,7 +129,7 @@ class JobResponse(TimestampedModel):
 
     # computed field: list of the actually used GPU uuids
     #    what can be oberved in the process data)
-    used_gpu_uuids: list[str] | None = Field(default=None, description="UUIDs of GPUs that are actually used with this job "
+    used_gpu_uuids: list[str] = Field(default=[], description="UUIDs of GPUs that are actually used with this job "
             "- this might be different to the number of reserved GPUs "
             "(this a field computed by slurm-monitor)")
 
@@ -591,7 +591,7 @@ class JobReport(BaseModel):
     requested_memory_per_node: int = Field(description="Requested memory per node in KiB", default=0)
     requested_gpus: int = Field(description="Requested gpus", default=0)
 
-    used_gpu_uuids: list[str] | None = Field(description="List of used gpus (by uuid)", default=[])
+    used_gpu_uuids: list[str] = Field(description="List of used gpus (by uuid)", default=[])
     nodes: list[str] = Field(description="List of used nodes", default=[])
 
     warnings: list[str] = Field(description="List of warnings", default=[])
