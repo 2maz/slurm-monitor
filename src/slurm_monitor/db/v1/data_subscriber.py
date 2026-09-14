@@ -182,6 +182,7 @@ class MessageHandler:
         process2job = {}
         if "jobs" in sample:
             for job_id, processes in sample["jobs"].items():
+                job_id = int(job_id)
                 job = None
                 jobs = self.database.fetch_all(JobStatus, JobStatus.job_id == job_id)
                 if not jobs:
