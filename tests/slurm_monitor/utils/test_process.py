@@ -21,7 +21,7 @@ import os
         [
             [
             "PID      JOBID    STEPID   LOCALID GLOBALID",
-            "1   10   0        0       0",
+            f"{os.getppid()}   10   0        0       0",
             f"{os.getpid()}   20   0        -       -",
             ],
             2
