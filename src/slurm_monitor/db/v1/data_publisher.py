@@ -44,10 +44,11 @@ class MemoryStatus(BaseModel):
     free: int
     active: int
     inactive: int
-    buffers: int
-    cached: int
-    shared: int
-    slab: int
+    # Linux-only fields in psutil.virtual_memory()
+    buffers: int = 0
+    cached: int = 0
+    shared: int = 0
+    slab: int = 0
 
 class NodeStatus(BaseSettings):
     node: str

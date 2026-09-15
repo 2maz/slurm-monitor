@@ -43,7 +43,7 @@ class Slurm:
         if not prefix.startswith("/"):
             prefix = f"/{prefix}"
 
-        cmd = f'echo -e "GET {cls.API_PREFIX}{prefix} HTTP/1.1\r\n" | {cls.SLURMRESTD} -a rest_auth/local'
+        cmd = f'printf "GET {cls.API_PREFIX}{prefix} HTTP/1.1\r\n" | {cls.SLURMRESTD} -a rest_auth/local'
         response = Command.run(command=cmd)
 
         header, content = response.split("{", 1)
@@ -105,7 +105,7 @@ class Slurm:
         """
         Parse TRES and return a dictionary mapping cpu, mem, gpu to the actual count
         """
-        values = {x: 0 for x in TRES_KEYS}
+        values: dict[str, int | float] = {x: 0 for x in TRES_KEYS}
 
         for field in txt.split(","):
             m = TRES_REGEXP.search(field)

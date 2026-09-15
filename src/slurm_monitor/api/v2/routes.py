@@ -220,7 +220,7 @@ class NoneForUserWithRealmRoles:
         else:
             self.optional_roles = roles
 
-    def __call__(self, token_payload: Annotated[TokenPayload, Depends(get_token_payload)]) -> None:
+    def __call__(self, token_payload: Annotated[TokenPayload, Depends(get_token_payload)]) -> str | None:
         if token_payload:
             logger.info(f"Optional roles: {self.optional_roles} - available roles: {token_payload.realm_access.roles}")
 

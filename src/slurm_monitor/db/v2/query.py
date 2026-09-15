@@ -1,49 +1,46 @@
-from __future__ import annotations
-from slurm_monitor.db.v2.db_base import Database
-from typing import ClassVar, Awaitable
-import pandas as pd
+from typing import ClassVar
 
-from sqlalchemy import (
-        text
-)
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import text
+
+from slurm_monitor.db.v2.db_base import Database
+
+
+class QueryParams(BaseModel):
+    """Base class for query parameters.
+    Define new query parameters by subclassing this class."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 class Query:
-    statement: str = None
+    """Base class for database queries.
+    Subclass this class to define specific queries."""
 
-    _db: Database
-    _parameters: dict[str, str]
+    db: Database
+    statement: ClassVar[str]
+    parameters: ClassVar[type[QueryParams]] = QueryParams
 
-    def __init__(self, db: Database, parameters: dict[str, str] = {}):
-        self._db = db
-        self._parameters = parameters
+    def __init__(self, db: Database):
+        self.db = db
 
-    def _execute(self, query: str, params: dict[str, any] = {}):
-        with self._db.make_session() as session:
-            result = session.execute(query, params)
-            return pd.DataFrame(result.fetchall(), columns=result.keys())
+    def execute(self, params: dict[str, object]) -> list[dict[str, object]]:
+        params = self._parse_params(params)
+        with self.db.make_session() as session:
+            result = session.execute(text(self.statement), params)
+            return [dict(row._mapping) for row in result]
 
-    def execute(self) -> pd.DataFrame:
-        return self._execute(text(self.statement), {})
+    async def execute_async(self, params: dict[str, object]) -> list[dict[str, object]]:
+        params = self._parse_params(params)
+        async with self.db.make_async_session() as session:
+            result = await session.execute(text(self.statement), params)
+            return [dict(row._mapping) for row in result]
 
-    async def _execute_async(self, query: str, params: dict[str, any] = {}):
-        async with self._db.make_async_session() as session:
-            result = await session.execute(query, params)
-            return pd.DataFrame(result.fetchall(), columns=result.keys())
+    def _parse_params(self, params: dict[str, object]) -> dict[str, object]:
+        """Parse and validate the query parameters against the schema."""
+        return self.parameters.model_validate(params).model_dump()
 
-
-    async def execute_async(self) -> Awaitable[pd.DataFrame]:
-        return await self._execute_async(text(self.statement), {})
-
-
-    def ensure_parameter(self, name):
-        """
-        Check if a parameter exist in the list of given parameters
-        """
-        if name not in self._parameters:
-            raise ValueError(f"Missing '{name}' as parameter in query")
-
-        return self._parameters[name]
-
+class CommonUsageStatQueryParams(QueryParams):
+    cluster: str
 
 class UserJobResults(Query):
     """
@@ -52,11 +49,9 @@ class UserJobResults(Query):
         number_of_jobs (total), avg_time (per job),
         min_time, max_time, avg_cpu_count, avg_node_count
     """
-    @property
-    def statement(self):
-        cluster = self.ensure_parameter('cluster')
+    parameters = CommonUsageStatQueryParams
 
-        return f"""
+    statement = """
         SELECT row_number() OVER(ORDER BY  user_name) as anon_user,
             user_name,
             (COUNT
@@ -82,7 +77,7 @@ class UserJobResults(Query):
                 WHERE
                     job_state in ('COMPLETED','CANCELLED','FAILED', 'TIMEOUT')
                     AND user_name != ''
-                    AND cluster = '{cluster}'
+                    AND cluster = :cluster
                 GROUP BY job_id
             )
         GROUP BY user_name
@@ -96,7 +91,7 @@ class UserSuccessJobResults(Query):
         number_of_jobs (total), avg_time (per job),
         min_time, max_time, avg_cpu_count, avg_node_count
     """
-    statement: str = """
+    statement= """
         SELECT row_number() OVER(ORDER BY  user_name) as anon_user,
             user_name,
             COUNT(distinct job_id) AS number_of_successful_jobs,
@@ -131,7 +126,8 @@ class UserFailedJobResults(Query):
         number_of_jobs (total), avg_time (per job),
         min_time, max_time, avg_cpu_count, avg_node_count
     """
-    statement: str = """
+
+    statement = """
         SELECT row_number() OVER(ORDER BY  user_name) as anon_user,
             user_name,
             COUNT(distinct job_id) AS number_of_failed_jobs,
@@ -140,7 +136,8 @@ class UserFailedJobResults(Query):
             MAX(end_time - start_time) AS max_time,
             CAST(AVG(requested_cpus) AS INTEGER) as avg_cpus,
             CAST(AVG(CARDINALITY(nodes)) AS INTEGER) as avg_node_count
-        FROM (select
+        FROM (
+            SELECT
                 job_id,
                 LAST(user_name, time) as user_name,
                 LAST(start_time,time) as start_time,
@@ -159,16 +156,15 @@ class UserFailedJobResults(Query):
     """
 
 
+
 class PopularPartitionsByNumberOfJobs(Query):
     """
     Generate a query to output:
         partition, number_of_jobs (total), avg_time (per job)
     """
-    @property
-    def statement(self):
-        cluster = self.ensure_parameter('cluster')
+    parameters = CommonUsageStatQueryParams
 
-        return f"""
+    statement = """
         SELECT partition,
             COUNT(distinct user_name) as user_count,
             COUNT(distinct job_id) AS number_of_jobs,
@@ -190,7 +186,7 @@ class PopularPartitionsByNumberOfJobs(Query):
                 WHERE
                     job_state in ('COMPLETED','CANCELLED','FAILED')
                     AND user_name != ''
-                    AND cluster = '{cluster}'
+                    AND cluster = :cluster
                 GROUP BY job_id
             )
         GROUP BY partition
@@ -198,26 +194,119 @@ class PopularPartitionsByNumberOfJobs(Query):
     """
 
 
+class JobsExceedingRequestedResources(Query):
+    """
+    Generate a query to output:
+        job_id,
+        max_cpu_util_exceeded_requested,
+        avg_cpu_util_exceeded_requested,
+        max_virtual_memory_exceeded_requested,
+        gpus_used_exceeded_requested
+    """
+    parameters = CommonUsageStatQueryParams
+
+    statement = r"""
+        with job_requested_resources as (
+            select distinct on (job_id)
+                job_id,
+                "time",
+                coalesce((regexp_match(requested_resources, '\ynode=(\d+)'))[1]::int, 0) as nodes_requested,
+                coalesce((regexp_match(requested_resources, '\ycpu=(\d+)'))[1]::int, 0) as cpus_requested,
+                coalesce((regexp_match(requested_resources, '\ygpu=(\d+)'))[1]::int, 0) as gpus_requested,
+                coalesce(
+                    mem[1]::numeric * case upper(mem[2])
+                        when 'K' then 1.0/1024
+                        when 'M' then 1
+                        when 'G' then 1024
+                        when 'T' then 1024::numeric * 1024
+                        when 'P' then 1024::numeric * 1024 * 1024
+                        else 1
+                    end,
+                    0
+                ) as mem_requested_mib,
+                coalesce((regexp_match(requested_resources, '\ybilling=(\d+)'))[1]::int, 0) as billing,
+                requested_resources
+            from sample_slurm_job
+            left join lateral
+                regexp_match(requested_resources, '\ymem=(\d+(?:\.\d+)?)\s*([KMGTP])?', 'i')
+                as mem on true
+            where cluster = :cluster
+            and "time" >= now() - interval '1 month'
+            and job_state = 'RUNNING'
+            and job_id not in (797193,797235,797236,797329,797330,797331)
+            order by job_id, "time" asc
+        ),
+        sum_data as (
+            select
+                sp.job,
+                r.cpus_requested,
+                r.mem_requested_mib,
+                r.gpus_requested,
+                sp."time",
+                sum(sp.resident_memory) as sum_resident_memory,
+                sum(sp.virtual_memory)  as sum_virtual_memory,
+                sum(sp.cpu_util)        as sum_cpu_util,
+                sum(sp.num_threads)     as sum_num_threads,
+                sum(sp.data_read)       as sum_data_read,
+                sum(sp.data_written)    as sum_data_written,
+                sum(sp.data_cancelled)  as sum_data_cancelled
+            from sample_process sp
+            join job_requested_resources r on sp.job = r.job_id
+            where sp.cluster = :cluster
+            and sp."time" >= now() - interval '1 hour'
+            group by sp.job, r.cpus_requested, r.mem_requested_mib, r.gpus_requested, sp."time"
+        ),
+        aggregated_data as (
+            select
+                sum_data.job as job,
+                cpus_requested,
+                mem_requested_mib,
+                gpus_requested,
+                coalesce(count(distinct uuid), 0) as gpus_used,
+                count(*) as n_samples,
+                max(sum_resident_memory) as max_resident_memory,
+                avg(sum_resident_memory) as avg_resident_memory,
+                max(sum_virtual_memory)  as max_virtual_memory,
+                avg(sum_virtual_memory)  as avg_virtual_memory,
+                max(sum_cpu_util)        as max_cpu_util,
+                avg(sum_cpu_util)        as avg_cpu_util,
+                max(sum_num_threads)     as max_num_threads,
+                avg(sum_num_threads)     as avg_num_threads,
+                max(sum_data_read)       as max_data_read,
+                max(sum_data_written)    as max_data_written,
+                max(sum_data_cancelled)  as max_data_cancelled
+            from sum_data
+            left join sample_process_gpu on sum_data.job = sample_process_gpu.job
+            group by sum_data.job, cpus_requested, mem_requested_mib, gpus_requested
+            order by sum_data.job
+        )
+        select
+            job,
+            max_cpu_util > cpus_requested*1.2 as max_cpu_util_exceeded_requested,
+            avg_cpu_util > cpus_requested*1.5 as avg_cpu_util_exceeded_requested,
+            max_virtual_memory > mem_requested_mib as max_virtual_memory_exceeded_requested,
+            gpus_used > gpus_requested as gpus_used_exceeded_requested
+        from aggregated_data
+        order by job;
+    """
+
+
 
 class QueryMaker:
-    db: Database
-
-    _queries: ClassVar[dict[str, Query]] = {
+    _queries: ClassVar[dict[str, type[Query]]] = {
             "user-job-results": UserJobResults,
             "user-success-job-results": UserSuccessJobResults,
             "user-failed-job-results": UserFailedJobResults,
             "popular-partitions-by-number-of-jobs": PopularPartitionsByNumberOfJobs,
+            "jobs-exceeding-resource-usage": JobsExceedingRequestedResources,
     }
 
-    def __init__(self, db: Database):
-        self.db = db
-
-    def create(self, name: str, parameters: dict[str, any] = {}) -> Query:
+    def create(self, db: Database, name: str) -> Query:
         if name not in self._queries:
-            raise ValueError(f"{self.__class__} .run: no query '{name}' exists")
+            raise ValueError(f"QueryMaker.create: no query '{name}' exists")
 
-        return  self._queries[name](self.db, parameters)
+        return  self._queries[name](db)
 
     @classmethod
     def list_available(cls) -> list[str]:
-        return sorted(list(cls._queries.keys()))
+        return sorted(cls._queries.keys())

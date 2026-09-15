@@ -355,7 +355,7 @@ async def query_jobs_pages(
         response_model=JobReport
 )
 async def job_report(
-    user: Annotated[NoneForUserWithRealmRoles, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
+    user: Annotated[str | None, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     cluster: str,
     job_id: int,
     time_in_s: float | None = None,

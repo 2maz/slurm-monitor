@@ -76,7 +76,7 @@ def test_controller_ignore_message(message, controller):
 async def test_collector_collect(controller, mock_slurm_command_hint, monkeypatch):
     Slurm._BIN_HINTS = [ mock_slurm_command_hint ]
 
-    monkeypatch.setattr(JobMonitor, "get_process", lambda p : Process(1) )
+    monkeypatch.setattr(JobMonitor, "get_process", lambda p : Process(os.getpid()) )
 
     # using the mock scontrol script here
     active_jobs = JobMonitor.get_active_jobs()
@@ -117,7 +117,7 @@ async def test_collector_collect(controller, mock_slurm_command_hint, monkeypatc
 async def test_collector_collect_max_samples(controller, mock_slurm_command_hint, monkeypatch):
     Slurm._BIN_HINTS = [ mock_slurm_command_hint ]
 
-    monkeypatch.setattr(JobMonitor, "get_process", lambda p : Process(1) )
+    monkeypatch.setattr(JobMonitor, "get_process", lambda p : Process(os.getpid()) )
     # using the mock scontrol script here
     active_jobs = JobMonitor.get_active_jobs()
     assert active_jobs.jobs

@@ -1,4 +1,5 @@
 import re
+import socket
 import sys
 from argparse import ArgumentParser
 
@@ -7,6 +8,15 @@ import httpx
 import os
 import subprocess
 import time
+
+
+def _get_free_port() -> int:
+    """
+    Ask the OS for a currently-unused TCP port.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
 
 import slurm_monitor.cli.main as cli_main
 from slurm_monitor.cli.db import DBParser
@@ -102,12 +112,11 @@ def test_spec(script_runner):
     result = script_runner.run(['slurm-monitor', 'spec'])
     assert re.search("implemented", result.stdout) is not None, "Implemented"
 
-@pytest.mark.parametrize("timescaledb", [{'port': 7002, 'container-suffix': '-db_parser'}], indirect=["timescaledb"])
-def test_db_parser(script_runner, timescaledb):
+def test_db_parser(script_runner, timescaledb_db):
     cluster = "my-test-cluster"
-    result = script_runner.run(['slurm-monitor', 'db', '--db-uri', timescaledb, "--insert-test-samples", cluster])
+    result = script_runner.run(['slurm-monitor', 'db', '--db-uri', timescaledb_db, "--insert-test-samples", cluster])
     assert result.returncode == 0
-    cluster_result = Command.run("docker exec timescaledb-pytest-db_parser psql -U test test -tAq -c 'SELECT cluster from cluster_attributes'")
+    cluster_result = Command.run("docker exec timescaledb-pytest psql -U test -d test_db_parser -tAq -c 'SELECT cluster from cluster_attributes'")
 
     cluster_entries = cluster_result.split("\n")
     assert len(cluster_entries) == 2
@@ -143,7 +152,7 @@ async def test_restapi_env_file_via_args(script_runner, tmp_path, test_db_v2, db
     """
     Use --env-file <filename> to point to the envfile which should be used
     """
-    port = 55555
+    port = _get_free_port()
     with open(tmp_path / "existing-envfile", "w") as f:
         f.write(f"SLURM_MONITOR_DATABASE_URI={timescaledb}\n")
         f.write(f"SLURM_MONITOR_PORT={port}\n")
@@ -163,15 +172,15 @@ async def test_restapi_env_file_via_args(script_runner, tmp_path, test_db_v2, db
 @pytest.mark.asyncio(loop_scope="function")
 async def test_restapi_env_file_via_env(script_runner, tmp_path, test_db_v2, db_config, timescaledb):
     """
-    Set the SLURM_MONITOR_ENV_FILE to point to the envfile which should be used
+    Set the SLURM_MONITOR_ENVFILE to point to the envfile which should be used
     """
-    port = 55555
+    port = _get_free_port()
     with open(tmp_path / "existing-envfile", "w") as f:
         f.write(f"SLURM_MONITOR_DATABASE_URI={timescaledb}\n")
         f.write(f"SLURM_MONITOR_PORT={port}\n")
 
     env = os.environ.copy()
-    env['SLURM_MONITOR_ENV_FILE'] = str(tmp_path / 'existing-envfile')
+    env['SLURM_MONITOR_ENVFILE'] = str(tmp_path / 'existing-envfile')
     p = subprocess.Popen(['slurm-monitor', 'restapi'], env=env)
     try:
         response = _wait_for_restapi(f"http://localhost:{port}/api/v2/docs")
@@ -187,18 +196,18 @@ async def test_restapi_env_file_with_overrides(script_runner, tmp_path, test_db_
     Using --env-file <filename> to point to the envfile which should be used, should take precedence over
     environment variables
     """
-    port = 55554
+    shadowed_port = _get_free_port()
     with open(tmp_path / ".a.env", "w") as f:
         f.write(f"SLURM_MONITOR_DATABASE_URI={timescaledb}\n")
-        f.write(f"SLURM_MONITOR_PORT={port}\n")
+        f.write(f"SLURM_MONITOR_PORT={shadowed_port}\n")
 
-    port = 55555
+    port = _get_free_port()
     with open(tmp_path / ".b.env", "w") as f:
         f.write(f"SLURM_MONITOR_DATABASE_URI={timescaledb}\n")
         f.write(f"SLURM_MONITOR_PORT={port}\n")
 
     env = os.environ.copy()
-    env['SLURM_MONITOR_ENV_FILE'] = str(tmp_path / '.a.env')
+    env['SLURM_MONITOR_ENVFILE'] = str(tmp_path / '.a.env')
     p = subprocess.Popen(['slurm-monitor', 'restapi', '--env-file', str(tmp_path / '.b.env')], env=env)
     try:
         response = _wait_for_restapi(f"http://localhost:{port}/api/v2/docs")

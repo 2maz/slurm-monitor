@@ -4,10 +4,9 @@ import subprocess
 import psutil
 import datetime as dt
 from pathlib import Path
-import sqlalchemy
+from sqlalchemy.exc import OperationalError
 import time
 
-import slurm_monitor.timescaledb # noqa
 from slurm_monitor.utils import utcnow
 from slurm_monitor.devices.gpu import GPU
 from slurm_monitor.utils.command import Command
@@ -80,51 +79,70 @@ def test_db(test_db_uri, number_of_nodes, number_of_cpus, number_of_gpus, number
         db.insert_or_update(Nodes(name=nodename, cpu_count=number_of_cpus, cpu_model='Intel Xeon', memory_total=256*1024**2))
 
         start_time = utcnow() - dt.timedelta(seconds=number_of_samples)
-        for c in range(0, number_of_cpus):
-            for s in range(0, number_of_samples):
-                sample = CPUStatus(
-                    node=nodename,
-                    local_id=c,
-                    cpu_percent=25,
-                    timestamp=start_time + dt.timedelta(seconds=s)
-                )
-                db.insert(sample)
 
-        for s in range(0, number_of_samples):
-            sample = MemoryStatus(
-                **virtual_memory,
+        db.insert([
+            CPUStatus(
+                node=nodename,
+                local_id=c,
+                cpu_percent=25,
+                timestamp=start_time + dt.timedelta(seconds=s)
+            )
+            for s in range(number_of_samples) for c in range(number_of_cpus)
+        ])
+
+        db.insert([
+            MemoryStatus(
+                total=virtual_memory['total'],
+                available=virtual_memory['available'],
+                percent=virtual_memory['percent'],
+                used=virtual_memory['used'],
+                free=virtual_memory['free'],
+                # not present in psutil.virtual_memory() on macOS/BSD - default to 0
+                active=virtual_memory.get('active', 0),
+                inactive=virtual_memory.get('inactive', 0),
+                buffers=virtual_memory.get('buffers', 0),
+                cached=virtual_memory.get('cached', 0),
+                shared=virtual_memory.get('shared', 0),
+                slab=virtual_memory.get('slab', 0),
                 node=nodename,
                 timestamp=start_time + dt.timedelta(seconds=s)
             )
-            db.insert(sample)
+            for s in range(number_of_samples)
+        ])
 
+        gpus = []
+        local_indexed_gpus = []
+        gpu_statuses = []
         for g in range(0, number_of_gpus):
-            for s in range(0, number_of_samples):
-                uuid=f"GPU-{nodename}:{g}"
-                db.insert_or_update(GPUs(
-                    uuid=uuid,
-                    model="Tesla V100",
-                    local_id=g,
-                    node=nodename,
-                    memory_total=16*1024**3
-                ))
-                db.insert_or_update(LocalIndexedGPUs(
-                    uuid=uuid,
-                    local_id=g,
-                    node=nodename,
-                    start_time=dt.datetime(2024,6,1),
-                    end_time=dt.datetime(2050,5,31),
-                ))
+            uuid = f"GPU-{nodename}:{g}"
+            gpus.append(GPUs(
+                uuid=uuid,
+                model="Tesla V100",
+                local_id=g,
+                node=nodename,
+                memory_total=16*1024**3
+            ))
+            local_indexed_gpus.append(LocalIndexedGPUs(
+                uuid=uuid,
+                local_id=g,
+                node=nodename,
+                start_time=dt.datetime(2024,6,1),
+                end_time=dt.datetime(2050,5,31),
+            ))
 
-                sample = GPUStatus(
+            for s in range(0, number_of_samples):
+                gpu_statuses.append(GPUStatus(
                         uuid=uuid,
                         power_draw=30,
                         temperature_gpu=30,
                         utilization_memory=10,
                         utilization_gpu=12,
                         timestamp=start_time + dt.timedelta(seconds=s)
-                )
-                db.insert(sample)
+                ))
+
+        db.insert_or_update(gpus)
+        db.insert_or_update(local_indexed_gpus)
+        db.insert(gpu_statuses)
 
         job_id = i
         sample_count = 100
@@ -167,19 +185,18 @@ def test_db(test_db_uri, number_of_nodes, number_of_cpus, number_of_gpus, number
             )
         )
 
+        process_statuses = []
         for pid in range(1, 10):
-            samples = []
             for idx in range(1, sample_count+1):
                 timestamp = end_time - dt.timedelta(seconds=idx)
-                samples.append(ProcessStatus(
+                process_statuses.append(ProcessStatus(
                         pid=pid, node=nodename,
                         job_id=job_id, job_submit_time=submit_time,
                         cpu_percent=0.5, memory_percent=0.2,
                         timestamp=timestamp
                         )
                 )
-            samples.reverse()
-            db.insert(samples)
+        db.insert(process_statuses)
     return db
 
 
@@ -515,53 +532,39 @@ def mock_gpu(gpu_type, gpu_responses, monkeypatch):
 def db_config() -> db_v2_testing.TestDBConfig:
     return db_v2_testing.TestDBConfig()
 
-@pytest.fixture(scope="module")
-def timescaledb(request):
-    container_name = "timescaledb-pytest"
-    port=7001
-    # using this mechanism one can parametrize the fixture via
-    #   @pytest.mark.parametrize("timescaledb", [{'port': 7002}], indirect=["timescaledb"])
-    #   def test_XXX(timescaledb, ...):
-    #
-    if hasattr(request, "param"):
-        if 'port' in request.param:
-            port = request.param['port']
-        if 'container-suffix' in request.param:
-            container_name += request.param['container-suffix']
+@pytest.fixture(scope="session")
+def timescaledb(pytestconfig):
 
-    uri = db_v2_testing.start_timescaledb_container(
-            port=port,
-            container_name=container_name
-    )
+    db_uri = pytestconfig.getoption("db_uri")
+    if not db_uri:
+        raise pytest.UsageError(
+            "This test needs --db-uri (run via `tox -e timescaledb`, which "
+            "starts and passes it automatically)."
+        )
+    return db_uri
 
-    def teardown():
-        Command.run(f"docker stop {container_name}")
 
-    request.addfinalizer(teardown)
-    return uri
+@pytest.fixture
+def timescaledb_db(timescaledb):
+    # test_db_parser wipes and reseeds whatever database it's pointed at, so
+    # it needs its own - tox creates `test_db_parser` alongside the main `test`
+    # database in commands_pre; just point at it.
+    return timescaledb.rsplit("/", 1)[0] + "/test_db_parser"
 
-@pytest.fixture(scope="module")
-def test_db_v2(timescaledb,
-        db_config) -> db_v2.db.ClusterDB:
-    for i in range(0,3):
-        try:
-            db_test = db_v2_testing.create_test_db(timescaledb, db_config)
-            time.sleep(2)
-        except sqlalchemy.exc.OperationalError as e:
-            if i < 2 and "server closed" in str(e):
-                pass
-            raise
+
+def _make_test_db_v2(request, uri, db_config) -> db_v2.db.ClusterDB:
+    db_test = db_v2_testing.create_test_db(uri, db_config)
+    request.addfinalizer(lambda: (
+        db_test.engine.dispose(),
+        db_test.async_engine.sync_engine.dispose(close=False),
+    ))
     return db_test
+
+@pytest.fixture(scope="module")
+def test_db_v2(request, timescaledb, db_config) -> db_v2.db.ClusterDB:
+    return _make_test_db_v2(request, timescaledb, db_config)
+
 
 @pytest.fixture(scope="function")
-def test_db_v2__function_scope(timescaledb,
-        db_config) -> db_v2.db.ClusterDB:
-    for i in range(0,3):
-        try:
-            db_test = db_v2_testing.create_test_db(timescaledb, db_config)
-            time.sleep(2)
-        except sqlalchemy.exc.OperationalError as e:
-            if i < 2 and "server closed" in str(e):
-                pass
-            raise
-    return db_test
+def test_db_v2__function_scope(request, timescaledb, db_config) -> db_v2.db.ClusterDB:
+    return _make_test_db_v2(request, timescaledb, db_config)

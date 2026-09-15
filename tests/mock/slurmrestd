@@ -1,6 +1,6 @@
-#!/usr/bin/bash
+#!/usr/bin/env bash
 
-SCRIPT_DIR=$(realpath -L $(dirname $0))
+SCRIPT_DIR=$(realpath $(dirname $0))
 response_file_prefix=$SCRIPT_DIR/slurmrestd.response
 
 read input

@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-from pathlib import Path
 
 import slurm_monitor.timescaledb as timescaledb
 from slurm_monitor.db.v2.db import ClusterDB, DatabaseSettings
@@ -20,8 +19,6 @@ from slurm_monitor.db.v2.db_tables import (
 )
 import datetime as dt
 from slurm_monitor.utils import utcnow
-from slurm_monitor.utils.command import Command
-from time import sleep
 
 import logging
 
@@ -43,58 +40,16 @@ class TestDBConfig(BaseModel):
     number_of_samples: int = 25
     sampling_interval_in_s: int = 30
 
-def start_timescaledb_container(
-        port: int = 7000,
-        password: str = "test",
-        user: str = "test",
-        db_name: str = "test",
-        container_name: str = "timescaledb-test",
-        image: str = "timescale/timescaledb:latest-pg18",
-        stats: bool = False
-    ):
-    container = Command.run(f"docker ps -f name={container_name} -q").strip()
-    if container != "":
-        Command.run(f"docker stop {container_name}")
-
-    volumes = ""
-    start_postgres = ""
-    if stats:
-        path = Path(__file__).parent / "postgresql.conf"
-        if path.exists():
-            conf_dir="/var/lib/postgresql/conf"
-            volumes += f" -v {path.resolve()}:{conf_dir}/postgresql.conf -e POSTGRESQL_CONF_DIR={conf_dir}"
-            start_postgres = f"postgres -c \"config_file={conf_dir}/postgresql.conf\""
-        else:
-            raise RuntimeError(f"Could not file config file {path=}")
-
-    cmd = f"docker run -d --rm --name {container_name} {volumes} " \
-        f"-p {port}:5432 -e POSTGRES_DB=test -e POSTGRES_PASSWORD={password} -e POSTGRES_USER={user} {image}"
-    if start_postgres:
-        cmd += f" {start_postgres}"
-
-    logger.info(cmd)
-    Command.run(cmd)
-
-    for i in range(0, 3):
-        sleep(2)
-        container = Command.run(f"docker ps -f name={container_name} -q")
-        if container:
-            break
-
-    sleep(5)
-    logger.info(f"{container_name=} is ready")
-    if stats:
-        Command.run(f"docker exec -it {container_name} psql -U {user} -c 'CREATE EXTENSION pg_stat_statements'")
-        logging.info("pg_stat_statements - enabled")
-
-    return f"timescaledb://{user}:{password}@localhost:{port}/{db_name}"
-
 
 def create_test_db(
         uri: str,
-        config: TestDBConfig = TestDBConfig(),
+        config: TestDBConfig | None = None,
         clear_existing: bool = True
     ) -> ClusterDB:
+
+    # init here to avoid sharing the same config across calls
+    if config is None:
+        config = TestDBConfig()
 
     db_settings = DatabaseSettings(uri=uri)
     dbi = ClusterDB(db_settings)
@@ -131,16 +86,16 @@ def create_test_db(
             )
         )
 
-        for p in partitions:
-            dbi.insert(
-                Partition(
-                    cluster=cluster_name,
-                    partition=p,
-                    # just add all nodes
-                    nodes=nodes,
-                    nodes_compact=[f"{cluster_name}-node-[0,{config.number_of_nodes-1}]"],
-                    time=time
+        dbi.insert([
+            Partition(
+                cluster=cluster_name,
+                partition=p,
+                # just add all nodes
+                nodes=nodes,
+                nodes_compact=[f"{cluster_name}-node-[0,{config.number_of_nodes-1}]"],
+                time=time
             )
+            for p in partitions]
         )
 
         for nIdx, n in enumerate(nodes):
@@ -208,8 +163,11 @@ def create_test_db(
 
                 start_time = time - dt.timedelta(seconds=config.number_of_samples*config.sampling_interval_in_s)
                 sample_time = start_time
+
+                gpu_samples = []
+
                 for s in range(0, config.number_of_samples):
-                    dbi.insert(
+                    gpu_samples.append(
                         SampleGpu(
                             uuid=uuid,
                             index=gpu,
@@ -230,6 +188,7 @@ def create_test_db(
                     )
                     sample_time += dt.timedelta(seconds=config.sampling_interval_in_s)
 
+                dbi.insert(gpu_samples)
 
             dbi.insert(
                 SysinfoAttributes(
@@ -254,8 +213,12 @@ def create_test_db(
                 jobId = nIdx*len(nodes)*config.number_of_jobs + j
                 start_time = time - dt.timedelta(seconds=config.number_of_samples*config.sampling_interval_in_s)
                 sample_time = start_time
+                sample_slurm_jobs = []
+                sample_slurm_jobs_acc = []
+                sample_process = []
+                sample_process_gpu = []
                 for s in range(0, config.number_of_samples):
-                    dbi.insert(
+                    sample_slurm_jobs.append(
                             SampleSlurmJob(
                                 cluster=cluster_name,
                                 job_id=jobId,
@@ -291,7 +254,7 @@ def create_test_db(
                                 time=sample_time
                             )
                     )
-                    dbi.insert(
+                    sample_slurm_jobs_acc.append(
                             SampleSlurmJobAcc(
                                 cluster=cluster_name,
                                 job_id=jobId,
@@ -306,7 +269,8 @@ def create_test_db(
                                 time=sample_time
                             )
                     )
-                    dbi.insert(SampleProcess(
+                    sample_process.append(
+                            SampleProcess(
                             cluster=cluster_name,
                             node=n,
                             job=jobId,
@@ -325,7 +289,7 @@ def create_test_db(
                     )
 
                     for cIdx, card in enumerate(cards):
-                        dbi.insert(
+                        sample_process_gpu.append(
                             SampleProcessGpu(
                                 cluster=cluster_name,
                                 node=n,
@@ -341,4 +305,9 @@ def create_test_db(
                             )
                         )
                     sample_time += dt.timedelta(seconds=config.sampling_interval_in_s)
+
+                dbi.insert(sample_process)
+                dbi.insert(sample_process_gpu)
+                dbi.insert(sample_slurm_jobs)
+                dbi.insert(sample_slurm_jobs_acc)
     return dbi
