@@ -1,58 +1,46 @@
-from abc import ABC, abstractmethod
-from typing import Any, ClassVar
+from typing import ClassVar
 
-import pandas as pd
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
-from sqlalchemy.sql.expression import Executable
 
 from slurm_monitor.db.v2.db_base import Database
 
 
-class Query(ABC):
+class QueryParams(BaseModel):
+    """Base class for query parameters.
+    Define new query parameters by subclassing this class."""
 
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
-    @property
-    @abstractmethod
-    def statement(self) -> str | None: ...
+class Query:
+    """Base class for database queries.
+    Subclass this class to define specific queries."""
 
-    _db: Database
-    _parameters: dict[str, Any]
+    db: Database
+    statement: ClassVar[str]
+    parameters: ClassVar[type[QueryParams]] = QueryParams
 
-    def __init__(self, db: Database, parameters: dict[str, Any] = {}):
-        self._db = db
-        self._parameters = parameters
+    def __init__(self, db: Database):
+        self.db = db
 
-    def _execute(self, query: Executable, params: dict[str, Any] = {}):
-        with self._db.make_session() as session:
-            result = session.execute(query, params)
-            keys: list[str] = list(result.keys())
-            return pd.DataFrame(result.fetchall(), columns=keys)
+    def execute(self, params: dict[str, object]) -> list[dict[str, object]]:
+        params = self._parse_params(params)
+        with self.db.make_session() as session:
+            result = session.execute(text(self.statement), params)
+            return [dict(row._mapping) for row in result]
 
-    def execute(self) -> pd.DataFrame:
-        statement = self.statement or ""
-        return self._execute(text(statement), {})
+    async def execute_async(self, params: dict[str, object]) -> list[dict[str, object]]:
+        params = self._parse_params(params)
+        async with self.db.make_async_session() as session:
+            result = await session.execute(text(self.statement), params)
+            return [dict(row._mapping) for row in result]
 
-    async def _execute_async(self, query: Executable, params: dict[str, Any] = {}):
-        async with self._db.make_async_session() as session:
-            result = await session.execute(query, params)
-            keys: list[str] = list(result.keys())
-            return pd.DataFrame(result.fetchall(), columns=keys)
+    def _parse_params(self, params: dict[str, object]) -> dict[str, object]:
+        """Parse and validate the query parameters against the schema."""
+        return self.parameters.model_validate(params).model_dump()
 
-
-    async def execute_async(self) -> pd.DataFrame:
-        statement = self.statement or ""
-        return await self._execute_async(text(statement), {})
-
-
-    def ensure_parameter(self, name: str) -> Any:
-        """
-        Check if a parameter exist in the list of given parameters
-        """
-        if name not in self._parameters:
-            raise ValueError(f"Missing '{name}' as parameter in query")
-
-        return self._parameters[name]
-
+class CommonUsageStatQueryParams(QueryParams):
+    cluster: str
 
 class UserJobResults(Query):
     """
@@ -61,11 +49,9 @@ class UserJobResults(Query):
         number_of_jobs (total), avg_time (per job),
         min_time, max_time, avg_cpu_count, avg_node_count
     """
-    @property
-    def statement(self):
-        cluster = self.ensure_parameter('cluster')
+    parameters = CommonUsageStatQueryParams
 
-        return f"""
+    statement = """
         SELECT row_number() OVER(ORDER BY  user_name) as anon_user,
             user_name,
             (COUNT
@@ -91,7 +77,7 @@ class UserJobResults(Query):
                 WHERE
                     job_state in ('COMPLETED','CANCELLED','FAILED', 'TIMEOUT')
                     AND user_name != ''
-                    AND cluster = '{cluster}'
+                    AND cluster = :cluster
                 GROUP BY job_id
             )
         GROUP BY user_name
@@ -105,10 +91,7 @@ class UserSuccessJobResults(Query):
         number_of_jobs (total), avg_time (per job),
         min_time, max_time, avg_cpu_count, avg_node_count
     """
-
-    @property
-    def statement(self) -> str | None:
-        return """
+    statement= """
         SELECT row_number() OVER(ORDER BY  user_name) as anon_user,
             user_name,
             COUNT(distinct job_id) AS number_of_successful_jobs,
@@ -144,9 +127,7 @@ class UserFailedJobResults(Query):
         min_time, max_time, avg_cpu_count, avg_node_count
     """
 
-    @property
-    def statement(self) -> str | None:
-        return """
+    statement = """
         SELECT row_number() OVER(ORDER BY  user_name) as anon_user,
             user_name,
             COUNT(distinct job_id) AS number_of_failed_jobs,
@@ -155,7 +136,8 @@ class UserFailedJobResults(Query):
             MAX(end_time - start_time) AS max_time,
             CAST(AVG(requested_cpus) AS INTEGER) as avg_cpus,
             CAST(AVG(CARDINALITY(nodes)) AS INTEGER) as avg_node_count
-        FROM (select
+        FROM (
+            SELECT
                 job_id,
                 LAST(user_name, time) as user_name,
                 LAST(start_time,time) as start_time,
@@ -174,16 +156,15 @@ class UserFailedJobResults(Query):
     """
 
 
+
 class PopularPartitionsByNumberOfJobs(Query):
     """
     Generate a query to output:
         partition, number_of_jobs (total), avg_time (per job)
     """
-    @property
-    def statement(self):
-        cluster = self.ensure_parameter('cluster')
+    parameters = CommonUsageStatQueryParams
 
-        return f"""
+    statement = """
         SELECT partition,
             COUNT(distinct user_name) as user_count,
             COUNT(distinct job_id) AS number_of_jobs,
@@ -205,7 +186,7 @@ class PopularPartitionsByNumberOfJobs(Query):
                 WHERE
                     job_state in ('COMPLETED','CANCELLED','FAILED')
                     AND user_name != ''
-                    AND cluster = '{cluster}'
+                    AND cluster = :cluster
                 GROUP BY job_id
             )
         GROUP BY partition
@@ -216,13 +197,15 @@ class PopularPartitionsByNumberOfJobs(Query):
 class JobsExceedingRequestedResources(Query):
     """
     Generate a query to output:
-        partition, number_of_jobs (total), avg_time (per job)
+        job_id,
+        max_cpu_util_exceeded_requested,
+        avg_cpu_util_exceeded_requested,
+        max_virtual_memory_exceeded_requested,
+        gpus_used_exceeded_requested
     """
-    @property
-    def statement(self):
-        cluster = self.ensure_parameter('cluster')
+    parameters = CommonUsageStatQueryParams
 
-        return fr"""
+    statement = r"""
         with job_requested_resources as (
             select distinct on (job_id)
                 job_id,
@@ -247,7 +230,7 @@ class JobsExceedingRequestedResources(Query):
             left join lateral
                 regexp_match(requested_resources, '\ymem=(\d+(?:\.\d+)?)\s*([KMGTP])?', 'i')
                 as mem on true
-            where cluster = '{cluster}'
+            where cluster = :cluster
             and "time" >= now() - interval '1 month'
             and job_state = 'RUNNING'
             and job_id not in (797193,797235,797236,797329,797330,797331)
@@ -269,7 +252,7 @@ class JobsExceedingRequestedResources(Query):
                 sum(sp.data_cancelled)  as sum_data_cancelled
             from sample_process sp
             join job_requested_resources r on sp.job = r.job_id
-            where sp.cluster = 'ex3.simula.no'
+            where sp.cluster = :cluster
             and sp."time" >= now() - interval '1 hour'
             group by sp.job, r.cpus_requested, r.mem_requested_mib, r.gpus_requested, sp."time"
         ),
@@ -310,8 +293,6 @@ class JobsExceedingRequestedResources(Query):
 
 
 class QueryMaker:
-    db: Database
-
     _queries: ClassVar[dict[str, type[Query]]] = {
             "user-job-results": UserJobResults,
             "user-success-job-results": UserSuccessJobResults,
@@ -320,14 +301,11 @@ class QueryMaker:
             "jobs-exceeding-resource-usage": JobsExceedingRequestedResources,
     }
 
-    def __init__(self, db: Database):
-        self.db = db
-
-    def create(self, name: str, parameters: dict[str, Any] = {}) -> Query:
+    def create(self, db: Database, name: str) -> Query:
         if name not in self._queries:
-            raise ValueError(f"{self.__class__} .run: no query '{name}' exists")
+            raise ValueError(f"QueryMaker.create: no query '{name}' exists")
 
-        return  self._queries[name](self.db, parameters)
+        return  self._queries[name](db)
 
     @classmethod
     def list_available(cls) -> list[str]:

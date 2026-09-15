@@ -505,16 +505,15 @@ class ClusterDB(Database):
         if time_in_s is None:
             time_in_s = utcnow().timestamp()
 
-        query = PartitionsQuery(self, parameters = {
+        query = PartitionsQuery(self)
+        start = time.time()
+        result = await query.execute_async({
                 'cluster': cluster,
                 'time_in_s': time_in_s,
                 'interval_in_s': interval_in_s
-            }
-        )
-        start = time.time()
-        result = await query.execute_async()
+            })
         logger.info(f"get_partitions_base: took {time.time() - start} s")
-        return result.to_dict(orient="records")
+        return result
 
         #where = Partition.cluster == cluster
         #where &= (Partition.time <= fromtimestamp(time_in_s))

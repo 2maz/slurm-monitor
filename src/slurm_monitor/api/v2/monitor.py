@@ -274,7 +274,7 @@ async def list_queries(
     return { 'queries': QueryMaker.list_available() }
 
 @api_router.get("/cluster/{cluster}/queries/{query_name}",
-    summary="Execute the 'named' query",
+    summary="Execute the named query",
     tags=["cluster"],
     response_model=None
 )
@@ -282,19 +282,16 @@ async def queries(
     _: Annotated[TokenPayload, Depends(get_token_payload)],
     cluster: str,
     query_name: str,
-    dbi: ClusterDB = Depends(DBManager.get_database)
+    dbi: Annotated[ClusterDB, Depends(DBManager.get_database)]
 ):
     try:
-        query_maker = QueryMaker(dbi)
-        query = query_maker.create(query_name, { 'cluster': cluster })
-        df = await query.execute_async()
-
-        return df.to_dict(orient="records")
-    except Exception as e:
+        query = QueryMaker().create(dbi, query_name)
+    except ValueError as e:
         raise HTTPException(
-                status_code=404,
-                detail=f"Failed to execute query: '{query_name}' -- {e}"
+            status_code=404,
+            detail=f"Query not found: '{query_name}' -- {e}"
         )
+    return await query.execute_async(params={'cluster': cluster})
 
 @api_router.get(
         "/cluster/{cluster}/benchmarks/{benchmark_name}",
@@ -334,15 +331,14 @@ def benchmarks(
         tags=["gpu"]
 )
 def spec_gpu(gpu_name: str):
+    datasheet_url = GPUInfo.get_datasheet(gpu_name)
+    if datasheet_url:
+        return RedirectResponse(url=datasheet_url)
 
-        datasheet_url = GPUInfo.get_datasheet(gpu_name) 
-        if datasheet_url:
-            return RedirectResponse(url=datasheet_url)
-
-        return HTTPException(
-                status_code=404,
-                detail=f"Failed to locate a specsheet for: {gpu_name}"
-        )
+    return HTTPException(
+            status_code=404,
+            detail=f"Failed to locate a specsheet for: {gpu_name}"
+    )
 
 
 ####### v1 ###############################
