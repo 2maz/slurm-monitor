@@ -69,9 +69,7 @@ class DBManager:
 
             try:
                 if app_settings.db_schema_version == "v1":
-                    from slurm_monitor.db.v1.db import SlurmMonitorDB
-
-                    db = SlurmMonitorDB(app_settings.database)
+                    raise RuntimeError("v1 schema is no longer supported")
                 elif app_settings.db_schema_version == "v2":
                     from slurm_monitor.db.v2.db import ClusterDB
 

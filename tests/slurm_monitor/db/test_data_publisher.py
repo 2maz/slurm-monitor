@@ -6,7 +6,7 @@ import signal
 import pytest
 from psutil import Process
 
-from slurm_monitor.db.v1.data_publisher import (
+from slurm_monitor.db.data_publisher import (
     Controller,
     DataCollector,
     NodeStatus,
@@ -186,7 +186,7 @@ def test_main(mocker, mock_slurm_command_hint):
         def __init__(self, **kwargs):
             pass
 
-    mock_producer = mocker.patch("slurm_monitor.db.v1.data_publisher.KafkaProducer")
+    mock_producer = mocker.patch("slurm_monitor.db.data_publisher.KafkaProducer")
     mock_producer_instance = mock_producer.return_value
 
     published_messages = []
@@ -198,7 +198,7 @@ def test_main(mocker, mock_slurm_command_hint):
 
     mock_producer_instance.send.side_effect = send_side_effect
 
-    mock_consumer = mocker.patch("slurm_monitor.db.v1.data_publisher.KafkaConsumer")
+    mock_consumer = mocker.patch("slurm_monitor.db.data_publisher.KafkaConsumer")
     mock_consumer_instance = mock_consumer.return_value
     mock_consumer_instance.poll.return_value = None
 
