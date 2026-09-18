@@ -3,7 +3,7 @@ from argparse import ArgumentParser
 from logging.handlers import TimedRotatingFileHandler
 
 from slurm_monitor.app_settings import AppSettings
-from slurm_monitor.autodeploy import AutoDeployer, AutoDeployerSonar
+from slurm_monitor.autodeploy import AutoDeployerSonar
 from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.config import SLURM_MONITOR_LOG_DATE_FORMAT, SLURM_MONITOR_LOG_FORMAT, SLURM_MONITOR_LOG_STYLE
 
