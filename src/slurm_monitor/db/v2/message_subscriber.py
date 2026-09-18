@@ -18,9 +18,10 @@ from logging.handlers import QueueHandler, TimedRotatingFileHandler
 from operator import itemgetter
 from pathlib import Path
 
-import kafka
 import sqlalchemy
-from kafka import KafkaConsumer, TopicPartition
+from kafka import KafkaConsumer
+from kafka.errors import KafkaError
+from kafka.structs import TopicPartition
 from pydantic import BaseModel
 
 import slurm_monitor.db.v2.sonar as sonar
@@ -815,13 +816,25 @@ class MessageSubscriber:
         returns (its upper bound reached, or an unrecoverable error).
         """
         db = None
-        if self.database:
-            db = self.database.clone()
-            msg_handler = DBJsonImporter(db=db)
-        else:
-            msg_handler = Importer()
-
         try:
+            while self.database and db is None and not self._stop_event.is_set():
+                try:
+                    db = self.database.clone()
+                except Exception as e:
+                    msg = (
+                        f"{topic}: failed to open DB connection - retrying in {self.retry_timeout_in_s}s"
+                        f" (see {self.log_output}) - {e}"
+                    )
+                    logger.warning(msg)
+                    warnings.warn(msg, stacklevel=2)
+                    time.sleep(self.retry_timeout_in_s)
+
+            if self.database and db is None:
+                # _stop_event was set while still waiting for a DB connection
+                return
+
+            msg_handler = DBJsonImporter(db=db) if db else Importer()
+
             while not self._stop_event.is_set():
                 try:
                     logger.info(f"{topic}: subscribing")
@@ -871,7 +884,7 @@ class MessageSubscriber:
                         )
                     )
                     return
-                except kafka.errors.NoBrokersAvailable as e:
+                except KafkaError as e:
                     msg = (
                         f"{topic}: no brokers available using bootstrap_servers: {self.host}:{self.port} retrying"
                         f" in {self.retry_timeout_in_s}s (check {self.log_output}) - {e}"
