@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-from enum import Enum
-import logging
-import socket
-from typing import abstractmethod, ClassVar
 import datetime as dt
+import logging
 import re
+import socket
+from enum import Enum
 from pathlib import Path
-from pydantic import BaseModel
+from typing import ClassVar, abstractmethod
+
 import yaml
+from pydantic import BaseModel
 
 from slurm_monitor.utils.command import Command
 
 logger = logging.getLogger(__name__)
+
 
 # from .db_tables import GPUs, GPUStatus
 class GPUStatus(BaseModel):
@@ -43,7 +45,7 @@ class GPUProcessStatus(BaseModel):
     used_memory: int
 
 
-class GPU():
+class GPU:
     node: str
     _uuids: list[str]
 
@@ -108,14 +110,16 @@ class GPUInfo:
     count: int = 0
     framework: Framework | None = None
 
-    versions: dict[str,any] = {}
-    def __init__(self,
-            model: str | None = None,
-            count: int = 0,
-            memory_total: int = 0,
-            framework: Framework = Framework.UNKNOWN,
-            versions: dict[str,any] = {}
-            ):
+    versions: dict[str, any] = {}
+
+    def __init__(
+        self,
+        model: str | None = None,
+        count: int = 0,
+        memory_total: int = 0,
+        framework: Framework = Framework.UNKNOWN,
+        versions: dict[str, any] = {},
+    ):
 
         self.model = model
         self.count = count
@@ -132,7 +136,7 @@ class GPUInfo:
 
     @classmethod
     def get_datasheet(cls, gpu_name: str) -> str | None:
-        with open(cls.DATASHEETS, "r") as f:
+        with open(cls.DATASHEETS) as f:
             data = yaml.load(f, Loader=yaml.SafeLoader)
             known_manufacturers = data.keys()
 
@@ -149,8 +153,8 @@ class GPUInfo:
                 for gpu, attributes in gpus.items():
                     tokens = re.split(r"[ -.]", gpu_name.lower())
 
-                    if gpu.lower() in ' '.join(tokens):
-                        url = attributes.get('url', None)
+                    if gpu.lower() in " ".join(tokens):
+                        url = attributes.get("url", None)
                         if url:
                             return url
         return None

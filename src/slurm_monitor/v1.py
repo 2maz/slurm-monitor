@@ -2,33 +2,29 @@
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
+import logging
 import os
+import traceback
+from contextlib import asynccontextmanager
+from logging import getLogger
 
-
-from fastapi import FastAPI, Request, exception_handlers, HTTPException
+from fastapi import FastAPI, HTTPException, Request, exception_handlers
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.inmemory import InMemoryBackend
-
-from starlette.exceptions import HTTPException as StarletteHTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
-import traceback
-
-
-from slurm_monitor.utils.slurm import Slurm
-from slurm_monitor.app_settings import AppSettings
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from slurm_monitor.api.v1.router import app as api_v1_app
+from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.db.v1.data_collector import start_jobs_collection
 from slurm_monitor.db.v1.db import SlurmMonitorDB
-
-import logging
-from logging import getLogger
+from slurm_monitor.utils.slurm import Slurm
 
 logger = getLogger(__name__)
 logger.setLevel(logging.INFO)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -73,8 +69,12 @@ async def lifespan(app: FastAPI):
     if jobs_pool is not None:
         jobs_pool.stop()
 
+
 app = FastAPI(
-    title="slurm-monitor", description="slurm monitor", version="0.1", lifespan=lifespan
+    title="slurm-monitor",
+    description="slurm monitor",
+    version="0.1",
+    lifespan=lifespan,
 )
 
 
@@ -104,13 +104,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     logger.debug("", exc_info=exc)
     return await exception_handlers.request_validation_exception_handler(request, exc)
 
+
 @app.exception_handler(Exception)
 async def runtime_exception_handler(request: Request, exc: Exception):
     logger.warning(exc)
     traceback.print_tb(exc.__traceback__)
 
-    raise HTTPException(status_code=500,
-            detail=f"Internal Error: {exc}")
+    raise HTTPException(status_code=500, detail=f"Internal Error: {exc}")
+
 
 # Serve API. We want the API to take full charge of its prefix, not involve the SPA mount
 # at all, hence we use a submount rather than subrouter.

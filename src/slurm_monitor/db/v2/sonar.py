@@ -1,18 +1,23 @@
 from __future__ import annotations
-from slurm_monitor.db.v2.db_tables import ErrorMessage
+
 import dataclasses
-from enum import Enum
 import re
+from enum import Enum
+
+from slurm_monitor.db.v2.db_tables import ErrorMessage
+
 
 @dataclasses.dataclass
 class Meta:
     producer: str
     version: str
 
+
 @dataclasses.dataclass
 class Data:
     type: str
     attributes: dict[str, any]
+
 
 @dataclasses.dataclass
 class Message:
@@ -22,10 +27,10 @@ class Message:
 
 
 class TopicType(str, Enum):
-    cluster = 'cluster'
-    job = 'job'
-    sample = 'sample'
-    sysinfo = 'sysinfo'
+    cluster = "cluster"
+    job = "job"
+    sample = "sample"
+    sysinfo = "sysinfo"
 
     def get_topic(self, cluster: str) -> str:
         return f"{cluster}.{self.value}"
@@ -36,6 +41,7 @@ class TopicType(str, Enum):
             if topic.endswith(f".{t.value}"):
                 return t
         raise ValueError("TopicType.infer: '{topic}' does not have a value topic type suffix")
+
 
 class Sonar:
     @classmethod
@@ -53,7 +59,7 @@ class Sonar:
                 pattern_length = len(start)
 
                 use_zfill = (pattern_length == len(end)) and start.startswith("0")
-                for i in range(int(start), int(end)+1):
+                for i in range(int(start), int(end) + 1):
                     number = i
                     if use_zfill:
                         number = str(i).zfill(pattern_length)
@@ -70,7 +76,6 @@ class Sonar:
         if not m:
             raise ValueError(f"Given expression: '{hostname_range}' is not a hostname range")
 
-
     @classmethod
     def expand_hostname_range(cls, hostname_range: list | str) -> list[str]:
         """
@@ -85,13 +90,15 @@ class Sonar:
             return nodes
 
         if type(hostname_range) is not str:
-            raise ValueError(f"Expansion requires a string representation, not {type(hostname_range)} ({hostname_range})")
+            raise ValueError(
+                f"Expansion requires a string representation, not {type(hostname_range)} ({hostname_range})"
+            )
 
         # split at comma that are not within brackets
-        ranges = re.split(r',\s*(?![^\[]*\])', hostname_range)
+        ranges = re.split(r",\s*(?![^\[]*\])", hostname_range)
 
         for hostnames_expr in ranges:
-            includes_ranges = re.findall(r'(?P<pre>[^ \[\]]*)(?P<range>\[[\d,-]+\])(?P<post>[^ \[\]]*)', hostnames_expr)
+            includes_ranges = re.findall(r"(?P<pre>[^ \[\]]*)(?P<range>\[[\d,-]+\])(?P<post>[^ \[\]]*)", hostnames_expr)
             if not includes_ranges:
                 # single node name
                 nodes.append(hostnames_expr.strip())
@@ -103,12 +110,12 @@ class Sonar:
             for match_group in includes_ranges:
                 pre, hostname_range, post = match_group
                 if nodenames:
-                    nodenames = [x+pre for x in nodenames]
+                    nodenames = [x + pre for x in nodenames]
                 else:
                     nodenames = [pre]
                 expanded = cls.expand_simple_range(hostname_range)
-                nodenames = [n+str(e) for n in nodenames for e in expanded]
-                nodenames = [x+post for x in nodenames]
+                nodenames = [n + str(e) for n in nodenames for e in expanded]
+                nodenames = [x + post for x in nodenames]
 
             nodes += nodenames
 

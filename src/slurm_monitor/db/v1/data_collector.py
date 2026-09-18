@@ -1,22 +1,20 @@
-import subprocess
-from threading import Thread
-import time
 import datetime as dt
-from queue import Queue, Empty
+import logging
+import subprocess
+import time
+from queue import Empty, Queue
+from threading import Thread
 from typing import Generic, TypeVar
 
-import logging
-
+from slurm_monitor.db.v1.db import Database, SlurmMonitorDB
+from slurm_monitor.db.v1.db_tables import JobStatus
 from slurm_monitor.utils import utcnow
 from slurm_monitor.utils.slurm import Slurm
-
-from slurm_monitor.db.v1.db import SlurmMonitorDB, Database
-from slurm_monitor.db.v1.db_tables import JobStatus
-
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
 
 class Observer(Generic[T]):
     _samples: Queue
@@ -61,11 +59,7 @@ class DataCollector(Observer[T]):
 
     @staticmethod
     def get_user():
-        return (
-            subprocess.run("whoami", stdout=subprocess.PIPE)
-            .stdout.decode("utf-8")
-            .strip()
-        )
+        return subprocess.run("whoami", stdout=subprocess.PIPE).stdout.decode("utf-8").strip()
 
     def start(self):
         self._stop = False
@@ -74,11 +68,7 @@ class DataCollector(Observer[T]):
     def _run(self):
         start_time = None
         while not self._stop:
-            if (
-                start_time
-                and (dt.datetime.now() - start_time).total_seconds()
-                < self.sampling_interval_in_s
-            ):
+            if start_time and (dt.datetime.now() - start_time).total_seconds() < self.sampling_interval_in_s:
                 time.sleep(1)
             else:
                 try:
@@ -91,12 +81,13 @@ class DataCollector(Observer[T]):
                     # Dynamically increase the sampling interval for failing nodes, but cap at
                     # 15 min
                     self.sampling_interval_in_s = min(
-                        self.sampling_interval_in_s * 2, 15 * 60
+                        self.sampling_interval_in_s * 2,
+                        15 * 60,
                     )
                     logger.warning(
                         f"{self.name}: failed to collect data."
                         f" Increasing sampling interval to {self.sampling_interval_in_s} s."
-                        f" -- details: {e}"
+                        f" -- details: {e}",
                     )
 
                 start_time = dt.datetime.now()
@@ -118,7 +109,7 @@ class CollectorPool(Generic[T], Observer[T]):
     _stop: bool = False
     verbose: bool = True
 
-    def __init__(self, db: Database, name: str = ''):
+    def __init__(self, db: Database, name: str = ""):
         super().__init__()
 
         self.name = name
@@ -144,9 +135,10 @@ class CollectorPool(Generic[T], Observer[T]):
     def save(self, samples):
         prep_samples = []
         for s in samples:
-            if isinstance(s, JobStatus) and s.job_state != 'RUNNING':
-                job_status = self.db.fetch_first(JobStatus,
-                        where=(JobStatus.job_id == s.job_id) & (JobStatus.submit_time == s.submit_time)
+            if isinstance(s, JobStatus) and s.job_state != "RUNNING":
+                job_status = self.db.fetch_first(
+                    JobStatus,
+                    where=(JobStatus.job_id == s.job_id) & (JobStatus.submit_time == s.submit_time),
                 )
                 if job_status is not None:
                     s.gres_detail = job_status.gres_detail
@@ -196,6 +188,7 @@ class CollectorPool(Generic[T], Observer[T]):
         self.monitor_thread.join()
         self.save_thread.join()
 
+
 class JobStatusCollector(DataCollector[JobStatus], Observable[JobStatus]):
     user: str = None
 
@@ -214,9 +207,10 @@ class JobStatusCollector(DataCollector[JobStatus], Observable[JobStatus]):
 
         return [JobStatus.from_json(x) for x in response["jobs"]]
 
+
 def start_jobs_collection(database: SlurmMonitorDB | None = None) -> CollectorPool[JobStatus]:
     job_status_collector = JobStatusCollector()
-    jobs_pool = CollectorPool[JobStatus](db=database, name='job status')
+    jobs_pool = CollectorPool[JobStatus](db=database, name="job status")
     jobs_pool.add_collector(job_status_collector)
     jobs_pool.start()
     return jobs_pool

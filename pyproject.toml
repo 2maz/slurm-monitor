@@ -103,9 +103,6 @@ test = [
 [project.scripts]
 slurm-monitor = "slurm_monitor.cli.main:run"
 
-slurm-monitor-collector = "slurm_monitor.db.v0.data_collector:cli_run"
-slurm-monitor-migrate = "slurm_monitor.db.migrate:cli_run"
-
 [tool.mypy]
 ignore_missing_imports = true
 
@@ -126,6 +123,25 @@ source = ["src"]
 
 [tool.ruff]
 line-length = 120
+
+[tool.ruff.lint]
+# Explicit selection so the enabled rule set doesn't silently grow when ruff
+# is upgraded -- ruff's own default selection is not guaranteed stable across
+# versions. Extend this list deliberately, not implicitly.
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's Depends()/Query()/Path() are meant to be called in argument
+# defaults -- that's the framework's DI pattern, not the bug B008 looks for.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path"]
 
 [tool.isort]
 multi_line_output = 8

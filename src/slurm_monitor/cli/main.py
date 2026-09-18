@@ -1,33 +1,26 @@
-from argparse import ArgumentParser
-import sys
 import logging
+import sys
 import traceback
+from argparse import ArgumentParser
 from logging import getLogger
 
-from slurm_monitor.cli.base import BaseParser
-from slurm_monitor.cli.db import DBParser
-from slurm_monitor.cli.probe import ProbeParser
-from slurm_monitor.cli.listen import ListenParser, ListenUiParser
-from slurm_monitor.cli.system_info import SystemInfoParser
+import slurm_monitor.timescaledb.dialect  # noqa
+import slurm_monitor.timescaledb.functions  # noqa
+from slurm_monitor import __version__
+from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.cli.autodeploy import AutoDeployParser
+from slurm_monitor.cli.base import BaseParser
+from slurm_monitor.cli.data_import import ImportParser
+from slurm_monitor.cli.db import DBParser
+from slurm_monitor.cli.listen import ListenParser, ListenUiParser
 from slurm_monitor.cli.mcp import MCPParser
+from slurm_monitor.cli.probe import ProbeParser
 from slurm_monitor.cli.query import QueryParser
 from slurm_monitor.cli.restapi import RestapiParser
 from slurm_monitor.cli.spec import SpecParser
-from slurm_monitor.cli.data_import import ImportParser
+from slurm_monitor.cli.system_info import SystemInfoParser
 from slurm_monitor.cli.test import TestParser
-
-from slurm_monitor.app_settings import AppSettings
-
-from slurm_monitor import __version__
-from slurm_monitor.config import (
-    SLURM_MONITOR_LOG_FORMAT,
-    SLURM_MONITOR_LOG_STYLE,
-    SLURM_MONITOR_LOG_DATE_FORMAT
-)
-
-import slurm_monitor.timescaledb.dialect #noqa
-import slurm_monitor.timescaledb.functions #noqa
+from slurm_monitor.config import SLURM_MONITOR_LOG_DATE_FORMAT, SLURM_MONITOR_LOG_FORMAT, SLURM_MONITOR_LOG_STYLE
 
 logging.basicConfig(
     format=SLURM_MONITOR_LOG_FORMAT,
@@ -51,22 +44,27 @@ class MainParser(ArgumentParser):
         # This is mainly here to provide documentation,
         # the actual loading need to be done in AppSettings, since this
         # will be initialized before the parser is parsing the arguments
-        self.add_argument("--env-file",
-                          type=str,
-                          default=".env",
-                          help="Set the env-file"
+        self.add_argument(
+            "--env-file",
+            type=str,
+            default=".env",
+            help="Set the env-file",
         )
 
     def attach_subcommand_parser(
-        self, subcommand: str, help: str, parser_klass: BaseParser
+        self,
+        subcommand: str,
+        help: str,
+        parser_klass: BaseParser,
     ):
-        if not hasattr(self, 'subparsers'):
+        if not hasattr(self, "subparsers"):
             # lazy initialization, since it cannot be part of the __init__ function
             # otherwise random errors
             self.subparsers = self.add_subparsers(help="sub-command help")
 
         subparser = self.subparsers.add_parser(subcommand)
         parser_klass(parser=subparser)
+
 
 def run():
     AppSettings.initialize(env_file_required=False)
@@ -75,73 +73,73 @@ def run():
     main_parser.attach_subcommand_parser(
         subcommand="auto-deploy",
         help="Watch status messages and auto-deploy nodes if needed",
-        parser_klass=AutoDeployParser
+        parser_klass=AutoDeployParser,
     )
 
     main_parser.attach_subcommand_parser(
         subcommand="db",
         help="Connect (create/upgrade) to database",
-        parser_klass=DBParser
+        parser_klass=DBParser,
     )
 
     main_parser.attach_subcommand_parser(
         subcommand="import",
         help="Import data into the database",
-        parser_klass=ImportParser
+        parser_klass=ImportParser,
     )
 
     main_parser.attach_subcommand_parser(
         subcommand="listen",
         help="Listen to monitor messages",
-        parser_klass=ListenParser
+        parser_klass=ListenParser,
     )
 
     main_parser.attach_subcommand_parser(
         subcommand="listen-ui",
         help="Display status of listener",
-        parser_klass=ListenUiParser
+        parser_klass=ListenUiParser,
     )
 
     main_parser.attach_subcommand_parser(
         subcommand="mcp",
         help="Start a Model Context Protocol (MCP) server for the RESTAPI",
-        parser_klass=MCPParser
+        parser_klass=MCPParser,
     )
 
     main_parser.attach_subcommand_parser(
         subcommand="probe",
         help="Probe/monitor system",
-        parser_klass=ProbeParser
+        parser_klass=ProbeParser,
     )
 
     main_parser.attach_subcommand_parser(
         subcommand="query",
         help="Query the database",
-        parser_klass=QueryParser
+        parser_klass=QueryParser,
     )
 
     main_parser.attach_subcommand_parser(
         subcommand="restapi",
         help="Start the restapi",
-        parser_klass=RestapiParser
+        parser_klass=RestapiParser,
     )
 
     main_parser.attach_subcommand_parser(
         subcommand="spec",
         help="Validate implementation of specs",
-        parser_klass=SpecParser
+        parser_klass=SpecParser,
     )
 
     main_parser.attach_subcommand_parser(
         subcommand="system-info",
         help="Extract system information",
-        parser_klass=SystemInfoParser
+        parser_klass=SystemInfoParser,
     )
 
     main_parser.attach_subcommand_parser(
         subcommand="test",
         help="Create a test database",
-        parser_klass=TestParser
+        parser_klass=TestParser,
     )
 
     args, unknown_args = main_parser.parse_known_args()
@@ -156,8 +154,8 @@ def run():
 
     if hasattr(args, "active_subparser"):
         try:
-            active_subparser = getattr(args, "active_subparser")
-            active_subparser.unknown_args  = unknown_args
+            active_subparser = args.active_subparser
+            active_subparser.unknown_args = unknown_args
             active_subparser.execute(args)
         except Exception as e:
             if args.verbose:
@@ -166,6 +164,7 @@ def run():
             sys.exit(-1)
     else:
         main_parser.print_help()
+
 
 if __name__ == "__main__":
     run()

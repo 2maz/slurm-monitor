@@ -1,28 +1,24 @@
-import platform
-import psutil
 import asyncio
-from kafka import KafkaConsumer, KafkaProducer
-
 import datetime as dt
-from typing import TypeVar, Callable
-
+import json
+import logging
 import os
+import platform
+import re
 import signal
 import socket
-import json
+from collections.abc import Callable
+from typing import TypeVar
+
+import psutil
+from kafka import KafkaConsumer, KafkaProducer
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
-import logging
-import re
 
+from slurm_monitor.devices.gpu import GPUProcessStatus, GPUStatus
 from slurm_monitor.utils import utcnow
-from slurm_monitor.utils.process import ProcessStats, JobMonitor
+from slurm_monitor.utils.process import JobMonitor, ProcessStats
 from slurm_monitor.utils.system_info import SystemInfo
-
-from slurm_monitor.devices.gpu import (
-    GPUStatus,
-    GPUProcessStatus
-)
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +27,12 @@ KAFKA_PROBE_CONTROL_TOPIC = "slurm-monitor-probe-control"
 
 T = TypeVar("T")
 
+
 class CPUStatus(BaseModel):
     local_id: int
     cpu_model: str
     cpu_percent: float
+
 
 class MemoryStatus(BaseModel):
     total: int
@@ -50,6 +48,7 @@ class MemoryStatus(BaseModel):
     shared: int = 0
     slab: int = 0
 
+
 class NodeStatus(BaseSettings):
     node: str
     cpus: list[CPUStatus]
@@ -60,7 +59,8 @@ class NodeStatus(BaseSettings):
 
     timestamp: dt.datetime
 
-class DataCollector():
+
+class DataCollector:
     sampling_interval_in_s: int
     name: str
 
@@ -68,11 +68,12 @@ class DataCollector():
         self.name = name
         self.sampling_interval_in_s = sampling_interval_in_s
 
-    async def collect(self,
-            shutdown_event: asyncio.Event,
-            publish_fn: Callable[[NodeStatus], bool],
-            max_samples: int | None = None
-        ):
+    async def collect(
+        self,
+        shutdown_event: asyncio.Event,
+        publish_fn: Callable[[NodeStatus], bool],
+        max_samples: int | None = None,
+    ):
         samples_collected = 0
         while not shutdown_event.is_set():
             try:
@@ -99,6 +100,7 @@ class DataCollector():
     def get_node_status(self) -> NodeStatus:
         raise NotImplementedError()
 
+
 class NodeStatusCollector(DataCollector):
     system_info: SystemInfo
 
@@ -121,24 +123,23 @@ class NodeStatusCollector(DataCollector):
         timestamp = utcnow()
         cpu_model = self.system_info.cpu_info.get_cpu_model()
         cpu_status = [
-                CPUStatus(
-                    cpu_model=cpu_model,
-                    cpu_percent=percent,
-                    local_id=idx)
-                for idx, percent in enumerate(psutil.cpu_percent(percpu=True))
+            CPUStatus(cpu_model=cpu_model, cpu_percent=percent, local_id=idx)
+            for idx, percent in enumerate(psutil.cpu_percent(percpu=True))
         ]
 
         memory_status = MemoryStatus(**psutil.virtual_memory()._asdict())
 
         job_status = JobMonitor.get_active_jobs()
         return NodeStatus(
-                node=platform.node(),
-                gpus=gpu_status,
-                gpu_processes=gpu_processes,
-                cpus=cpu_status,
-                memory=memory_status,
-                jobs=job_status.jobs,
-                timestamp=timestamp)
+            node=platform.node(),
+            gpus=gpu_status,
+            gpu_processes=gpu_processes,
+            cpus=cpu_status,
+            memory=memory_status,
+            jobs=job_status.jobs,
+            timestamp=timestamp,
+        )
+
 
 class Controller:
     collector: DataCollector
@@ -147,11 +148,14 @@ class Controller:
 
     hostname: str
 
-    def __init__(self, collector: DataCollector,
-            bootstrap_servers: str,
-            shutdown_event: asyncio.Event,
-            listen_interval_in_s: int = 2,
-            subscriber_topic: str = KAFKA_PROBE_CONTROL_TOPIC):
+    def __init__(
+        self,
+        collector: DataCollector,
+        bootstrap_servers: str,
+        shutdown_event: asyncio.Event,
+        listen_interval_in_s: int = 2,
+        subscriber_topic: str = KAFKA_PROBE_CONTROL_TOPIC,
+    ):
         self.consumer = KafkaConsumer(KAFKA_PROBE_CONTROL_TOPIC, bootstrap_servers=bootstrap_servers)
         self.collector = collector
         self.shutdown_event = shutdown_event
@@ -199,11 +203,14 @@ class Controller:
 
 
 # Main function to run the app and scheduler
-async def main(*, host: str, port: int,
-        publisher_topic: str = KAFKA_NODE_STATUS_TOPIC,
-        subscriber_topic: str = KAFKA_PROBE_CONTROL_TOPIC,
-        max_samples: int | None = None
-        ):
+async def main(
+    *,
+    host: str,
+    port: int,
+    publisher_topic: str = KAFKA_NODE_STATUS_TOPIC,
+    subscriber_topic: str = KAFKA_PROBE_CONTROL_TOPIC,
+    max_samples: int | None = None,
+):
     shutdown_event = asyncio.Event()
 
     broker = f"{host}:{port}"
@@ -211,8 +218,8 @@ async def main(*, host: str, port: int,
     logger.info(f"Running status collector - gpus: {status_collector.system_info.gpu_info}")
 
     node_status_producer = KafkaProducer(
-            value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8'),
-            bootstrap_servers=broker
+        value_serializer=lambda v: json.dumps(v, default=str).encode("utf-8"),
+        bootstrap_servers=broker,
     )
 
     def publish_fn(sample: NodeStatus):
@@ -227,16 +234,14 @@ async def main(*, host: str, port: int,
 
     # Schedule the periodic publisher
     collector_task = asyncio.create_task(
-            status_collector.collect(
-                shutdown_event=shutdown_event,
-                publish_fn=publish_fn,
-                max_samples=max_samples)
-            )
-    controller = Controller(status_collector,
-            bootstrap_servers=broker,
-            shutdown_event=shutdown_event,
-            subscriber_topic=subscriber_topic
-        )
+        status_collector.collect(shutdown_event=shutdown_event, publish_fn=publish_fn, max_samples=max_samples),
+    )
+    controller = Controller(
+        status_collector,
+        bootstrap_servers=broker,
+        shutdown_event=shutdown_event,
+        subscriber_topic=subscriber_topic,
+    )
     control_task = asyncio.create_task(controller.run())
 
     tasks = [control_task, collector_task]

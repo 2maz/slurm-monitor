@@ -3,33 +3,30 @@
 from __future__ import annotations
 
 import asyncio
+import gc
+import logging
+import traceback
 from contextlib import asynccontextmanager
+from logging import getLogger
 
-from fastapi import FastAPI, Request, exception_handlers, HTTPException
+from fastapi import FastAPI, HTTPException, Request, exception_handlers
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.inmemory import InMemoryBackend
-from fastapi_utils.tasks import repeat_every
 from fastapi_pagination import add_pagination
-
-from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi_utils.tasks import repeat_every
 from prometheus_fastapi_instrumentator import Instrumentator
-import traceback
-import gc
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
-
+from slurm_monitor.api.v2.router import app as api_v2_app
 from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.db_operations import DBManager
-from slurm_monitor.api.v2.router import app as api_v2_app
-from slurm_monitor.utils.api import find_endpoint_by_name
-from slurm_monitor.utils.api import createFastAPI
-
-import logging
-from logging import getLogger
+from slurm_monitor.utils.api import createFastAPI, find_endpoint_by_name
 
 logger = getLogger(__name__)
 logger.setLevel(logging.INFO)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -38,17 +35,17 @@ async def lifespan(app: FastAPI):
     https://fastapi.tiangolo.com/advanced/events/#lifespan
     """
     logging.basicConfig(
-        format='[{asctime}][{levelname:^8s}] {name}: {message}',
-        style='{',
-        datefmt='%Y-%m-%d %H:%M:%S',
+        format="[{asctime}][{levelname:^8s}] {name}: {message}",
+        style="{",
+        datefmt="%Y-%m-%d %H:%M:%S",
         level=logging.INFO,
     )
 
     logger.setLevel(logging.DEBUG)  # output of exception handlers above
     logger.info("Setting up cache ...")
     FastAPICache.init(
-            backend=InMemoryBackend(),
-            prefix="fastapi-cache"
+        backend=InMemoryBackend(),
+        prefix="fastapi-cache",
     )
 
     logger.info("Setting up database ...")
@@ -70,11 +67,11 @@ async def lifespan(app: FastAPI):
             logger.info("Prefetching has been stopped")
     logger.info("Shutting down ...")
 
+
 tags_metadata = [
     {
         "name": "cluster",
         "description": "Operations that give a high-level **cluster**-specific result",
-
     },
     {
         "name": "node",
@@ -83,19 +80,17 @@ tags_metadata = [
             "description": "test external",
             "url": "https://fastapi.tiangolo.com",
         },
-
     },
     {
         "name": "job",
         "description": "Operations that give **job**-specific results",
-
     },
 ]
 
 app = createFastAPI(
-        lifespan=lifespan,
-        openapi_tags=tags_metadata,
-      )
+    lifespan=lifespan,
+    openapi_tags=tags_metadata,
+)
 
 add_pagination(app)
 app.add_middleware(
@@ -124,6 +119,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     logger.debug("", exc_info=exc)
     return await exception_handlers.request_validation_exception_handler(request, exc)
 
+
 @app.exception_handler(Exception)
 async def runtime_exception_handler(request: Request, exc: Exception):
     logger.warning(exc)
@@ -134,8 +130,9 @@ async def runtime_exception_handler(request: Request, exc: Exception):
     # unfinished, which can surface as unrelated failures on later requests.
     return await exception_handlers.http_exception_handler(
         request,
-        HTTPException(status_code=500, detail=f"Internal Error: {exc}")
+        HTTPException(status_code=500, detail=f"Internal Error: {exc}"),
     )
+
 
 async def prefetch_data():
     logger.info("Prefetch starting")
@@ -147,7 +144,7 @@ async def prefetch_data():
     partitions_endpoint = find_endpoint_by_name(app=app, name="partitions")
 
     for cluster_data in clusters:
-        cluster = cluster_data['cluster']
+        cluster = cluster_data["cluster"]
 
         # DO NOT use a dynamic argument such as time_in_s, since that will
         # prevent the caching to work
@@ -164,6 +161,7 @@ async def prefetch_data():
     logger.debug("Running gc")
     gc.collect()
     logger.debug(f"Done running gc, post stats: {gc.get_stats()}")
+
 
 # Serve API. We want the API to take full charge of its prefix, not involve the SPA mount
 # at all, hence we use a submount rather than subrouter.

@@ -1,24 +1,24 @@
-from typing import AsyncGenerator
-
-from sqlalchemy.orm import sessionmaker
-from contextlib import contextmanager, asynccontextmanager
-from sqlalchemy.engine.url import URL, make_url
-from sqlalchemy import (
-        MetaData,
-        create_engine,
-        event,
-        inspect,
-        select,
-        text,
-)
-from sqlalchemy.exc import IntegrityError, InterfaceError
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import (
-        AsyncSession,
-        async_sessionmaker,
-        create_async_engine,
-)
 import logging
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager, contextmanager
+
+from sqlalchemy import (
+    MetaData,
+    create_engine,
+    event,
+    inspect,
+    select,
+    text,
+)
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.engine.url import URL, make_url
+from sqlalchemy.exc import IntegrityError, InterfaceError
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.orm import sessionmaker
 
 from slurm_monitor.db.settings import DatabaseSettings
 from slurm_monitor.db.v2.db_tables import TableBase
@@ -27,10 +27,10 @@ from slurm_monitor.db.v2.validation import Specification
 logger = logging.getLogger(__name__)
 
 # For performance reasons using half day as default history interval
-INTERVAL_12H = 3600*12
-INTERVAL_1DAY = 2*INTERVAL_12H
-INTERVAL_1WEEK = 7*INTERVAL_1DAY
-INTERVAL_2WEEKS = 14*INTERVAL_1DAY
+INTERVAL_12H = 3600 * 12
+INTERVAL_1DAY = 2 * INTERVAL_12H
+INTERVAL_1WEEK = 7 * INTERVAL_1DAY
+INTERVAL_2WEEKS = 14 * INTERVAL_1DAY
 
 DEFAULT_HISTORY_INTERVAL_IN_S = INTERVAL_12H
 
@@ -41,6 +41,7 @@ DB_POOL_SIZE = 25
 # Particularly implemented to handle large batches of SampleProcess/SampleDisk rows
 COPY_ROW_THRESHOLD = 2000
 
+
 def create_url(url_str: str, username: str | None, password: str | None) -> URL:
     url = make_url(url_str)
 
@@ -49,13 +50,15 @@ def create_url(url_str: str, username: str | None, password: str | None) -> URL:
         assert url.password or password
 
         url = url.set(
-            username=url.username or username, password=url.password or password
+            username=url.username or username,
+            password=url.password or password,
         )
     return url
 
 
 def _listify(obj_or_list):
     return obj_or_list if isinstance(obj_or_list, (tuple, list)) else [obj_or_list]
+
 
 class Database:
     def __init__(self, db_settings: DatabaseSettings):
@@ -65,7 +68,9 @@ class Database:
         self.db_settings = db_settings
 
         db_url = self.db_url = create_url(
-            db_settings.uri, db_settings.user, db_settings.password
+            db_settings.uri,
+            db_settings.user,
+            db_settings.password,
         )
 
         spec = Specification()
@@ -88,10 +93,11 @@ class Database:
 
         self.engine = create_engine(db_url, **engine_kwargs)
         logger.info(
-            f"Database with dialect: '{db_url.get_dialect().name}' detected - uri: {db_settings.uri}."
+            f"Database with dialect: '{db_url.get_dialect().name}' detected - uri: {db_settings.uri}.",
         )
 
         if db_url.get_dialect().name == "timescaledb":
+
             @event.listens_for(self.engine.pool, "connect")
             def _set_sqlite_params(dbapi_connection, *args):
                 cursor = dbapi_connection.cursor()
@@ -100,7 +106,6 @@ class Database:
 
         self.session_factory = sessionmaker(self.engine, expire_on_commit=False)
 
-
         self._metadata = MetaData()
         self._metadata.tables = {}
         self._metadata.bind = self.engine
@@ -108,9 +113,7 @@ class Database:
         for attr in dir(type(self)):
             v = getattr(self, attr)
             if isinstance(v, type) and issubclass(v, TableBase):
-                self._metadata.tables[v.__tablename__] = TableBase.metadata.tables[
-                    v.__tablename__
-                ]
+                self._metadata.tables[v.__tablename__] = TableBase.metadata.tables[v.__tablename__]
 
         if db_settings.create_missing:
             self._metadata.create_all(self.engine)
@@ -118,29 +121,32 @@ class Database:
         async_db_url = db_url
         if db_settings.uri.startswith("timescaledb://"):
             async_db_url = create_url(
-                    db_settings.uri.replace("timescaledb:","timescaledb+asyncpg:"),
-                    db_settings.user,
-                    db_settings.password
+                db_settings.uri.replace("timescaledb:", "timescaledb+asyncpg:"),
+                db_settings.user,
+                db_settings.password,
             )
 
         self.async_engine = create_async_engine(
-            async_db_url, pool_size=DB_POOL_SIZE, **async_engine_kwargs
+            async_db_url,
+            pool_size=DB_POOL_SIZE,
+            **async_engine_kwargs,
         )
         self.async_session_factory = async_sessionmaker(
-            self.async_engine, expire_on_commit=False
+            self.async_engine,
+            expire_on_commit=False,
         )
 
-        #from sqlalchemy_schemadisplay import create_schema_graph
+        # from sqlalchemy_schemadisplay import create_schema_graph
         ## create the pydot graph object by autoloading all tables via a bound metadata object
-        #graph = create_schema_graph(
+        # graph = create_schema_graph(
         #   engine=self.engine,
         #   metadata=self._metadata,
         #   show_datatypes=True, # The image would get nasty big if we'd show the datatypes
         #   show_indexes=False, # ditto for indexes
         #   rankdir='LR', # From left to right (instead of top to bottom)
         #   concentrate=True # Don't try to join the relation lines together
-        #)
-        #graph.write_png('/tmp/dbschema.png') # write out the file
+        # )
+        # graph.write_png('/tmp/dbschema.png') # write out the file
 
     def clone(self) -> "Database":
         """
@@ -195,7 +201,6 @@ class Database:
                 return description[0][0]
             return None
 
-
     def insert(self, db_obj):
         with self.make_writeable_session() as session:
             session.add_all(_listify(db_obj))
@@ -233,7 +238,9 @@ class Database:
         """
         async with self.make_writeable_async_session() as session:
             for table_cls, rows in self._group_by_table(db_obj).items():
-                if await self._try_bulk_write(session, table_cls, rows, add=True, ignore_integrity_errors=ignore_integrity_errors):
+                if await self._try_bulk_write(
+                    session, table_cls, rows, add=True, ignore_integrity_errors=ignore_integrity_errors
+                ):
                     continue
 
                 for obj in rows:
@@ -268,7 +275,9 @@ class Database:
         """
         async with self.make_writeable_async_session() as session:
             for table_cls, rows in self._group_by_table(db_obj).items():
-                if await self._try_bulk_write(session, table_cls, rows, add=False, ignore_integrity_errors=ignore_integrity_errors):
+                if await self._try_bulk_write(
+                    session, table_cls, rows, add=False, ignore_integrity_errors=ignore_integrity_errors
+                ):
                     continue
 
                 # Use by-row commit as fallback, when bulk write fails
@@ -333,10 +342,12 @@ class Database:
             # than relying on a "doesn't start with _sa_" guess to strip out
             # SQLAlchemy's own instance-state bookkeeping.
             set_attrs = table_cls.known_columns(**inspect(row).dict)
-            values.append({
-                name: set_attrs.get(name, Database._resolve_default(column_defaults.get(name)))
-                for name in all_columns
-            })
+            values.append(
+                {
+                    name: set_attrs.get(name, Database._resolve_default(column_defaults.get(name)))
+                    for name in all_columns
+                }
+            )
 
         return values
 
@@ -354,7 +365,9 @@ class Database:
         return default.arg({}) if default.is_callable else default.arg
 
     @staticmethod
-    async def _try_bulk_write(session: AsyncSession, table_cls: type, rows: list, add: bool, ignore_integrity_errors: bool) -> bool:
+    async def _try_bulk_write(
+        session: AsyncSession, table_cls: type, rows: list, add: bool, ignore_integrity_errors: bool
+    ) -> bool:
         """
         Attempt one bulk INSERT (add=True) or upsert (add=False, `INSERT ...
         ON CONFLICT DO UPDATE`) statement covering all of `rows`.
@@ -429,7 +442,7 @@ class Database:
 
         num_columns = len(table_cls.__table__.columns)
         max_rows = max(1, Database.POSTGRES_MAX_QUERY_PARAMS // num_columns)
-        return [values[i:i + max_rows] for i in range(0, len(values), max_rows)]
+        return [values[i : i + max_rows] for i in range(0, len(values), max_rows)]
 
     @staticmethod
     async def _asyncpg_connection(session: AsyncSession):
@@ -464,7 +477,9 @@ class Database:
             async with session.begin_nested():
                 asyncpg_connection = await Database._asyncpg_connection(session)
                 await asyncpg_connection.copy_records_to_table(
-                    table_cls.__tablename__, records=records, columns=columns
+                    table_cls.__tablename__,
+                    records=records,
+                    columns=columns,
                 )
             return True
         except Exception as e:
@@ -507,16 +522,18 @@ class Database:
                 # again later on the same connection
                 await asyncpg_connection.execute(
                     f'CREATE TEMP TABLE IF NOT EXISTS "{staging_table}" '
-                    f"(LIKE {table_cls.__tablename__} INCLUDING DEFAULTS)"
+                    f"(LIKE {table_cls.__tablename__} INCLUDING DEFAULTS)",
                 )
                 await asyncpg_connection.execute(f'TRUNCATE "{staging_table}"')
                 await asyncpg_connection.copy_records_to_table(
-                    staging_table, records=records, columns=columns
+                    staging_table,
+                    records=records,
+                    columns=columns,
                 )
                 await asyncpg_connection.execute(
                     f"INSERT INTO {table_cls.__tablename__} ({column_list}) "
                     f'SELECT {column_list} FROM "{staging_table}" '
-                    f"ON CONFLICT ({conflict_target}) DO NOTHING"
+                    f"ON CONFLICT ({conflict_target}) DO NOTHING",
                 )
             return True
         except Exception as e:
@@ -550,7 +567,7 @@ class Database:
             yield session
             if session.deleted or session.dirty or session.new:
                 raise RuntimeError(
-                    "Found potentially modified state in a non-writable session"
+                    "Found potentially modified state in a non-writable session",
                 )
         except:
             session.rollback()
@@ -577,7 +594,7 @@ class Database:
             yield session
             if session.deleted or session.dirty or session.new:
                 raise Exception(
-                    "Found potentially modified state in a non-writable session"
+                    "Found potentially modified state in a non-writable session",
                 )
         except InterfaceError:
             # the underlying DBAPI connection itself is broken (e.g.
@@ -610,11 +627,9 @@ class Database:
         finally:
             await session.close()
 
-    async def _fetch_async(self, db_cls,
-            where=None,
-            limit: int | None = None,
-            order_by=None,
-            _reduce=None, _unpack=True):
+    async def _fetch_async(
+        self, db_cls, where=None, limit: int | None = None, order_by=None, _reduce=None, _unpack=True
+    ):
         query = select(*_listify(db_cls))
         if where is not None:
             query = query.where(where)
@@ -652,4 +667,4 @@ class Database:
                 raise RuntimeError("No entries. Could not pick first")
 
     async def fetch_latest_async(self, db_cls, where=None):
-       return await self.fetch_first_async(db_cls=db_cls, where=where, order_by=db_cls.time.desc())
+        return await self.fetch_first_async(db_cls=db_cls, where=where, order_by=db_cls.time.desc())

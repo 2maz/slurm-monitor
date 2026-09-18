@@ -1,72 +1,72 @@
 # from slurm_monitor.backend.worker import celery_app
 import datetime as dt
+from logging import Logger, getLogger
+from pathlib import Path
+from typing import Annotated
+
+import pandas as pd
+import yaml
 from fastapi import Depends, HTTPException, Query
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi_cache import FastAPICache
 from fastapi_cache.decorator import cache
-from logging import getLogger, Logger
-import pandas as pd
-from pathlib import Path
-import re
-from typing import Annotated
-import yaml
 
-from slurm_monitor.db.v2.db import ClusterDB
-from slurm_monitor.utils import utcnow
-from slurm_monitor.devices.gpu import GPUInfo
+from slurm_monitor.api.v2.routes import RequiredPermissions, TokenPayload, api_router, get_token_payload
 from slurm_monitor.app_settings import AppSettings
+from slurm_monitor.db.v2.db import ClusterDB
+from slurm_monitor.db.v2.query import QueryMaker
 from slurm_monitor.db_operations import DBManager
-from slurm_monitor.api.v2.routes import (
-    api_router,
-    get_token_payload,
-    RequiredPermissions,
-    TokenPayload
-)
+from slurm_monitor.devices.gpu import GPUInfo
+from slurm_monitor.utils import utcnow
 
 from .response_models import (
+    JobProfileResultItem,
+    JobQueryResultItem,
     PartitionResponse,
     QueriesResponse,
-    JobQueryResultItem,
-    JobProfileResultItem,
 )
-
-from slurm_monitor.db.v2.query import QueryMaker
 
 logger: Logger = getLogger(__name__)
 
-@api_router.get("/clear_cache",
-                summary="Clear the FastAPI cache",
+
+@api_router.get(
+    "/clear_cache",
+    summary="Clear the FastAPI cache",
 )
 async def clear_cache(
-        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
-    ):
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+):
     await FastAPICache.clear()
     return {"message": "Cache cleared"}
 
-@api_router.get("/cluster/{cluster}/partitions",
-        summary="Partitions available in a given cluster",
-        tags=["cluster"],
-        response_model=list[PartitionResponse]
+
+@api_router.get(
+    "/cluster/{cluster}/partitions",
+    summary="Partitions available in a given cluster",
+    tags=["cluster"],
+    response_model=list[PartitionResponse],
 )
 @cache(expire=120)
 async def partitions(
-        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
-        cluster: str,
-        time_in_s: int | None = None,
-        dbi = Depends(DBManager.get_database)
-        ):
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    cluster: str,
+    time_in_s: int | None = None,
+    dbi=Depends(DBManager.get_database),
+):
     """
     Get status of partitions of a cluster (for a specific time point)
     """
     return await dbi.get_partitions(cluster, time_in_s)
 
-@api_router.get("/user",
-        summary="Given information about the currently logged in user -- only available with OAuth in use",
-        response_model=TokenPayload
+
+@api_router.get(
+    "/user",
+    summary="Given information about the currently logged in user -- only available with OAuth in use",
+    response_model=TokenPayload,
 )
 async def user(
-        token_payload: Annotated[TokenPayload, Depends(RequiredPermissions([]))],
-        ):
+    token_payload: Annotated[TokenPayload, Depends(RequiredPermissions([]))],
+):
     """
     Get status of partitions of a cluster (for a specific time point)
     """
@@ -74,18 +74,18 @@ async def user(
 
 
 #### Results sorted by jobs
-#@api_router.get("/cluster/{cluster}/nodes/{nodename}/cpu/timeseries",
+# @api_router.get("/cluster/{cluster}/nodes/{nodename}/cpu/timeseries",
 #                response_model=dict[str, list[NodeJobSampleProcessTimeseriesResponse]])
-#@api_router.get("/cluster/{cluster}/nodes/cpu/timeseries",
+# @api_router.get("/cluster/{cluster}/nodes/cpu/timeseries",
 #                response_model=dict[str, list[NodeJobSampleProcessTimeseriesResponse]])
-#async def nodes_process_timeseries(
+# async def nodes_process_timeseries(
 #    cluster: str,
 #    nodename: str | None = None,
 #    start_time_in_s: float | None = None,
 #    end_time_in_s: float | None = None,
 #    resolution_in_s: int | None = None,
 #    dbi=Depends(DBManager.get_database),
-#):
+# ):
 #    """
 #    Get node-related timeseries data for processes running on cpu
 #    """
@@ -106,19 +106,19 @@ async def user(
 #            )
 #        )
 #    return { node : (await tasks[node]) for node in nodes}
-#except Exception as e:
+# except Exception as e:
 #    raise HTTPException(status_code=500,
 #            detail=str(e))
 
 
-#@api_router.get("/cluster/{cluster}/nodes/{nodename}/process/cpu/timeseries",
+# @api_router.get("/cluster/{cluster}/nodes/{nodename}/process/cpu/timeseries",
 #                response_model=dict[str, CPUMemoryProcessTimeSeriesResponse])
-#@api_router.get("/cluster/{cluster}/nodes/process/cpu/timeseries",
+# @api_router.get("/cluster/{cluster}/nodes/process/cpu/timeseries",
 #                response_model=dict[str, CPUMemoryProcessTimeSeriesResponse])
-#@api_router.get("/cluster/{cluster}/nodes/{nodename}/jobs/{job_id}/process/cpu/timeseries",
+# @api_router.get("/cluster/{cluster}/nodes/{nodename}/jobs/{job_id}/process/cpu/timeseries",
 #                response_model=dict[str, CPUMemoryProcessTimeSeriesResponse])
 ##@api_router.get("/cluster/{cluster}/jobs/{job_id}/process/cpu/util")
-#async def nodes_process_cpu_util(
+# async def nodes_process_cpu_util(
 #    cluster: str,
 #    nodename: str | None = None,
 #    job_id: int | None = None,
@@ -126,7 +126,7 @@ async def user(
 #    end_time_in_s: float | None = None,
 #    resolution_in_s: int | None = None,
 #    dbi=Depends(DBManager.get_database),
-#):
+# ):
 #    try:
 #        start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
 #                start_time_in_s=start_time_in_s,
@@ -171,15 +171,15 @@ async def user(
 ## DASHBOARD RELATED
 @api_router.get("/jobquery", response_model=list[JobQueryResultItem])
 async def dashboard_job_query(
-        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
-        cluster: str | None = None,
-        user: str = '-',
-        host: str = '',
-        job_id: str = '',
-        to: str = '',
-        _from: str = Query(default='', alias='from'),
-        fmt: str = ''
-    ):
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    cluster: str | None = None,
+    user: str = "-",
+    host: str = "",
+    job_id: str = "",
+    to: str = "",
+    _from: str = Query(default="", alias="from"),
+    fmt: str = "",
+):
 
     # query job
     # user
@@ -196,113 +196,116 @@ async def dashboard_job_query(
     host.split(",")
     job_id.split(",")
 
-    #dbi = DBManager.get_database()
-    #await jobs = dbi.query_jobs(
+    # dbi = DBManager.get_database()
+    # await jobs = dbi.query_jobs(
     #    cluster=cluster,
     #    user_id=None if user == '-' else user,
     #    node=host if host != '' else None,
     #    job_id=int(job_id) if job_id != '' else None,
     #    start_after_in_s=dt.datetime.fromisoformat(_from) if _from != '' else None,
     #    end_after_in_s=dt.datetime.fromisoformat(to) if to != '' else None
-    #)
+    # )
 
+    return [
+        {
+            "job": "0",
+            "user": "anyuser",
+            "host": "anyhost",
+            "duration": "100",
+            "start": "2025-04-23 08:00:00",
+            "end": "2025-04-23 10:00:00",
+            "cmd": "test-command",
+            "cpu-peak": 50.0,
+            "res-peak": 50.0,
+            "mem-peak": 50.0,
+            "gpu-peak": 50.0,
+            "gpumem-peak": 50.0,
+        }
+    ]
 
-    return [{
-            'job': '0',
-            'user': "anyuser",
-            'host': "anyhost",
-            'duration': '100',
-            'start': '2025-04-23 08:00:00',
-            'end': '2025-04-23 10:00:00',
-            'cmd': 'test-command',
-
-            'cpu-peak': 50.0,
-            'res-peak': 50.0,
-            'mem-peak': 50.0,
-            'gpu-peak': 50.0,
-            'gpumem-peak': 50.0,
-           }]
 
 # FIMXE: parameters are inconsistently named
 @api_router.get("/jobprofile", response_model=list[JobProfileResultItem])
 async def dashboard_job_profile(
-        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
-        cluster: str | None = None,
-        user: str = '-',
-        host: str = '',
-        job: int = 0,
-        to: str = '',
-        _from: str = Query(default='', alias='from'),
-        fmt: str = ''
-    ):
-        end_time = utcnow()
-        current_time = end_time - dt.timedelta(hours=12)
-        point = {
-                     'command': 'test-command',
-                     'pid': 5555,
-                     'nproc': 1,
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    cluster: str | None = None,
+    user: str = "-",
+    host: str = "",
+    job: int = 0,
+    to: str = "",
+    _from: str = Query(default="", alias="from"),
+    fmt: str = "",
+):
+    end_time = utcnow()
+    current_time = end_time - dt.timedelta(hours=12)
+    point = {
+        "command": "test-command",
+        "pid": 5555,
+        "nproc": 1,
+        "cpu": 50.0,
+        "mem": 50.0,
+        "res": 10**5,
+        "gpu": 50.0,
+        "gpumem": 10**5,
+    }
+    samples = []
+    while current_time <= end_time:
+        samples.append(
+            {
+                "job": "0",
+                "time": str(current_time),
+                "points": [point],
+            },
+        )
+        current_time += dt.timedelta(seconds=600)
 
-                     'cpu': 50.0,
-                     'mem': 50.0,
-                     'res': 10**5,
+    return samples
 
-                     'gpu': 50.0,
-                     'gpumem': 10**5
-                }
-        samples = []
-        while current_time <= end_time:
-            samples.append(
-                {
-                'job': '0',
-                'time': str(current_time),
-                'points': [point]
-               }
-            )
-            current_time += dt.timedelta(seconds=600)
 
-        return samples
-
-@api_router.get("/cluster/{cluster}/queries",
-        summary="Get the list of 'named' predefined queries",
-        tags=["cluster"],
-        response_model=QueriesResponse
+@api_router.get(
+    "/cluster/{cluster}/queries",
+    summary="Get the list of 'named' predefined queries",
+    tags=["cluster"],
+    response_model=QueriesResponse,
 )
 async def list_queries(
     token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
     cluster: str,
 ):
-    return { 'queries': QueryMaker.list_available() }
+    return {"queries": QueryMaker.list_available()}
 
-@api_router.get("/cluster/{cluster}/queries/{query_name}",
+
+@api_router.get(
+    "/cluster/{cluster}/queries/{query_name}",
     summary="Execute the named query",
     tags=["cluster"],
-    response_model=None
+    response_model=None,
 )
 async def queries(
     _: Annotated[TokenPayload, Depends(get_token_payload)],
     cluster: str,
     query_name: str,
-    dbi: Annotated[ClusterDB, Depends(DBManager.get_database)]
+    dbi: Annotated[ClusterDB, Depends(DBManager.get_database)],
 ):
     try:
         query = QueryMaker().create(dbi, query_name)
     except ValueError as e:
         raise HTTPException(
             status_code=404,
-            detail=f"Query not found: '{query_name}' -- {e}"
+            detail=f"Query not found: '{query_name}' -- {e}",
         )
-    return await query.execute_async(params={'cluster': cluster})
+    return await query.execute_async(params={"cluster": cluster})
+
 
 @api_router.get(
-        "/cluster/{cluster}/benchmarks/{benchmark_name}",
-        summary="Get available benchmark results",
-        tags=["benchmark"]
+    "/cluster/{cluster}/benchmarks/{benchmark_name}",
+    summary="Get available benchmark results",
+    tags=["benchmark"],
 )
 @cache(expire=3600)
 def benchmarks(
-        token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
-        cluster: str,
-        benchmark_name: str = "lambdal"):
+    token_payload: Annotated[TokenPayload, Depends(get_token_payload)], cluster: str, benchmark_name: str = "lambdal"
+):
     app_settings = AppSettings.initialize()
 
     if app_settings.data_dir is None:
@@ -313,12 +316,12 @@ def benchmarks(
     if path.exists():
         df = pd.read_csv(str(path))
         df = df.fillna(-1)
-        del df['Unnamed: 0']
+        del df["Unnamed: 0"]
         return df.to_dict(orient="records")
 
     path = Path(app_settings.data_dir) / cluster / f"{benchmark_name}-results.yaml"
     if path.exists():
-        with open(path, 'r') as f:
+        with open(path) as f:
             return yaml.load(f, Loader=yaml.SafeLoader)
 
     logger.warning(f"{cluster=}: could not find benchmarking results: {path=}")
@@ -326,9 +329,9 @@ def benchmarks(
 
 
 @api_router.get(
-        "/spec/gpu/{gpu_name:path}", # gpu_name might include forward slashes, so catching everything using the :path instruction
-        summary="Get available gpu spec sheet",
-        tags=["gpu"]
+    "/spec/gpu/{gpu_name:path}",  # gpu_name might include forward slashes, so catching everything using the :path instruction
+    summary="Get available gpu spec sheet",
+    tags=["gpu"],
 )
 def spec_gpu(gpu_name: str):
     datasheet_url = GPUInfo.get_datasheet(gpu_name)
@@ -336,18 +339,19 @@ def spec_gpu(gpu_name: str):
         return RedirectResponse(url=datasheet_url)
 
     return HTTPException(
-            status_code=404,
-            detail=f"Failed to locate a specsheet for: {gpu_name}"
+        status_code=404,
+        detail=f"Failed to locate a specsheet for: {gpu_name}",
     )
 
 
 ####### v1 ###############################
 if False:
+
     @api_router.get("/jobs/{job_id}/export")
     async def job_export(
-            job_id: int,
-            refresh: bool = False,
-            dbi : ClusterDB = Depends(DBManager.get_database)
+        job_id: int,
+        refresh: bool = False,
+        dbi: ClusterDB = Depends(DBManager.get_database),
     ) -> FileResponse:
         zip_filename = Path(f"{dbi.get_export_data_dirname(job_id=job_id)}.zip")
         if refresh or not zip_filename.exists():

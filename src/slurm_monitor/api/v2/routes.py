@@ -1,15 +1,14 @@
+from collections.abc import Sequence
+from enum import Enum
+from logging import Logger, getLogger
+from typing import Annotated, Generic, TypeVar
+
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from fastapi_pagination import Page
-
-from enum import Enum
-
 from pydantic import Field
 from pydantic_settings import BaseSettings
-
-from logging import getLogger, Logger
-import jwt
-from typing import Annotated, Generic, Sequence, TypeVar
 
 from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.utils import utcnow
@@ -17,20 +16,22 @@ from slurm_monitor.utils import utcnow
 logger: Logger = getLogger(__name__)
 
 api_router = APIRouter(
-#    prefix="",
-    tags=["v2"]
+    #    prefix="",
+    tags=["v2"],
 )
 
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="token",
     scopes={
         "user.read": "Read information about the current user.",
-        "jobs.all": "Read all items."
-    }
+        "jobs.all": "Read all items.",
+    },
 )
+
 
 class Role(str, Enum):
     ADMIN = "admin"
+
 
 class Roles(BaseSettings):
     roles: list[str] = Field(default=[])
@@ -38,26 +39,28 @@ class Roles(BaseSettings):
     def has_role(self, role: str) -> bool:
         return role in self.roles
 
+
 class Account(BaseSettings):
     account: Roles
 
     def has_role(self, role: str) -> bool:
         return self.account.has_role(role)
 
+
 class TokenPayload(BaseSettings):
-    exp: int # time in s
+    exp: int  # time in s
     iat: int
     jti: str
-    iss: str # issuer
-    aud: str # audience
-    sub: str # subject
-    typ: str # type: Bearer
-    azp: str # client name
-    sid: str #
+    iss: str  # issuer
+    aud: str  # audience
+    sub: str  # subject
+    typ: str  # type: Bearer
+    azp: str  # client name
+    sid: str  #
     acr: int
 
     auth_time: int | None = Field(default=None)
-    allowed_origins: list[str] = Field(alias='allowed-origins', default=[])
+    allowed_origins: list[str] = Field(alias="allowed-origins", default=[])
     realm_access: Roles
     resource_access: Account
     scope: str
@@ -67,6 +70,7 @@ class TokenPayload(BaseSettings):
     given_name: str
     family_name: str
     email: str
+
 
 def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None, resolution_in_s: int | None):
     if end_time_in_s is None:
@@ -86,11 +90,11 @@ def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None
             detail=f"ValueError: {end_time_in_s=} cannot be smaller than {start_time_in_s=}",
         )
 
-    if (end_time_in_s - start_time_in_s) > 3600*24*14:
+    if (end_time_in_s - start_time_in_s) > 3600 * 24 * 14:
         raise HTTPException(
             status_code=500,
             detail=f"""ValueError: query timeframe cannot exceed 14 days (job length), but was
-                {(end_time_in_s - start_time_in_s) / (3600*24):.2f} days""",
+                {(end_time_in_s - start_time_in_s) / (3600 * 24):.2f} days""",
         )
 
     if resolution_in_s <= 0:
@@ -100,6 +104,7 @@ def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None
         )
 
     return start_time_in_s, end_time_in_s, resolution_in_s
+
 
 # Dependency to validate JWT token
 async def verify_token(token: str) -> TokenPayload:
@@ -124,7 +129,7 @@ async def verify_token(token: str) -> TokenPayload:
                 "verify_iat": True,
                 "verify_aud": True,
                 "verify_iss": True,
-            }
+            },
         )
         logger.info(f"Token validated for user: {payload.get('preferred_username')}")
         return TokenPayload(**payload)
@@ -150,6 +155,7 @@ async def verify_token(token: str) -> TokenPayload:
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
 
 async def get_token_payload(request: Request) -> TokenPayload:
     app_settings = AppSettings.get_instance()
@@ -178,15 +184,18 @@ class RequiredPermissions:
 
     def __call__(self, token_payload: Annotated[TokenPayload, Depends(get_token_payload)]) -> None:
         if token_payload:
-            logger.info(f"Required roles: {self.required_roles} - available roles: {token_payload.resource_access.account.roles}")
+            logger.info(
+                f"Required roles: {self.required_roles} - available roles: {token_payload.resource_access.account.roles}"
+            )
 
         for role in self.required_roles:
             if not token_payload.resource_access.has_role(role):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Permission/role(s) '{','.join(self.required_roles)}' required"
+                    detail=f"Permission/role(s) '{','.join(self.required_roles)}' required",
                 )
         return token_payload
+
 
 class NoneForUserWithResourceRoles:
     optional_roles: list[Role]
@@ -201,13 +210,16 @@ class NoneForUserWithResourceRoles:
 
     def __call__(self, token_payload: Annotated[TokenPayload, Depends(get_token_payload)]) -> None:
         if token_payload:
-            logger.info(f"Optional roles: {self.optional_roles} - available roles: {token_payload.resource_access.account.roles}")
+            logger.info(
+                f"Optional roles: {self.optional_roles} - available roles: {token_payload.resource_access.account.roles}"
+            )
 
         for role in self.optional_roles:
             if not token_payload.resource_access.has_role(role.value):
                 return token_payload.preferred_username
 
         return None
+
 
 class NoneForUserWithRealmRoles:
     optional_roles: list[Role]
@@ -231,11 +243,12 @@ class NoneForUserWithRealmRoles:
         return None
 
 
-
 T = TypeVar("T")
+
+
 def create_custom_page(items_alias: str):
     class CustomPage(Page[T], Generic[T]):
         items: Sequence[T] = Field(alias=items_alias)
-        model_config = { 'populate_by_name': True }
+        model_config = {"populate_by_name": True}
 
     return CustomPage

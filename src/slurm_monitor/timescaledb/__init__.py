@@ -1,24 +1,25 @@
 from sqlalchemy.dialects import registry
+
 from .functions import (
-    first, # noqa
-    last, # noqa
-    time_bucket # noqa
+    first,  # noqa
+    last,  # noqa
+    time_bucket,  # noqa
 )
 
 registry.register(
-    'timescaledb',
+    "timescaledb",
     f"{__name__}.dialect",
-    'TimescaledbPsycopg2Dialect'
+    "TimescaledbPsycopg2Dialect",
 )
 registry.register(
-    'timescaledb.psycopg2',
+    "timescaledb.psycopg2",
     f"{__name__}.dialect",
-    'TimescaledbPsycopg2Dialect'
+    "TimescaledbPsycopg2Dialect",
 )
 registry.register(
-    'timescaledb.asyncpg',
+    "timescaledb.asyncpg",
     f"{__name__}.dialect",
-    'TimescaledbAsyncpgDialect'
+    "TimescaledbAsyncpgDialect",
 )
 
 dialect = "timescaledb"

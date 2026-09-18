@@ -1,12 +1,13 @@
 import datetime as dt
 import logging
-from pathlib import Path
 import sys
 import traceback as tb
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from slurm_monitor.utils import utcnow
+import slurm_monitor.db.v2.sonar as sonar
+from slurm_monitor.db.v2.db import ClusterDB
 from slurm_monitor.db.v2.db_tables import (
     Cluster,
     ErrorMessage,
@@ -23,12 +24,12 @@ from slurm_monitor.db.v2.db_tables import (
     SysinfoAttributes,
     SysinfoGpuCard,
     SysinfoGpuCardConfig,
-    TableBase
+    TableBase,
 )
-from slurm_monitor.db.v2.db import ClusterDB
-import slurm_monitor.db.v2.sonar as sonar
+from slurm_monitor.utils import utcnow
 
 logger = logging.getLogger(__name__)
+
 
 class Importer:
     last_msg_per_node: dict[str, dt.datetime]
@@ -49,8 +50,8 @@ class Importer:
         msg = self.to_message(message)
         attributes = msg.data.attributes
 
-        if 'node' in attributes:
-            node = attributes['node']
+        if "node" in attributes:
+            node = attributes["node"]
             time = dt.datetime.fromisoformat(attributes["time"])
             self.update_last_msg(node, time)
 
@@ -75,21 +76,21 @@ class Importer:
         if "meta" not in message:
             raise ValueError(f"Missing 'meta' in {message=}")
 
-        meta = sonar.Meta(**message['meta'])
+        meta = sonar.Meta(**message["meta"])
 
         data = None
         if "data" not in message and "errors" not in message:
             raise ValueError(f"Either 'data' or 'errors' must be present in {message=}")
 
-        if 'data' in message:
-            data = sonar.Data(**message['data'])
-
+        if "data" in message:
+            data = sonar.Data(**message["data"])
 
         errors = None
-        if 'errors' in message:
-            errors = [ErrorMessage(**x) for x in message['errors']]
+        if "errors" in message:
+            errors = [ErrorMessage(**x) for x in message["errors"]]
 
         return sonar.Message(meta=meta, data=data, errors=errors)
+
 
 class DBJsonImporterConfig(BaseSettings):
     """
@@ -104,10 +105,10 @@ class DBJsonImporterConfig(BaseSettings):
     jobs_blocklist: list[int] = []
 
     model_config = SettingsConfigDict(
-                    env_file='.env',
-                    env_nested_delimiter='_',
-                    env_prefix='SLURM_MONITOR_LISTEN_',
-                    extra='ignore'
+        env_file=".env",
+        env_nested_delimiter="_",
+        env_prefix="SLURM_MONITOR_LISTEN_",
+        extra="ignore",
     )
 
 
@@ -130,7 +131,7 @@ class DBJsonImporter(Importer):
 
             if not Path(env_file).exists():
                 raise FileNotFoundError(
-                    f"DBJsonImporter.initialize: could not find {env_file=} provided via --env-file"
+                    f"DBJsonImporter.initialize: could not find {env_file=} provided via --env-file",
                 )
 
             self.config = DBJsonImporterConfig(_env_file=env_file)
@@ -148,7 +149,8 @@ class DBJsonImporter(Importer):
     async def sync_with_db(self):
         stale = (
             self._sysinfo_gpu_cards_synced_at is None
-            or (utcnow() - self._sysinfo_gpu_cards_synced_at).total_seconds() >= self.config.sysinfo_gpu_cards_sync_interval_in_s
+            or (utcnow() - self._sysinfo_gpu_cards_synced_at).total_seconds()
+            >= self.config.sysinfo_gpu_cards_sync_interval_in_s
         )
         if stale:
             await self.update_sysinfo_gpu_cards()
@@ -158,7 +160,7 @@ class DBJsonImporter(Importer):
 
     async def update_sysinfo_gpu_cards(self):
         sysinfo_gpu_cards = await self.db.get_all_sysinfo_gpu_cards()
-        self.sysinfo_gpu_cards = { x.uuid: x for x in sysinfo_gpu_cards }
+        self.sysinfo_gpu_cards = {x.uuid: x for x in sysinfo_gpu_cards}
         self._sysinfo_gpu_cards_synced_at = utcnow()
 
     def ensure_gpu(self, cluster: str, node: str, uuid: str, rows: list[TableBase]):
@@ -166,12 +168,13 @@ class DBJsonImporter(Importer):
             return rows
         else:
             logger.info(f"Creating sysinfo_gpu_card: {cluster=} {node=}")
-            stub = SysinfoGpuCard.create(uuid=uuid,
-                                          manufacturer='',
-                                          model='',
-                                          architecture='',
-                                          memory=0
-                                          )
+            stub = SysinfoGpuCard.create(
+                uuid=uuid,
+                manufacturer="",
+                model="",
+                architecture="",
+                memory=0,
+            )
             # Record locally right away: sync_with_db() only refreshes this
             # cache periodically, so without this a later message processed
             # inside that window would think the uuid is still unknown and
@@ -198,26 +201,24 @@ class DBJsonImporter(Importer):
         parser_fn = getattr(self, f"parse_{msg_type}")
         return parser_fn(msg)
 
-
     def parse_sysinfo(self, msg: sonar.Message) -> list[TableBase | list[TableBase]]:
         """
         Parse messages of type 'sysinfo'
         """
         attributes = msg.data.attributes
-        cluster = attributes.get('cluster', '')
-        node = attributes['node']
+        cluster = attributes.get("cluster", "")
+        node = attributes["node"]
 
         time = dt.datetime.fromisoformat(attributes["time"])
-        del attributes['time']
+        del attributes["time"]
 
         self.update_last_msg(node=node, time=time)
 
         gpu_uuids = []
         gpu_info = []
-        if 'cards' in attributes:
-
-            cards = attributes['cards']
-            del attributes['cards']
+        if "cards" in attributes:
+            cards = attributes["cards"]
+            del attributes["cards"]
 
             gpu_cards = []
             gpu_card_configs = []
@@ -230,15 +231,15 @@ class DBJsonImporter(Importer):
                             data[field] = card[field]
                             del card[field]
 
-                gpu_uuid = card['uuid']
-                if gpu_uuid is None or gpu_uuid == '':
+                gpu_uuid = card["uuid"]
+                if gpu_uuid is None or gpu_uuid == "":
                     logger.debug(f"SysInfo: skipping message from {cluster=} {node=} due to missing 'uuid' {card=}")
                     continue
 
                 gpu_card = SysinfoGpuCard.create(
-                        uuid=gpu_uuid,
-                        **data,
-                    )
+                    uuid=gpu_uuid,
+                    **data,
+                )
                 gpu_cards.append(gpu_card)
                 # Update the local cache immediately (rather than waiting for
                 # the next periodic sync_with_db() refresh) so this real card
@@ -246,12 +247,13 @@ class DBJsonImporter(Importer):
                 # this uuid doesn't re-create the stub over it.
                 self.sysinfo_gpu_cards[gpu_uuid] = gpu_card
 
-                gpu_card_configs.append(SysinfoGpuCardConfig.create(
+                gpu_card_configs.append(
+                    SysinfoGpuCardConfig.create(
                         cluster=cluster,
                         node=node,
                         time=time,
-                        **card
-                    )
+                        **card,
+                    ),
                 )
                 gpu_uuids.append(gpu_uuid)
 
@@ -259,16 +261,16 @@ class DBJsonImporter(Importer):
             gpu_info.append(gpu_card_configs)
 
         node = Node.create(
-                cluster=attributes.get('cluster', ''),
-                node=attributes['node'],
-                architecture=attributes['architecture']
+            cluster=attributes.get("cluster", ""),
+            node=attributes["node"],
+            architecture=attributes["architecture"],
         )
 
         sysinfo = SysinfoAttributes.create(
-                    time=time,
-                    cards=gpu_uuids,
-                    **attributes
-                )
+            time=time,
+            cards=gpu_uuids,
+            **attributes,
+        )
         return [node, sysinfo] + gpu_info
 
     def parse_sample(self, msg: sonar.Message) -> list[TableBase | list[TableBase]]:
@@ -277,10 +279,10 @@ class DBJsonImporter(Importer):
         """
         attributes = msg.data.attributes
         time = dt.datetime.fromisoformat(attributes["time"])
-        del attributes['time']
+        del attributes["time"]
 
-        cluster = attributes.get('cluster','')
-        node = attributes['node']
+        cluster = attributes.get("cluster", "")
+        node = attributes["node"]
 
         self.update_last_msg(node=node, time=time)
 
@@ -288,7 +290,7 @@ class DBJsonImporter(Importer):
         gpu_samples = []
         sample_system = None
 
-        system = attributes.get("system",{})
+        system = attributes.get("system", {})
 
         active_gpus = set()
         if system:
@@ -305,7 +307,7 @@ class DBJsonImporter(Importer):
                             cluster=cluster,
                             node=node,
                             **disk,
-                            time=time
+                            time=time,
                         )
                         disk_samples.append(disk_sample)
                     except Exception as e:
@@ -316,48 +318,48 @@ class DBJsonImporter(Importer):
                 del system["gpus"]
 
                 for gpu in gpus:
-                    if 'uuid' not in gpu:
+                    if "uuid" not in gpu:
                         logger.debug(f"Sample: skipping sample due to missing 'uuid' {gpu=}")
                         continue
 
-                    active_gpus.add(gpu['uuid'])
+                    active_gpus.add(gpu["uuid"])
 
                     gpu_status = SampleGpu.create(
-                            **gpu,
-                            time=time
+                        **gpu,
+                        time=time,
                     )
                     gpu_samples.append(gpu_status)
 
             # consume remaining items from SampleSystem
             sample_system = SampleSystem.create(
-                    cluster=cluster,
-                    node=node,
-                    **system,
-                    time=time
+                cluster=cluster,
+                node=node,
+                **system,
+                time=time,
             )
 
         process_stati = []
         gpu_card_process_stati = []
         jobs = attributes.get("jobs", [])
         for job in jobs:
-            job_id = job['job']
+            job_id = job["job"]
 
-            user = job['user']
-            epoch = job.get('epoch', 0)
+            user = job["user"]
+            epoch = job.get("epoch", 0)
 
             if epoch == 0:
                 if job_id in self.config.jobs_blocklist:
                     continue
 
             for process in job["processes"]:
-                if 'pid' not in process:
-                    process['pid'] = 0
+                if "pid" not in process:
+                    process["pid"] = 0
 
-                pid = process['pid']
+                pid = process["pid"]
 
                 if "gpus" in process:
-                    for gpu_data in process['gpus']:
-                        active_gpus.add(gpu_data['uuid'])
+                    for gpu_data in process["gpus"]:
+                        active_gpus.add(gpu_data["uuid"])
 
                         gpu_card_process_stati.append(
                             SampleProcessGpu.create(
@@ -368,22 +370,21 @@ class DBJsonImporter(Importer):
                                 user=user,
                                 epoch=epoch,
                                 time=time,
-                                **gpu_data
-                            )
+                                **gpu_data,
+                            ),
                         )
                     del process["gpus"]
 
-                process_stati.append( SampleProcess.create(
-                   cluster=cluster,
-                   node=node,
-                   job=job_id,
-                   user=user,
-                   epoch=epoch,
-                   time=time,
-
-                   **process)
+                process_stati.append(
+                    SampleProcess.create(
+                        cluster=cluster, node=node, job=job_id, user=user, epoch=epoch, time=time, **process
+                    ),
                 )
-        rows = self.ensure_node(cluster=cluster, node=node, rows=[disk_samples, gpu_samples, gpu_card_process_stati, process_stati, sample_system])
+        rows = self.ensure_node(
+            cluster=cluster,
+            node=node,
+            rows=[disk_samples, gpu_samples, gpu_card_process_stati, process_stati, sample_system],
+        )
         for uuid in active_gpus:
             rows = self.ensure_gpu(cluster=cluster, node=node, uuid=uuid, rows=rows)
 
@@ -394,11 +395,11 @@ class DBJsonImporter(Importer):
         Parse messages of type 'cluster'
         """
         attributes = msg.data.attributes
-        cluster_id = attributes.get('cluster', '')
-        slurm = attributes['slurm']
+        cluster_id = attributes.get("cluster", "")
+        slurm = attributes["slurm"]
 
         time = dt.datetime.fromisoformat(attributes["time"])
-        del attributes['time']
+        del attributes["time"]
 
         nodes = set()
         nodes_states = []
@@ -408,30 +409,32 @@ class DBJsonImporter(Importer):
                 node_names += sonar.Sonar.expand_hostname_range(names)
                 nodes.update(node_names)
 
-            states = n['states']
+            states = n["states"]
             for n in node_names:
-                nodes_states.append(NodeState.create(
+                nodes_states.append(
+                    NodeState.create(
                         cluster=cluster_id,
                         node=n,
                         states=states,
-                        time=time
-                    )
+                        time=time,
+                    ),
                 )
 
         partitions = []
-        for p in attributes['partitions']:
+        for p in attributes["partitions"]:
             partition_nodes = set()
             for names in p["nodes"]:
                 node_names = sonar.Sonar.expand_hostname_range(names)
                 partition_nodes.update(node_names)
 
-            partitions.append(Partition.create(
+            partitions.append(
+                Partition.create(
                     cluster=cluster_id,
                     partition=p["name"],
                     nodes=node_names,
                     nodes_compact=p["nodes"],
-                    time=time
-                )
+                    time=time,
+                ),
             )
 
         cluster = Cluster.create(
@@ -439,38 +442,38 @@ class DBJsonImporter(Importer):
             slurm=slurm,
             partitions=[x.partition for x in partitions],
             nodes=list(nodes),
-            time=time
+            time=time,
         )
 
         cluster_nodes = [Node.create(cluster=cluster_id, node=x) for x in nodes]
 
-        return [ cluster ]  + partitions + cluster_nodes + nodes_states
+        return [cluster] + partitions + cluster_nodes + nodes_states
 
     def parse_job(self, msg: sonar.Message) -> list[TableBase | list[TableBase]]:
         """
         Parse messages of type 'job'
         """
         attributes = msg.data.attributes
-        cluster = attributes.get('cluster', '')
-        slurm_jobs = attributes['slurm_jobs']
+        cluster = attributes.get("cluster", "")
+        slurm_jobs = attributes["slurm_jobs"]
 
         time = dt.datetime.fromisoformat(attributes["time"])
-        del attributes['time']
+        del attributes["time"]
 
         slurm_job_samples = []
         for job_data in slurm_jobs:
-            epoch = job_data.get('epoch', 0)
+            epoch = job_data.get("epoch", 0)
             if epoch == 0:
-                if job_data['job_id'] in self.config.jobs_blocklist:
+                if job_data["job_id"] in self.config.jobs_blocklist:
                     continue
 
-            if job_data.get('job_step', None) is None:
-                job_data['job_step'] = ''
+            if job_data.get("job_step", None) is None:
+                job_data["job_step"] = ""
 
             sacct = None
-            if 'sacct' in job_data:
-                sacct = job_data['sacct']
-                del job_data['sacct']
+            if "sacct" in job_data:
+                sacct = job_data["sacct"]
+                del job_data["sacct"]
 
             # start_time/submit_time/end_time arrive as ISO8601 strings (or ''
             # when unset, e.g. a still-PENDING job). SampleSlurmJob expects
@@ -480,32 +483,34 @@ class DBJsonImporter(Importer):
             # needs to be a real conversion rather than a pass-through.
             for date_field in ("start_time", "submit_time", "end_time"):
                 if date_field in job_data:
-                    job_data[date_field] = dt.datetime.fromisoformat(job_data[date_field]) if job_data[date_field] else None
+                    job_data[date_field] = (
+                        dt.datetime.fromisoformat(job_data[date_field]) if job_data[date_field] else None
+                    )
 
-            if 'nodes' in job_data:
-                if job_data['nodes'] == ['None allocated']:
-                    job_data['nodes'] = None
+            if "nodes" in job_data:
+                if job_data["nodes"] == ["None allocated"]:
+                    job_data["nodes"] = None
                 else:
-                    job_data['nodes'] = sonar.Sonar.expand_hostname_range(job_data['nodes'])
+                    job_data["nodes"] = sonar.Sonar.expand_hostname_range(job_data["nodes"])
 
             slurm_job_samples.append(
                 SampleSlurmJob.create(
                     cluster=cluster,
                     **job_data,
-                    time=time
-                )
+                    time=time,
+                ),
             )
             if sacct:
-                if 'job_step' in job_data:
-                    sacct['job_step'] = job_data['job_step']
+                if "job_step" in job_data:
+                    sacct["job_step"] = job_data["job_step"]
 
                     slurm_job_samples.append(
                         SampleSlurmJobAcc.create(
                             cluster=cluster,
-                            job_id=job_data['job_id'],
+                            job_id=job_data["job_id"],
                             **sacct,
-                            time=time
-                        )
+                            time=time,
+                        ),
                     )
         return slurm_job_samples
 
@@ -535,15 +540,10 @@ class DBJsonImporter(Importer):
                 flat.append(row)
         return flat
 
-    async def insert(self,
-                     message: dict[str, any],
-                     update: bool = True,
-                     ignore_integrity_errors: bool = False):
+    async def insert(self, message: dict[str, any], update: bool = True, ignore_integrity_errors: bool = False):
         await self.insert_batch([(message, update)], ignore_integrity_errors=ignore_integrity_errors)
 
-    async def insert_batch(self,
-                     messages: list[tuple[dict[str, any], bool]],
-                     ignore_integrity_errors: bool = False):
+    async def insert_batch(self, messages: list[tuple[dict[str, any], bool]], ignore_integrity_errors: bool = False):
         """
         Parse and write a batch of messages in as few database round trips as
         possible: one shared GPU-card sync, one insert-or-update transaction
@@ -628,7 +628,7 @@ class DBJsonImporter(Importer):
                     slurm=False,
                     partitions=[],
                     nodes=set(known_nodes) | missing_nodes,
-                    time=utcnow()
+                    time=utcnow(),
                 )
                 await self.db.insert_async(cluster_row)
             except Exception as e:

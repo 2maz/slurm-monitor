@@ -2,33 +2,37 @@ from __future__ import annotations
 
 import asyncio
 import curses
-from threading import Thread
-import time
-import traceback as tb
 import datetime as dt
-import logging
 import json
-from pathlib import Path
-from pydantic import BaseModel
-from pydantic_settings import BaseSettings
+import logging
 import subprocess
 import sys
+import time
+import traceback as tb
+from pathlib import Path
+from threading import Thread
 
-from slurm_monitor.db_operations import DBManager
+from pydantic import BaseModel
+from pydantic_settings import BaseSettings
+
 from slurm_monitor.app_settings import AppSettings
+from slurm_monitor.db_operations import DBManager
 from slurm_monitor.utils import utcnow
 from slurm_monitor.utils.command import Command
 
 logger = logging.getLogger(__name__)
 
-SLURM_MONITOR_AUTODEPLOYER_JSON : str = "slurm-monitor.autodeployer.json"
+SLURM_MONITOR_AUTODEPLOYER_JSON: str = "slurm-monitor.autodeployer.json"
+
 
 class AutoDeployerNodeStats(BaseModel):
     last_seen: dt.datetime | None = None
     deploy: list[dt.datetime] = []
 
+
 class AutoDeployerStats(BaseSettings):
     nodes: dict[str, AutoDeployerNodeStats]
+
 
 class AutoDeployer:
     thread: Thread
@@ -46,14 +50,15 @@ class AutoDeployer:
 
     _getch_supported: bool
 
-    def __init__(self,
-            app_settings: AppSettings | None = None,
-            sampling_interval_in_s: float = 5*60,
-            stats_filename: str | Path = SLURM_MONITOR_AUTODEPLOYER_JSON,
-            cluster_name: str | None = None,
-            deploy_command: str | None = None,
-            allow_list: list[str] | None = None
-        ):
+    def __init__(
+        self,
+        app_settings: AppSettings | None = None,
+        sampling_interval_in_s: float = 5 * 60,
+        stats_filename: str | Path = SLURM_MONITOR_AUTODEPLOYER_JSON,
+        cluster_name: str | None = None,
+        deploy_command: str | None = None,
+        allow_list: list[str] | None = None,
+    ):
         self.app_settings = app_settings
 
         # Disable cache to run dbi from its own dedicated thread with its own
@@ -74,7 +79,6 @@ class AutoDeployer:
 
         self._screen = None
         self._getch_supported = True
-
 
     def start(self):
         self._stop = False
@@ -108,12 +112,12 @@ class AutoDeployer:
         with open(Path(filename), "w") as f:
             json.dump(self.stats.model_dump(), f, indent=4, default=str)
 
-    def addstr(self, y, x, text, attr = None):
+    def addstr(self, y, x, text, attr=None):
         screenheight, screenwidth = self._screen.getmaxyx()
         if y >= screenheight:
             return
 
-        writeable_x = screenwidth - x -1
+        writeable_x = screenwidth - x - 1
         if writeable_x < 1:
             return
 
@@ -138,27 +142,27 @@ class AutoDeployer:
 
             self._screen.erase()
 
-
             elapsed = (utcnow() - self._last_update).total_seconds()
             delta_in_s = self._sampling_interval_in_s - elapsed
 
             # header
             screenheight, screenwidth = self._screen.getmaxyx()
-            current_time = f"-- CURRENT TIME  {utcnow().isoformat(timespec='seconds')} | NEXT UPDATE IN {int(delta_in_s)}s"
-            self.addstr(0, 0, f"{current_time}{'-'*(screenwidth-len(current_time))}")
+            current_time = (
+                f"-- CURRENT TIME  {utcnow().isoformat(timespec='seconds')} | NEXT UPDATE IN {int(delta_in_s)}s"
+            )
+            self.addstr(0, 0, f"{current_time}{'-' * (screenwidth - len(current_time))}")
             self.addstr(1, 0, f">> Status: slurm-monitor auto-deploy --cluster-name {self.cluster_name}")
             self.addstr(2, 0, "   q to quit ")
-            self.addstr(3, 0, " "*screenwidth)
+            self.addstr(3, 0, " " * screenwidth)
 
             for idx, msg in enumerate(self.messages):
                 self.addstr(idx + 4, 0, msg)
 
             if self._getch_supported:
                 key = self._screen.getch()
-                if key == ord('q'):
+                if key == ord("q"):
                     self._stop = True
-                    self.addstr(0,0, "Received user's request to stop ... ]")
-
+                    self.addstr(0, 0, "Received user's request to stop ... ]")
 
             self._screen.refresh()
         except Exception as e:
@@ -196,7 +200,7 @@ class AutoDeployer:
                         raise ValueError("Missing cluster_name")
 
                     last_probe_timestamp = loop.run_until_complete(
-                            self.dbi.get_last_probe_timestamp(cluster=self.cluster_name)
+                        self.dbi.get_last_probe_timestamp(cluster=self.cluster_name),
                     )
                     logger.info(last_probe_timestamp)
 
@@ -243,6 +247,7 @@ class AutoDeployer:
                 curses.nocbreak()
                 curses.endwin()
 
+
 class AutoDeployerSonar(AutoDeployer):
     async def is_drained(self, node: str) -> bool:
         node_states = await self.dbi.get_nodes_states(
@@ -252,12 +257,11 @@ class AutoDeployerSonar(AutoDeployer):
         if not node_states:
             return False
 
-        for state in node_states[0]['states']:
+        for state in node_states[0]["states"]:
             if state.lower().startswith("drain"):
                 return True
 
         return False
-
 
     def deploy(self, node: str) -> str:
         try:

@@ -1,13 +1,15 @@
 from __future__ import annotations
+
 import hashlib
 import json
-from jwt import PyJWKClient
-import os
 import logging
-from pathlib import Path
-from pydantic import Field, computed_field, BaseModel
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import os
 import sys
+from pathlib import Path
+
+from jwt import PyJWKClient
+from pydantic import BaseModel, Field, computed_field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from slurm_monitor.db.settings import DatabaseSettings
 
@@ -21,10 +23,10 @@ logger = logging.getLogger(__name__)
 class OAuthSettings(BaseSettings):
     required: bool = Field(default=False)
 
-    client: str = Field(default='')
-    client_secret: str = Field(default='')
-    url: str = Field(default='')
-    realm: str = Field(default='')
+    client: str = Field(default="")
+    client_secret: str = Field(default="")
+    url: str = Field(default="")
+    realm: str = Field(default="")
 
     @computed_field
     @property
@@ -39,47 +41,55 @@ class OAuthSettings(BaseSettings):
     @computed_field
     @property
     def jwks_client(self) -> PyJWKClient:
-        if not hasattr(self, '_jwks_client'):
+        if not hasattr(self, "_jwks_client"):
             self._jwks_client = PyJWKClient(self.jwks_url)
         return self._jwks_client
+
 
 class PrefetchSettings(BaseSettings):
     enabled: bool = Field(default=True)
     interval: int = Field(default=90)
 
+
 class ServerSettings(BaseModel):
     host: str
     port: int
 
+
 class ListenStatsSettings(BaseModel):
     interval: int = Field(default=30, description="Interval in seconds to compute stats")
+
 
 class ListenSettings(BaseModel):
     cluster: str | None = Field(default=None, description="Name of cluster")
     lookback: int | None = Field(default=None, description="Lookback timeframe in hours")
 
-    ui: ServerSettings = Field(default=ServerSettings(host="localhost", port=SLURM_MONITOR_LISTEN_UI_PORT), description="Connection to UI")
-    kafka: ServerSettings  = Field(
-            default=ServerSettings(host="localhost", port=SLURM_MONITOR_LISTEN_PORT),
-            description="Connection to kafka broker",
+    ui: ServerSettings = Field(
+        default=ServerSettings(host="localhost", port=SLURM_MONITOR_LISTEN_UI_PORT), description="Connection to UI"
+    )
+    kafka: ServerSettings = Field(
+        default=ServerSettings(host="localhost", port=SLURM_MONITOR_LISTEN_PORT),
+        description="Connection to kafka broker",
     )
 
     stats: ListenStatsSettings = Field(default_factory=ListenStatsSettings)
     retry: int = 15
 
+
 class SSLSettings(BaseModel):
     keyfile: str | None = Field(default=None, description="Keyfile to use")
     certfile: str | None = Field(default=None, description="Certfile to use")
+
 
 class AppSettings(BaseSettings):
     # export SLURM_MONITOR_ENVFILE='.dev.env' in order to change the default
     # .env file that is being loaded
     model_config = SettingsConfigDict(
-                    env_file='.env',
-                    env_nested_delimiter='_',
-                    env_prefix='SLURM_MONITOR_',
-                    extra='ignore'
-                )
+        env_file=".env",
+        env_nested_delimiter="_",
+        env_prefix="SLURM_MONITOR_",
+        extra="ignore",
+    )
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=SLURM_MONITOR_RESTAPI_PORT)
     ssl: SSLSettings = Field(default_factory=SSLSettings)
@@ -98,7 +108,7 @@ class AppSettings(BaseSettings):
     def get_instance(cls) -> AppSettings:
         if not hasattr(cls, "_instance") or not cls._instance:
             raise RuntimeError(
-                "AppSettings: instance is not accessible. Please call AppSettings.initialize() first."
+                "AppSettings: instance is not accessible. Please call AppSettings.initialize() first.",
             )
 
         return cls._instance
@@ -113,7 +123,7 @@ class AppSettings(BaseSettings):
             env_file = os.environ["SLURM_MONITOR_ENVFILE"]
             if not Path(env_file).exists():
                 raise FileNotFoundError(
-                    f"AppSettings.initialize: could not find {env_file=} set via env SLURM_MONITOR_ENVFILE"
+                    f"AppSettings.initialize: could not find {env_file=} set via env SLURM_MONITOR_ENVFILE",
                 )
 
         if "--env-file" in sys.argv:
@@ -122,7 +132,7 @@ class AppSettings(BaseSettings):
 
             if not Path(env_file).exists():
                 raise FileNotFoundError(
-                    f"AppSettings.initialize: could not find {env_file=} provided via --env-file"
+                    f"AppSettings.initialize: could not find {env_file=} provided via --env-file",
                 )
 
         if env_file_required and not env_file:
@@ -143,4 +153,4 @@ class AppSettings(BaseSettings):
         Return hexdigest of hashed object
         """
         txt = json.dumps(self.model_dump(), sort_keys=True, default=str)
-        return hashlib.sha256(txt.encode('UTF-8')).hexdigest()
+        return hashlib.sha256(txt.encode("UTF-8")).hexdigest()

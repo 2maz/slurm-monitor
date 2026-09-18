@@ -1,3 +1,3 @@
-import slurm_monitor.timescaledb # noqa
+import slurm_monitor.timescaledb  # noqa
 
-__all__ = [ "timescaledb" ]
+__all__ = ["timescaledb"]

@@ -1,24 +1,28 @@
-from sqlalchemy.sql.functions import GenericFunction
-from sqlalchemy.ext.compiler import compiles
 from sqlalchemy import TIMESTAMP
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.sql.functions import GenericFunction
+
 
 class first(GenericFunction):
-    identifier = 'first'
+    identifier = "first"
     inherit_cache = True
 
+
 class last(GenericFunction):
-    identifier = 'last'
+    identifier = "last"
     inherit_cache = True
+
 
 # https://docs.timescale.com/api/latest/hyperfunctions/time_bucket/
 class time_bucket(GenericFunction):
-    identifier = 'time_bucket'
+    identifier = "time_bucket"
 
     type = TIMESTAMP()
     inherit_cache = True
 
+
 # For TimeScaledb
-@compiles(time_bucket, 'timescaledb')
+@compiles(time_bucket, "timescaledb")
 def compile_time_bucket_timescaledb(expr, compiler, **kwargs):
     time_window = expr.clauses.clauses[0].value
     time_column = f"{compiler.process(expr.clauses.clauses[1], **kwargs)}"

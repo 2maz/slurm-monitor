@@ -1,32 +1,31 @@
+import copy
+import datetime as dt
+import json
+import re
+import time
+from pathlib import Path
+
+import fastapi
+import httpx
+import jwt
 import pytest
 import pytest_asyncio
-
+import yaml
 from cachetools import TTLCache
-import fastapi
-from fastapi_cache import FastAPICache
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-import httpx
-import re
-from pathlib import Path
-import json
-import jwt
-import copy
-import time
-import datetime as dt
-import yaml
+from fastapi_cache import FastAPICache
 
-from slurm_monitor.utils import utcnow
-from slurm_monitor.utils.slurm import Slurm
-from slurm_monitor.utils.api import find_endpoint_by_name, flatten_router_routes
-
-from slurm_monitor.v2 import app, prefetch_data
 from slurm_monitor.api.v2.router import app as api_v2_app
-from slurm_monitor.db_operations import DBManager
+from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.db.v2.db_base import DatabaseSettings
 from slurm_monitor.db.v2.importer import DBJsonImporter
-from slurm_monitor.app_settings import AppSettings
+from slurm_monitor.db_operations import DBManager
 from slurm_monitor.devices.gpu import GPUInfo
+from slurm_monitor.utils import utcnow
+from slurm_monitor.utils.api import find_endpoint_by_name, flatten_router_routes
+from slurm_monitor.utils.slurm import Slurm
+from slurm_monitor.v2 import app, prefetch_data
 
 
 @pytest.fixture
@@ -42,6 +41,7 @@ def mock_appsettings_with_oauth_required(monkeypatch, timescaledb):
     monkeypatch.setattr(app_settings, "database", DatabaseSettings(uri=timescaledb))
     return app_settings
 
+
 @pytest.fixture
 def mock_token(monkeypatch, mock_appsettings_with_oauth_required) -> str:
     """
@@ -49,29 +49,30 @@ def mock_token(monkeypatch, mock_appsettings_with_oauth_required) -> str:
     This should be used as Bearer token in the header
     """
     payload = {
-        'exp': 1765187642,
-        'iat': 1765187342,
-        'jti': 'onrtro:e0070d78-9c5c-04ba-22b9-fbcecb759fe4',
-        'iss': 'http://myidentityprovider.com/realms/naic-monitor',
-        'aud': 'account',
-        'sub': 'fbf4b6c4-bdd3-4aea-8b47-3a87e9c96633',
-        'typ': 'Bearer',
-        'azp': 'slurm-monitor.no',
-        'sid': '0e7aad19-8b15-06c2-1449-616b92625b9b',
-        'acr': 1,
-        'allowed-origins': ['', 'https://naic-monitor.simula.no'],
-        'realm_access' : { 'roles' : ['default-roles-naic-monitor', 'offline_access', 'uma_authorization'] },
-        'resource_access': { 'account' : { 'roles': ['manage-account', 'manage-account-links', 'view-profile']}},
-        'scope': 'email profile',
-        'email_verified': False,
-        'name': 'Test User',
-        'preferred_username': 'test-user',
-        'given_name': 'Test',
-        'family_name': 'User',
-        'email': 'test-user@xyz.com'
+        "exp": 1765187642,
+        "iat": 1765187342,
+        "jti": "onrtro:e0070d78-9c5c-04ba-22b9-fbcecb759fe4",
+        "iss": "http://myidentityprovider.com/realms/naic-monitor",
+        "aud": "account",
+        "sub": "fbf4b6c4-bdd3-4aea-8b47-3a87e9c96633",
+        "typ": "Bearer",
+        "azp": "slurm-monitor.no",
+        "sid": "0e7aad19-8b15-06c2-1449-616b92625b9b",
+        "acr": 1,
+        "allowed-origins": ["", "https://naic-monitor.simula.no"],
+        "realm_access": {"roles": ["default-roles-naic-monitor", "offline_access", "uma_authorization"]},
+        "resource_access": {"account": {"roles": ["manage-account", "manage-account-links", "view-profile"]}},
+        "scope": "email profile",
+        "email_verified": False,
+        "name": "Test User",
+        "preferred_username": "test-user",
+        "given_name": "Test",
+        "family_name": "User",
+        "email": "test-user@xyz.com",
     }
 
     test_token = "oauth-test-token"
+
     def patch_decode(*args, **kwargs):
         token = args[0]
         if not token == test_token:
@@ -92,18 +93,17 @@ def mock_token(monkeypatch, mock_appsettings_with_oauth_required) -> str:
 
     return test_token
 
-def parametrize_route(path,
-                      cluster="cluster-0",
-                      node="cluster-0-node-0"):
+
+def parametrize_route(path, cluster="cluster-0", node="cluster-0-node-0"):
     # strip any path converter annotation (e.g. "{gpu_name:path}") down to
     # a plain "{gpu_name}" placeholder before substituting concrete values
     path = re.sub(r"\{(\w+):\w+\}", r"{\1}", path)
     path = path.replace("{cluster}", cluster)
     path = path.replace("{nodename}", node)
-    path = path.replace("{partition}","cluster-0-partition-0")
-    path = path.replace("{job_id}","1")
-    path = path.replace("{epoch}","0")
-    path = path.replace("{benchmark_name}","lambdal")
+    path = path.replace("{partition}", "cluster-0-partition-0")
+    path = path.replace("{job_id}", "1")
+    path = path.replace("{epoch}", "0")
+    path = path.replace("{benchmark_name}", "lambdal")
     path = path.replace("{query_name}", "popular-partitions-by-number-of-jobs")
     path = path.replace("{gpu_name}", "A100")
 
@@ -111,6 +111,7 @@ def parametrize_route(path,
     if m is not None:
         raise RuntimeError(f"API Route should be expanded {path}")
     return path
+
 
 def get_routes(identifier: str = "v2", **kwargs):
     routes = []
@@ -125,11 +126,13 @@ def get_routes(identifier: str = "v2", **kwargs):
                     routes.append(r)
     return routes
 
+
 v2_routes = get_routes(identifier="v2")
+
 
 @pytest_asyncio.fixture(loop_scope="module", scope="module")
 def client(mock_slurm_command_hint, test_db_v2, timescaledb, monkeypatch_module):
-    Slurm._BIN_HINTS = [ mock_slurm_command_hint ]
+    Slurm._BIN_HINTS = [mock_slurm_command_hint]
 
     monkeypatch_module.setenv("SLURM_MONITOR_DATABASE_URI", f"{timescaledb}")
     monkeypatch_module.setenv("SLURM_MONITOR_JOBS_COLLECTOR", "false")
@@ -137,6 +140,7 @@ def client(mock_slurm_command_hint, test_db_v2, timescaledb, monkeypatch_module)
 
     with TestClient(app) as c:
         yield c
+
 
 @pytest_asyncio.fixture(loop_scope="function")
 async def client__function_scope(mock_slurm_command_hint, timescaledb, monkeypatch):
@@ -155,7 +159,7 @@ async def client__function_scope(mock_slurm_command_hint, timescaledb, monkeypat
     the app's lifespan (cache/database setup) has to be driven manually
     since `ASGITransport` doesn't do that itself.
     """
-    Slurm._BIN_HINTS = [ mock_slurm_command_hint ]
+    Slurm._BIN_HINTS = [mock_slurm_command_hint]
 
     monkeypatch.setenv("SLURM_MONITOR_DATABASE_URI", f"{timescaledb}")
     monkeypatch.setenv("SLURM_MONITOR_JOBS_COLLECTOR", "false")
@@ -166,20 +170,25 @@ async def client__function_scope(mock_slurm_command_hint, timescaledb, monkeypat
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
             yield c
 
+
 @pytest.mark.asyncio
 async def test_metrics(client):
     response = client.get("/metrics")
     assert response.status_code == 200
 
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("endpoint",
-     v2_routes
-    )
-async def test_ensure_non_authenticated_response_from_all_endpoints(endpoint, client, mock_appsettings_with_oauth_required):
+@pytest.mark.parametrize(
+    "endpoint",
+    v2_routes,
+)
+async def test_ensure_non_authenticated_response_from_all_endpoints(
+    endpoint, client, mock_appsettings_with_oauth_required
+):
     response = client.get(f"/api/v2{endpoint}")
     if endpoint == "/":
         assert response.status_code == 200
-        assert response.json() == {'message': 'Slurm Monitor API v2'}
+        assert response.json() == {"message": "Slurm Monitor API v2"}
     elif endpoint.startswith("/spec"):
         # redirect to a pdf file
         assert str(response._request.url).endswith(".pdf")
@@ -187,14 +196,15 @@ async def test_ensure_non_authenticated_response_from_all_endpoints(endpoint, cl
         assert response.status_code == 401
         assert "Not authenticated" in response.json()["detail"]
 
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("endpoint",
-     v2_routes
-    )
+@pytest.mark.parametrize(
+    "endpoint",
+    v2_routes,
+)
 async def test_ensure_response_from_all_endpoints(endpoint, client, mock_token):
 
-    response = client.get(f"/api/v2{endpoint}",
-                          headers={"Authorization": f"Bearer {mock_token}"})
+    response = client.get(f"/api/v2{endpoint}", headers={"Authorization": f"Bearer {mock_token}"})
     if endpoint.startswith("/spec"):
         # redirect to a pdf file
         assert str(response._request.url).endswith(".pdf")
@@ -203,12 +213,14 @@ async def test_ensure_response_from_all_endpoints(endpoint, client, mock_token):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("gpu_model,expected_vendor,expected_model",
-                         [
-                             ["NVIDIA A100 / PCIe", "nvidia", "a100"],
-                             ["Vega [Radeon Pro VII/Radeon Instinct MI50 32GB]", "amd", "mi50"],
-                             ["Intel(R) Data Center GPU Max 1100", "intel", "max 1100"]
-                         ])
+@pytest.mark.parametrize(
+    "gpu_model,expected_vendor,expected_model",
+    [
+        ["NVIDIA A100 / PCIe", "nvidia", "a100"],
+        ["Vega [Radeon Pro VII/Radeon Instinct MI50 32GB]", "amd", "mi50"],
+        ["Intel(R) Data Center GPU Max 1100", "intel", "max 1100"],
+    ],
+)
 async def test_spec_gpu(gpu_model, expected_vendor, expected_model, client):
     """A reported gpu_model can contain a "/" percent-encoded ("%2F") - it must
     still be routed to `spec_gpu` rather than being split into extra path
@@ -216,15 +228,16 @@ async def test_spec_gpu(gpu_model, expected_vendor, expected_model, client):
     """
     from urllib.parse import quote
 
-    with open(GPUInfo.DATASHEETS, "r") as f:
+    with open(GPUInfo.DATASHEETS) as f:
         data = yaml.load(f, Loader=yaml.SafeLoader)
 
     response = client.get(f"/api/v2/spec/gpu/{quote(gpu_model, safe='')}")
-    assert str(response._request.url) == data[expected_vendor][expected_model]['url']
+    assert str(response._request.url) == data[expected_vendor][expected_model]["url"]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("endpoint, cluster, node, sonar_msg_files, expected_exception, has_sysinfo",
+@pytest.mark.parametrize(
+    "endpoint, cluster, node, sonar_msg_files, expected_exception, has_sysinfo",
     [
         [
             # no cluster or sysinfo messages, but only samples arrived for the node being requested
@@ -261,18 +274,21 @@ async def test_spec_gpu(gpu_model, expected_vendor, expected_model, client):
             False,
             False,
         ],
-    ])
-async def test_ensure_response_with_partial_rows(endpoint,
-                                                 cluster, node,
-                                                 sonar_msg_files,
-                                                 expected_exception,
-                                                 has_sysinfo,
-                                                 client,
-                                                 test_db_v2__function_scope,
-                                                 test_data_dir,
-                                                 mock_token,
-                                                 monkeypatch
-                                                ):
+    ],
+)
+async def test_ensure_response_with_partial_rows(
+    endpoint,
+    cluster,
+    node,
+    sonar_msg_files,
+    expected_exception,
+    has_sysinfo,
+    client,
+    test_db_v2__function_scope,
+    test_data_dir,
+    mock_token,
+    monkeypatch,
+):
     db = test_db_v2__function_scope
     importer = DBJsonImporter(db=db)
 
@@ -282,43 +298,49 @@ async def test_ensure_response_with_partial_rows(endpoint,
     # Disable caches
     def mock_TTLCache__getitem__(self, item):
         raise KeyError(f"No item {item}")
+
     monkeypatch.setattr(TTLCache, "__getitem__", mock_TTLCache__getitem__)
 
     for sonar_msg_file in sonar_msg_files:
         json_filename = Path(test_data_dir) / "sonar" / sonar_msg_file
-        with open(json_filename, "r") as f:
+        with open(json_filename) as f:
             msg_data = json.load(f)
             msg_data["data"]["attributes"]["time"] = (utcnow() - dt.timedelta(hours=1)).isoformat()
             await importer.insert(copy.deepcopy(msg_data))
 
     route = parametrize_route(endpoint, cluster=cluster, node=node)
     try:
-        response = client.get(f"{route}",
-                              headers={"Authorization": f"Bearer {mock_token}"}
-                   )
+        response = client.get(
+            f"{route}",
+            headers={"Authorization": f"Bearer {mock_token}"},
+        )
         assert not expected_exception, f"Exception expected for '{route}', but was not raised"
 
         data = response.json()
         if has_sysinfo:
             assert len(data) == 1 and node in data
-            assert data[node]['cluster'] == cluster
-            assert data[node]['node'] == node
-            assert data[node]['cards']
+            assert data[node]["cluster"] == cluster
+            assert data[node]["node"] == node
+            assert data[node]["cards"]
         else:
             assert data == {}, f"{node=} is expected to have no system information, but was {data}"
     except fastapi.exceptions.HTTPException:
         assert expected_exception
 
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("prefix,name",
+@pytest.mark.parametrize(
+    "prefix,name",
     [
-      ["api/v2", "cluster"]
-    ])
+        ["api/v2", "cluster"],
+    ],
+)
 async def test_ensure_response_for_prefetch(prefix, name, client, test_db_v2, db_config, monkeypatch):
     clear_cache = find_endpoint_by_name(app=app, name="clear_cache", prefix=prefix)
 
     # Ensure to disable the TTLCache (that cache queries at db interface level)
-    setattr(TTLCache, "ttl_cache_hit", 0)
+    TTLCache.ttl_cache_hit = 0
+
     def mock_TTLCache__getitem__(self, item):
         TTLCache.ttl_cache_hit += 1
         raise KeyError(f"No item {item}")
@@ -336,12 +358,14 @@ async def test_ensure_response_for_prefetch(prefix, name, client, test_db_v2, db
     endpoint = find_endpoint_by_name(app=app, name="cluster", prefix=prefix)
     clusters = await endpoint(token_payload=None, dbi=dbi)
 
-    assert len(clusters) == db_config.number_of_clusters, f"{db_config.number_of_clusters} should be available, but only {len(clusters)}"
+    assert len(clusters) == db_config.number_of_clusters, (
+        f"{db_config.number_of_clusters} should be available, but only {len(clusters)}"
+    )
 
     nodes_sysinfo_endpoint = find_endpoint_by_name(app=app, name="nodes_sysinfo")
 
     for cluster_data in clusters:
-        cluster = cluster_data['cluster']
+        cluster = cluster_data["cluster"]
 
         TTLCache.ttl_cache_hit = 0
         # Ensure that we work with a clean FastAPICache
@@ -351,89 +375,98 @@ async def test_ensure_response_for_prefetch(prefix, name, client, test_db_v2, db
 
         start_time = time.time()
         nodes_sysinfo = await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster, dbi=dbi)
-        delay_in_s = (time.time() - start_time)
+        delay_in_s = time.time() - start_time
 
         start_time = time.time()
         nodes_sysinfo = await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster, dbi=dbi)
-        delay_in_s_cached = (time.time() - start_time)
+        delay_in_s_cached = time.time() - start_time
 
         print(f"Cache improve: {delay_in_s / delay_in_s_cached}")
-        assert (delay_in_s / delay_in_s_cached) > 2, f"Returning cached results should be significantly faster, but was {delay_in_s=} vs. {delay_in_s_cached=}"
+        assert (delay_in_s / delay_in_s_cached) > 2, (
+            f"Returning cached results should be significantly faster, but was {delay_in_s=} vs. {delay_in_s_cached=}"
+        )
 
         # ensure that TTLCache will be hit
         assert TTLCache.ttl_cache_hit > 0
 
 
 @pytest.mark.asyncio(loop_scope="function")
-@pytest.mark.parametrize("sonar_msg_files, expected_clusters",
+@pytest.mark.parametrize(
+    "sonar_msg_files, expected_clusters",
     [
-        [[ "0+sysinfo-ml1.hpc.uio.no.json", "0+sample-ml1.hpc.uio.no.json" ], {"mlx.hpc.uio.no": {"ml1"}} ],
-        [[ "0+sample-g001.ex3.simula.no.json", "0+sysinfo-g001.ex3.simula.no.json"], {"ex3.simula.no": {"g001"}}],
-        [ [
-             "0+sysinfo-ml1.hpc.uio.no.json",
-             "0+sample-ml1.hpc.uio.no.json",
-             "0+sample-g001.ex3.simula.no.json",
-             "0+sysinfo-g001.ex3.simula.no.json"
-          ],
-         { "mlx.hpc.uio.no": {"ml1"}, "ex3.simula.no": {"g001"} }
-        ],
-        [ [
-             "0+sample-g001.ex3.simula.no.json",
-             "0+sample-ml1.hpc.uio.no.json",
-             "0+sysinfo-g001.ex3.simula.no.json",
-             "0+sysinfo-ml1.hpc.uio.no.json",
-          ],
-         { "mlx.hpc.uio.no": {"ml1"}, "ex3.simula.no": {"g001"} }
-        ],
-        [ [
-             "0+sample-g001.ex3.simula.no.json",
-             "0+sample-ml1.hpc.uio.no.json",
-             "0+sample-ml2.hpc.uio.no.json",
-             "0+sample-ml3.hpc.uio.no.json",
-             "0+sysinfo-g001.ex3.simula.no.json",
-             "0+sysinfo-ml1.hpc.uio.no.json",
-             "0+sysinfo-ml2.hpc.uio.no.json",
-             "0+sysinfo-ml3.hpc.uio.no.json",
-          ],
-         { "mlx.hpc.uio.no": {"ml1", "ml2", "ml3"}, "ex3.simula.no": {"g001"}}
-        ],
-        [ [
-             "0+sample-g001.ex3.simula.no.json",
-             "0+sample-ml1.hpc.uio.no.json",
-             "0+sample-ml2.hpc.uio.no.json",
-             "0+sample-ml3.hpc.uio.no.json",
-          ],
-         { "mlx.hpc.uio.no": {"ml1", "ml2", "ml3"}, "ex3.simula.no": {"g001"}}
+        [["0+sysinfo-ml1.hpc.uio.no.json", "0+sample-ml1.hpc.uio.no.json"], {"mlx.hpc.uio.no": {"ml1"}}],
+        [["0+sample-g001.ex3.simula.no.json", "0+sysinfo-g001.ex3.simula.no.json"], {"ex3.simula.no": {"g001"}}],
+        [
+            [
+                "0+sysinfo-ml1.hpc.uio.no.json",
+                "0+sample-ml1.hpc.uio.no.json",
+                "0+sample-g001.ex3.simula.no.json",
+                "0+sysinfo-g001.ex3.simula.no.json",
+            ],
+            {"mlx.hpc.uio.no": {"ml1"}, "ex3.simula.no": {"g001"}},
         ],
         [
-          [
-             "0+cluster.ex3.simula.no.json",
-             "0+sysinfo-g001.ex3.simula.no.json",
-             "0+sysinfo-g002.ex3.simula.no.json",
-             "0+cluster.ex3.simula.no.json"
-          ],
-         { "ex3.simula.no": {"g001", "g002"}}
+            [
+                "0+sample-g001.ex3.simula.no.json",
+                "0+sample-ml1.hpc.uio.no.json",
+                "0+sysinfo-g001.ex3.simula.no.json",
+                "0+sysinfo-ml1.hpc.uio.no.json",
+            ],
+            {"mlx.hpc.uio.no": {"ml1"}, "ex3.simula.no": {"g001"}},
         ],
         [
-          [
-             "0+cluster.ex3.simula.no.json",
-             "0+sysinfo-g001.ex3.simula.no.json",
-             "0+sysinfo-g002.ex3.simula.no.json",
-             "0+cluster.ex3.simula.no.json",
-             "0+sample-g001.ex3.simula.no.json"
-          ],
-         { "ex3.simula.no": {"g001", "g002"}}
-        ]
-    ]
+            [
+                "0+sample-g001.ex3.simula.no.json",
+                "0+sample-ml1.hpc.uio.no.json",
+                "0+sample-ml2.hpc.uio.no.json",
+                "0+sample-ml3.hpc.uio.no.json",
+                "0+sysinfo-g001.ex3.simula.no.json",
+                "0+sysinfo-ml1.hpc.uio.no.json",
+                "0+sysinfo-ml2.hpc.uio.no.json",
+                "0+sysinfo-ml3.hpc.uio.no.json",
+            ],
+            {"mlx.hpc.uio.no": {"ml1", "ml2", "ml3"}, "ex3.simula.no": {"g001"}},
+        ],
+        [
+            [
+                "0+sample-g001.ex3.simula.no.json",
+                "0+sample-ml1.hpc.uio.no.json",
+                "0+sample-ml2.hpc.uio.no.json",
+                "0+sample-ml3.hpc.uio.no.json",
+            ],
+            {"mlx.hpc.uio.no": {"ml1", "ml2", "ml3"}, "ex3.simula.no": {"g001"}},
+        ],
+        [
+            [
+                "0+cluster.ex3.simula.no.json",
+                "0+sysinfo-g001.ex3.simula.no.json",
+                "0+sysinfo-g002.ex3.simula.no.json",
+                "0+cluster.ex3.simula.no.json",
+            ],
+            {"ex3.simula.no": {"g001", "g002"}},
+        ],
+        [
+            [
+                "0+cluster.ex3.simula.no.json",
+                "0+sysinfo-g001.ex3.simula.no.json",
+                "0+sysinfo-g002.ex3.simula.no.json",
+                "0+cluster.ex3.simula.no.json",
+                "0+sample-g001.ex3.simula.no.json",
+            ],
+            {"ex3.simula.no": {"g001", "g002"}},
+        ],
+    ],
 )
-async def test_app_with_sonar_examples(sonar_msg_files,
-                                     expected_clusters,
-                                     client__function_scope,
-                                     test_db_v2__function_scope,
-                                     db_config,
-                                     test_data_dir,
-                                     mock_token,
-                                     monkeypatch):
+async def test_app_with_sonar_examples(
+    sonar_msg_files,
+    expected_clusters,
+    client__function_scope,
+    test_db_v2__function_scope,
+    db_config,
+    test_data_dir,
+    mock_token,
+    monkeypatch,
+):
 
     db = test_db_v2__function_scope
 
@@ -459,16 +492,18 @@ async def test_app_with_sonar_examples(sonar_msg_files,
         if "sysinfo" in sonar_msg_file:
             has_sysinfo = True
 
-        with open(json_filename, "r") as f:
+        with open(json_filename) as f:
             msg_data = json.load(f)
             # ensure data for query meets the default timeframe
             msg_data["data"]["attributes"]["time"] = utcnow().isoformat()
             await importer.insert(copy.deepcopy(msg_data))
 
     ### BEGIN Clear / disable cache
-    setattr(TTLCache, "ttl_cache_hit", 0)
+    TTLCache.ttl_cache_hit = 0
+
     def mock_TTLCache__getitem__(self, item):
         raise KeyError(f"No item {item}")
+
     monkeypatch.setattr(TTLCache, "__getitem__", mock_TTLCache__getitem__)
 
     await FastAPICache.clear()
@@ -482,8 +517,8 @@ async def test_app_with_sonar_examples(sonar_msg_files,
     for cluster, nodes in expected_clusters.items():
         for node in nodes:
             response = await client__function_scope.get(
-                    f"/api/v2/cluster/{cluster}/nodes/{node}/info",
-                    headers={"Authorization": f"Bearer {mock_token}"}
+                f"/api/v2/cluster/{cluster}/nodes/{node}/info",
+                headers={"Authorization": f"Bearer {mock_token}"},
             )
             value = json.loads(response.content.decode("UTF-8"))
             if has_sysinfo:
@@ -491,26 +526,31 @@ async def test_app_with_sonar_examples(sonar_msg_files,
             else:
                 assert value == {}
 
+
 @pytest.mark.asyncio(loop_scope="function")
-@pytest.mark.parametrize("sonar_msg_files, expected_clusters, last_sysinfo_in_days, expected_nodeinfo",
+@pytest.mark.parametrize(
+    "sonar_msg_files, expected_clusters, last_sysinfo_in_days, expected_nodeinfo",
     [
-        [[ "0+sysinfo-ml1.hpc.uio.no.json", "0+sample-ml1.hpc.uio.no.json" ], {"mlx.hpc.uio.no": {"ml1"}}, 1, True ],
-        [[ "0+sysinfo-ml1.hpc.uio.no.json", "0+sample-ml1.hpc.uio.no.json" ], {"mlx.hpc.uio.no": {"ml1"}}, 13, True ],
-        [[ "0+sysinfo-ml1.hpc.uio.no.json", "0+sample-ml1.hpc.uio.no.json" ], {"mlx.hpc.uio.no": {"ml1"}}, 20, False ]
-    ]
+        [["0+sysinfo-ml1.hpc.uio.no.json", "0+sample-ml1.hpc.uio.no.json"], {"mlx.hpc.uio.no": {"ml1"}}, 1, True],
+        [["0+sysinfo-ml1.hpc.uio.no.json", "0+sample-ml1.hpc.uio.no.json"], {"mlx.hpc.uio.no": {"ml1"}}, 13, True],
+        [["0+sysinfo-ml1.hpc.uio.no.json", "0+sample-ml1.hpc.uio.no.json"], {"mlx.hpc.uio.no": {"ml1"}}, 20, False],
+    ],
 )
-async def test_node_sysinfo_interval(sonar_msg_files,
-                                     expected_clusters,
-                                     last_sysinfo_in_days,
-                                     expected_nodeinfo,
-                                     client__function_scope,
-                                     test_db_v2__function_scope,
-                                     db_config,
-                                     test_data_dir,
-                                     mock_token,
-                                     monkeypatch):
+async def test_node_sysinfo_interval(
+    sonar_msg_files,
+    expected_clusters,
+    last_sysinfo_in_days,
+    expected_nodeinfo,
+    client__function_scope,
+    test_db_v2__function_scope,
+    db_config,
+    test_data_dir,
+    mock_token,
+    monkeypatch,
+):
 
     db = test_db_v2__function_scope
+
     def mock_get_database():
         return db
 
@@ -521,20 +561,24 @@ async def test_node_sysinfo_interval(sonar_msg_files,
 
     for sonar_msg_file in sonar_msg_files:
         json_filename = Path(test_data_dir) / "sonar" / sonar_msg_file
-        with open(json_filename, "r") as f:
+        with open(json_filename) as f:
             msg_data = json.load(f)
             # ensure data for query meets the default timeframe
-            if 'sysinfo' in sonar_msg_file:
-                msg_data["data"]["attributes"]["time"] = (utcnow() - dt.timedelta(days=last_sysinfo_in_days)).isoformat()
+            if "sysinfo" in sonar_msg_file:
+                msg_data["data"]["attributes"]["time"] = (
+                    utcnow() - dt.timedelta(days=last_sysinfo_in_days)
+                ).isoformat()
             else:
                 msg_data["data"]["attributes"]["time"] = utcnow().isoformat()
 
             await importer.insert(copy.deepcopy(msg_data))
 
         ### BEGIN Clear / disable cache
-        setattr(TTLCache, "ttl_cache_hit", 0)
+        TTLCache.ttl_cache_hit = 0
+
         def mock_TTLCache__getitem__(self, item):
             raise KeyError(f"No item {item}")
+
         monkeypatch.setattr(TTLCache, "__getitem__", mock_TTLCache__getitem__)
 
         await FastAPICache.clear()
@@ -546,8 +590,8 @@ async def test_node_sysinfo_interval(sonar_msg_files,
         for cluster, nodes in expected_clusters.items():
             for node in nodes:
                 response = await client__function_scope.get(
-                        f"/api/v2/cluster/{cluster}/nodes/{node}/info",
-                        headers={"Authorization": f"Bearer {mock_token}"}
+                    f"/api/v2/cluster/{cluster}/nodes/{node}/info",
+                    headers={"Authorization": f"Bearer {mock_token}"},
                 )
 
                 data = json.loads(response.content.decode("UTF-8"))
