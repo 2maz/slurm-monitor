@@ -184,12 +184,12 @@ async def test_MessageSubscriber_sonar_examples(sonar_msg_files,
         with db.make_session() as session:
             results = session.execute(sqlalchemy.text(f"SELECT cluster, nodes, partitions, time from cluster_attributes where cluster = '{cluster_name}' ORDER BY time DESC")).all()
             assert results
-            cluster, nodes, partitions, cluster_time = results[0]
-            expected_nodes = expected_clusters[cluster_name]['nodes']
-            expected_partitions = expected_clusters[cluster_name]['partitions']
+            _, received_nodes, received_partitions, _ = results[0]
+            expected_nodes = nodes['nodes']
+            expected_partitions = nodes['partitions']
 
-            assert sorted(nodes) == sorted(expected_nodes), f"Expected nodes {expected_nodes} in cluster_attributes, but got {nodes=}"
-            assert sorted(partitions) == sorted(expected_partitions), f"Expected partitions {expected_partitions} in cluster_attributes, but got {partitions=}"
+            assert sorted(received_nodes) == sorted(expected_nodes), f"Expected nodes {expected_nodes} in cluster_attributes, but got {received_nodes=}"
+            assert sorted(received_partitions) == sorted(expected_partitions), f"Expected partitions {expected_partitions} in cluster_attributes, but got {received_partitions=}"
 
 
 @pytest.mark.asyncio(loop_scope="function")

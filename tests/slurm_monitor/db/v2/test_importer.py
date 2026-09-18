@@ -243,7 +243,7 @@ async def test_DBJsonImporter_sonar_examples(sonar_msg_files,
         clusters = { x[0]: set(x[1]) for x in results}
 
         for expected_cluster, expected_nodes in expected_clusters.items():
-            assert clusters[expected_cluster] == expected_clusters[expected_cluster], f"Expected {expected_cluster} with nodes {expected_clusters[expected_cluster]} in cluster_attributes, but got {clusters=}"
+            assert clusters[expected_cluster] == expected_nodes, f"Expected {expected_cluster} with nodes {expected_nodes} in cluster_attributes, but got {clusters=}"
             # existing clusters of test db plus newly added ons
             assert len(expected_clusters) + db_config.number_of_clusters == len(clusters)
 
