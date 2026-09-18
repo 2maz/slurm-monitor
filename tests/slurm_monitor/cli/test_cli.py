@@ -9,16 +9,6 @@ from argparse import ArgumentParser
 import httpx
 import pytest
 
-
-def _get_free_port() -> int:
-    """
-    Ask the OS for a currently-unused TCP port.
-    """
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))
-        return s.getsockname()[1]
-
-
 import slurm_monitor.cli.main as cli_main
 from slurm_monitor.app_settings import SLURM_MONITOR_RESTAPI_PORT
 from slurm_monitor.cli.autodeploy import AutoDeployParser
@@ -34,6 +24,15 @@ from slurm_monitor.cli.test import TestParser
 from slurm_monitor.db.v2.db_tables import SampleDisk
 from slurm_monitor.db_operations import DBManager
 from slurm_monitor.utils.command import Command
+
+
+def _get_free_port() -> int:
+    """
+    Ask the OS for a currently-unused TCP port.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
 
 
 def _wait_for_restapi(url: str, timeout: float = 30) -> httpx.Response:
