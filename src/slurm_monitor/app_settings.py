@@ -99,7 +99,6 @@ class AppSettings(BaseSettings):
 
     prefetch: PrefetchSettings = Field(default_factory=PrefetchSettings)
 
-    db_schema_version: str | None = Field(default="v2")
     oauth: OAuthSettings = Field(default_factory=OAuthSettings)
 
     listen: ListenSettings = Field(default_factory=ListenSettings)

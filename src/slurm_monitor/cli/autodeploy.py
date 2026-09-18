@@ -16,13 +16,6 @@ class AutoDeployParser(BaseParser):
         super().__init__(parser=parser)
 
         parser.add_argument(
-            "--use-version",
-            type=str,
-            default="v2",
-            help="Use this API and DB version",
-        )
-
-        parser.add_argument(
             "--cluster-name",
             type=str,
             required=True,
@@ -55,17 +48,13 @@ class AutoDeployParser(BaseParser):
         super().execute(args)
 
         app_settings = AppSettings.initialize()
-        app_settings.db_schema_version = args.use_version
 
-        if args.use_version == "v1":
-            deployer = AutoDeployer(app_settings=app_settings, allow_list=args.allow_list)
-        else:
-            deployer = AutoDeployerSonar(
-                app_settings=app_settings,
-                cluster_name=args.cluster_name,
-                deploy_command=args.command,
-                allow_list=args.allow_list,
-            )
+        deployer = AutoDeployerSonar(
+            app_settings=app_settings,
+            cluster_name=args.cluster_name,
+            deploy_command=args.command,
+            allow_list=args.allow_list,
+        )
 
         log_output = args.log_output
         # if log_output is None (the default), we set the default

@@ -13,13 +13,6 @@ class DBParser(BaseParser):
         super().__init__(parser=parser)
 
         parser.add_argument(
-            "--db-schema-version",
-            choices=["v1", "v2"],
-            default="v2",
-            help="Database schema version to use (default is 'v2')",
-        )
-
-        parser.add_argument(
             "--db-uri",
             type=str,
             help="Database uri",
@@ -57,7 +50,6 @@ class DBParser(BaseParser):
         super().execute(args)
 
         app_settings = AppSettings.initialize()
-        app_settings.db_schema_version = args.db_schema_version
 
         if args.db_uri:
             app_settings.database.uri = args.db_uri

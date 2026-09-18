@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
     )
 
     logger.info("Setting up database ...")
-    app_settings = AppSettings.initialize(db_schema_version="v2", force=True)
+    app_settings = AppSettings.initialize(force=True)
     if app_settings.prefetch.enabled:
         logger.info("Setting up prefetching ...")
 

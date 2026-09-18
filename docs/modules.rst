@@ -13,4 +13,4 @@ The following pages describe the API of this package:
    :toctree: _autosummary
    :recursive:
 
-   slurm_monitor.db.v2
+   slurm_monitor.db

@@ -26,7 +26,7 @@ def createFastAPI(**kwargs):
         **kwargs,
     )
 
-    app_settings = AppSettings.initialize(db_schema_version="v2")
+    app_settings = AppSettings.initialize()
 
     def custom_openapi():
         if app.openapi_schema:

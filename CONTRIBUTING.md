@@ -49,7 +49,7 @@ to run all tests.
 Or:
 
 ```
-    pytest tests/slurm_monitor/api/v2/test_monitor_v2.py -k nodeinfo -s
+    pytest tests/slurm_monitor/api/test_monitor.py -k nodeinfo -s
 ```
 
 to run a particular test case (-k) and redirecting the output to stdout (-s).
