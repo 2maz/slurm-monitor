@@ -263,7 +263,8 @@ async def test_MessageSubscriber_sonar_examples(
         with db.make_session() as session:
             results = session.execute(
                 sqlalchemy.text(
-                    f"SELECT cluster, nodes, partitions, time from cluster_attributes where cluster = '{cluster_name}' ORDER BY time DESC"
+                    f"SELECT cluster, nodes, partitions, time from cluster_attributes where cluster = '{cluster_name}'"
+                    " ORDER BY time DESC"
                 )
             ).all()
             assert results

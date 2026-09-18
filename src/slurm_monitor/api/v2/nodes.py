@@ -251,19 +251,22 @@ async def nodes_process_gpu_util(
 
 @api_router.get(
     "/cluster/{cluster}/nodes/{nodename}/process/gpu/timeseries",
-    summary="Get **node**-specific and **job**-related timeseries of GPU samples / gpu usage as timeseries: node > gpu > job_id",
+    summary="Get **node**-specific and **job**-related timeseries of GPU samples / gpu usage as timeseries:"
+    " node > gpu > job_id",
     tags=["node"],
     response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse,
 )
 @api_router.get(
     "/cluster/{cluster}/nodes/process/gpu/timeseries",
-    summary="Get **node**-related and **job**-related timeseries of GPU samples / gpu usage as timeseries: node > gpu > job_id",
+    summary="Get **node**-related and **job**-related timeseries of GPU samples / gpu usage as timeseries:"
+    " node > gpu > job_id",
     tags=["cluster"],
     response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse,
 )
 @api_router.get(
     "/cluster/{cluster}/nodes/{nodename}/jobs/{job_id}/process/gpu/timeseries",
-    summary="Get **node**-specific and **job**-specific timeseries of GPU samples / gpu usage as timeseries: node > gpu > job_id",
+    summary="Get **node**-specific and **job**-specific timeseries of GPU samples / gpu usage as timeseries:"
+    " node > gpu > job_id",
     tags=["node"],
     response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse,
 )
@@ -307,19 +310,22 @@ async def nodes_sample_process_gpu(
 )
 @api_router.get(
     "/cluster/{cluster}/nodes/cpu/timeseries",
-    summary="Get timeseries data of CPU samples for all nodes in a given cluster (per node accumulated over processes): node > cpu timeseries",
+    summary="Get timeseries data of CPU samples for all nodes in a given cluster"
+    " (per node accumulated over processes): node > cpu timeseries",
     tags=["cluster"],
     response_model=dict[str, list[SampleProcessAccResponse]],
 )
 @api_router.get(
     "/cluster/{cluster}/nodes/{nodename}/memory/timeseries",
-    summary="Get **node**-specific timeseries data of memory samples (accumulated over processes): node > cpu timeseries",
+    summary="Get **node**-specific timeseries data of memory samples"
+    " (accumulated over processes): node > cpu timeseries",
     tags=["node"],
     response_model=dict[str, list[SampleProcessAccResponse]],
 )
 @api_router.get(
     "/cluster/{cluster}/nodes/memory/timeseries",
-    summary="Get timeseries data of memory samples for all nodes in a given cluster (per node accumulated over processes): node > cpu timeseries",
+    summary="Get timeseries data of memory samples for all nodes in a given cluster"
+    " (per node accumulated over processes): node > cpu timeseries",
     tags=["cluster"],
     response_model=dict[str, list[SampleProcessAccResponse]],
 )
@@ -407,7 +413,8 @@ async def nodes_sample_gpu(
 
 @api_router.get(
     "/cluster/{cluster}/nodes/{nodename}/diskstats/timeseries",
-    summary="Get **node**-specific timeseries data of disk i/o read/write rates (derived from diskstat with respect to the selected time resolution, default 300s) (experimental)",
+    summary="Get **node**-specific timeseries data of disk i/o read/write rates (derived from diskstat with respect"
+    " to the selected time resolution, default 300s) (experimental)",
     description="The computation uses [timescaledb's time_bucketing](https://www.tigerdata.com/docs/use-timescale/latest/time-buckets/use-time-buckets)"
     " The endpoint parameter +resolution_in_s+ sets the resolution of the bucket, and deltas are computed as:"
     "\n```"
@@ -420,7 +427,8 @@ async def nodes_sample_gpu(
 )
 @api_router.get(
     "/cluster/{cluster}/nodes/diskstats/timeseries",
-    summary="Get **node**-specific timeseries data of disk i/o read/write rates (derived from diskstat with respect to the selected time resolution, default 300s) (experimental)",
+    summary="Get **node**-specific timeseries data of disk i/o read/write rates (derived from diskstat with respect"
+    " to the selected time resolution, default 300s) (experimental)",
     description="The computation uses [timescaledb's time_bucketing](https://www.tigerdata.com/docs/use-timescale/latest/time-buckets/use-time-buckets)"
     " The endpoint parameter +resolution_in_s+ sets the resolution of the bucket, and deltas are computed as:"
     "\n```"

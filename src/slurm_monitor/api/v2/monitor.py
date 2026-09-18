@@ -329,7 +329,8 @@ def benchmarks(
 
 
 @api_router.get(
-    "/spec/gpu/{gpu_name:path}",  # gpu_name might include forward slashes, so catching everything using the :path instruction
+    # gpu_name might include forward slashes, so catching everything using the :path instruction
+    "/spec/gpu/{gpu_name:path}",
     summary="Get available gpu spec sheet",
     tags=["gpu"],
 )

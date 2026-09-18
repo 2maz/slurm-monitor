@@ -185,7 +185,8 @@ class RequiredPermissions:
     def __call__(self, token_payload: Annotated[TokenPayload, Depends(get_token_payload)]) -> None:
         if token_payload:
             logger.info(
-                f"Required roles: {self.required_roles} - available roles: {token_payload.resource_access.account.roles}"
+                f"Required roles: {self.required_roles} - "
+                f"available roles: {token_payload.resource_access.account.roles}"
             )
 
         for role in self.required_roles:
@@ -211,7 +212,8 @@ class NoneForUserWithResourceRoles:
     def __call__(self, token_payload: Annotated[TokenPayload, Depends(get_token_payload)]) -> None:
         if token_payload:
             logger.info(
-                f"Optional roles: {self.optional_roles} - available roles: {token_payload.resource_access.account.roles}"
+                f"Optional roles: {self.optional_roles} - "
+                f"available roles: {token_payload.resource_access.account.roles}"
             )
 
         for role in self.optional_roles:

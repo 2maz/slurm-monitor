@@ -231,7 +231,8 @@ class GPUCardResponse(TimestampedModel):
 
 class SampleGpuBaseResponse(TimestampedModel):
     failing: int = Field(
-        description="If not zero and error code indicating a card failure state. Code=1 is 'generic failure'. Other codes TBD"
+        description="If not zero and error code indicating a card failure state. Code=1 is 'generic failure'."
+        " Other codes TBD"
     )
     fan: float = Field(description="Percent of primary fan's max speed, max exceed 100% on some cards in some cases")
     compute_mode: str = Field(description="card-dependent, current compute mode if known")
@@ -699,24 +700,28 @@ class JobReport(BaseModel):
 
         if cpu_max > self.requested_cpus * 1.2:
             warnings.append(
-                f"CPU threshold exceeded: requested cpus: {self.requested_cpus}, but actual max encountered: {cpu_max:.2f} cpus"
+                f"CPU threshold exceeded: requested cpus: {self.requested_cpus}, but actual max encountered:"
+                f" {cpu_max:.2f} cpus"
             )
 
         if self.requested_cpus > cpu_mean * 1.5:
             warnings.append(
-                f"CPU allocation excessive: requested cpus: {self.requested_cpus}, but actual avg use encountered: {cpu_mean:.2f} cpus"
+                f"CPU allocation excessive: requested cpus: {self.requested_cpus}, but actual avg use encountered:"
+                f" {cpu_mean:.2f} cpus"
             )
 
         if self.requested_gpus < len(self.used_gpu_uuids):
             warnings.append(
-                f"GPU threshold exceeded: requested gpus: {self.requested_gpus}, but actual usage of: {len(self.used_gpu_uuids)} gpus (uuids: {self.used_gpu_uuids})"
+                f"GPU threshold exceeded: requested gpus: {self.requested_gpus}, but actual usage of:"
+                f" {len(self.used_gpu_uuids)} gpus (uuids: {self.used_gpu_uuids})"
             )
 
         memory_max = self.get_max("virtual_memory")
         requested_memory = self.requested_memory_per_node * len(self.nodes)
         if requested_memory < memory_max:
             warnings.append(
-                f"Memory threshold exceeded: requested memory (total): {requested_memory:.2f} KiB, but actual usage of: {memory_max:.2f} KiB"
+                f"Memory threshold exceeded: requested memory (total): {requested_memory:.2f} KiB, but actual usage of:"
+                f" {memory_max:.2f} KiB"
             )
 
         self.warnings = warnings

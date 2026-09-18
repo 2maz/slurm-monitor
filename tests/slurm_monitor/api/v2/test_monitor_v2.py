@@ -252,7 +252,8 @@ async def test_spec_gpu(gpu_model, expected_vendor, expected_model, client):
             False,
         ],
         [
-            # no cluster or sysinfo messages for some nodes in other clusters, but available for the node being requested
+            # no cluster or sysinfo messages for some nodes in other clusters, but available for the node being
+            # requested
             "/api/v2/cluster/{cluster}/nodes/{nodename}/info",
             "cluster-0",
             "cluster-0-node-0",

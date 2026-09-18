@@ -390,7 +390,10 @@ class MessageSubscriber:
         latency_in_s: float
 
         def to_str(self):
-            return f"[{self.state.ljust(12, ' ')}][{self.time}] last processed: topic={self.last_processed_topic} offset={self.consumer_record_offset} latency: {self.latency_in_s:.2f}s"
+            return (
+                f"[{self.state.ljust(12, ' ')}][{self.time}] last processed: topic={self.last_processed_topic} "
+                f"offset={self.consumer_record_offset} latency: {self.latency_in_s:.2f}s"
+            )
 
     class Control(BaseModel):
         log_level: int = 0
@@ -672,7 +675,8 @@ class MessageSubscriber:
                     try:
                         if upper_bound is not None and consumer_record.offset >= upper_bound:
                             logger.info(
-                                f"MessageSubscriber.consume_topic: {topic.ljust(25)} -- upper bound reached: {upper_bound}. Stopping."
+                                f"MessageSubscriber.consume_topic: {topic.ljust(25)} -- upper bound reached:"
+                                f" {upper_bound}. Stopping."
                             )
                             hard_stop = True
                             break
@@ -682,7 +686,8 @@ class MessageSubscriber:
 
                         if state == self.State.INITIALIZING and startup_offset is None:
                             logger.info(
-                                f"{topic}: startup completed: historic message lookup finished (after {(utcnow() - start_time).total_seconds():.2}s)"
+                                f"{topic}: startup completed: historic message lookup finished (after"
+                                f" {(utcnow() - start_time).total_seconds():.2}s)"
                             )
                             state = self.State.RUNNING
                             ignore_integrity_errors = False
@@ -695,8 +700,8 @@ class MessageSubscriber:
                         if self.verbose:
                             logger.info(f"Message: {msg}")
 
-                        # If a sample arrives there should be no duplicates in the database - an exception is the initialization
-                        # where historic records are retrieved
+                        # If a sample arrives there should be no duplicates in the database - an exception is the
+                        # initialization where historic records are retrieved
                         # Default: allow to update / merge existing information
                         topic_type = sonar.TopicType.infer(topic)
                         update = topic_type != sonar.TopicType.sample
@@ -743,7 +748,8 @@ class MessageSubscriber:
                             )
                     except sqlalchemy.exc.OperationalError as e:
                         logger.warning(
-                            f"{topic}: OperationalError of database encountered. For now, assuming it is being (re)started."
+                            f"{topic}: OperationalError of database encountered. For now, assuming it is being"
+                            f" (re)started."
                             f"Will sleep for {self.retry_timeout_in_s}s -- details: {e}",
                         )
                         time.sleep(self.retry_timeout_in_s)
@@ -866,14 +872,20 @@ class MessageSubscriber:
                     )
                     return
                 except kafka.errors.NoBrokersAvailable as e:
-                    msg = f"{topic}: no brokers available using bootstrap_servers: {self.host}:{self.port} retrying in {self.retry_timeout_in_s}s (check {self.log_output}) - {e}"
+                    msg = (
+                        f"{topic}: no brokers available using bootstrap_servers: {self.host}:{self.port} retrying"
+                        f" in {self.retry_timeout_in_s}s (check {self.log_output}) - {e}"
+                    )
                     logger.warning(msg)
                     warnings.warn(msg)
                     time.sleep(self.retry_timeout_in_s)
                 except TimeoutError:
                     raise
                 except Exception as e:
-                    msg = f"{topic}: connection failed - retrying in {self.retry_timeout_in_s}s (see {self.log_output}) - {e}"
+                    msg = (
+                        f"{topic}: connection failed - retrying in {self.retry_timeout_in_s}s"
+                        f" (see {self.log_output}) - {e}"
+                    )
                     logger.warning(msg)
                     warnings.warn(msg)
                     time.sleep(self.retry_timeout_in_s)
@@ -887,7 +899,8 @@ class MessageSubscriber:
         m = re.match(r"^([^:]+)(:[0-9]+)?(-[0-9]+)?$", txt)
         if not m:
             raise ValueError(
-                "MessageSubscriber: invalid pattern: use <topic-name>, or <topic-name>:<lower-bount:int> or <topic-name>:<lower-bound:int>-<upper-bound:int>"
+                "MessageSubscriber: invalid pattern: use <topic-name>, or <topic-name>:<lower-bount:int> or "
+                "<topic-name>:<lower-bound:int>-<upper-bound:int>"
             )
 
         topic = m.groups()[0]
@@ -979,9 +992,13 @@ class MessageSubscriber:
         public `output`, and forwarding/receiving control messages via
         `receive_and_notify()`.
 
-        Note that a topic can be defined with a lower bound and and upper bound offset, e.g., as "<topic_name>:<lb-offset>-<ub-offset>.
-            - when an lower bound offset is defined: start the consumption of messages for the related topic at this message offset
-            - when an upper bound offset is defined: end the consumption of messages for the related topic, when a (topic) message with an offset equal or larger than this bound is encountered.
+        Note that a topic can be defined with a lower bound and and upper bound offset, e.g., as
+        "<topic_name>:<lb-offset>-<ub-offset>",
+        where
+        - when an lower bound offset is defined: start the consumption of messages for the related topic at this
+          message offset
+        - when an upper bound offset is defined: end the consumption of messages for the related topic, when a
+          (topic) message with an offset equal or larger than this bound is encountered.
         """
 
         if self.strict_mode:

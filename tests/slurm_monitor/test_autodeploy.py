@@ -35,6 +35,7 @@ def test_AutoDeployer_v2(timescaledb, test_db_v2, db_config, monkeypatch):
     auto_deployer.stop()
 
     assert len(redeploy_nodes) == db_config.number_of_nodes - 1, (
-        f"Trying to redeploy {redeploy_nodes}, but expected only {db_config.number_of_nodes - 1} nodes, due to one drained node"
+        f"Trying to redeploy {redeploy_nodes}, but expected only {db_config.number_of_nodes - 1} nodes,"
+        " due to one drained node."
     )
     assert "cluster-0-node-0" not in redeploy_nodes

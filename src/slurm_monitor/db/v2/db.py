@@ -2841,7 +2841,8 @@ class ClusterDB(Database):
 
         if user and job.user_name != user:
             raise RuntimeError(
-                f"Job Report for {job_id=} on {cluster=} cannot be provided. The job belongs a different user (current {user=})"
+                f"Job Report for {job_id=} on {cluster=} cannot be provided. The job belongs a different user"
+                f" (current {user=})"
             )
 
         report = JobReport()
@@ -3002,7 +3003,8 @@ class ClusterDB(Database):
                 )
             else:
                 logger.warning(
-                    f"Cluster {cluster} information on partitions is incomplete -- {observed_partitions=} currently {known_partitions=}"
+                    f"Cluster {cluster} information on partitions is incomplete -- {observed_partitions=} currently "
+                    f"{known_partitions=}"
                 )
                 to_add["partitions"] = list(set(observed_partitions).difference(known_partitions))
 
@@ -3012,7 +3014,8 @@ class ClusterDB(Database):
             else:
                 to_add["nodes"] = list(set(observed_nodes).difference(known_nodes))
                 logger.warning(
-                    f"Cluster {cluster} information on nodes is incomplete -- {observed_nodes=} currently {known_nodes=}"
+                    f"Cluster {cluster} information on nodes is incomplete -- {observed_nodes=} currently "
+                    f"{known_nodes=}"
                 )
 
             cluster_attributes = Cluster.create(
@@ -3024,7 +3027,8 @@ class ClusterDB(Database):
             self.insert(cluster_attributes)
         else:
             logger.info(
-                f"Cluster {cluster} - job samples indicate the existance of (this unseen) cluster. Inferring information: "
+                f"Cluster {cluster} - job samples indicate the existance of (this unseen) cluster. "
+                f"Inferring information: "
                 f"{cluster=} {observed_nodes=} {observed_partitions=} and adding cluster information to db"
             )
 
