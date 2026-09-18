@@ -154,9 +154,8 @@ class Slurm:
             else:
                 current_expr += "," + chunk
 
-            if "[" in current_expr:
-                if "]" not in current_expr:
-                    continue
+            if "[" in current_expr and "]" not in current_expr:
+                continue
 
             m = COMPACT_NODE_EXPRESSION_REXEXP.match(current_expr)
             if m is None:
