@@ -218,12 +218,7 @@ class ListenParser(BaseParser):
         app_settings.database.create_missing = False
 
         if args.use_version == "v1":
-            from slurm_monitor.db.v1.data_subscriber import main
-            from slurm_monitor.db.v1.db import SlurmMonitorDB
-
-            database = SlurmMonitorDB(db_settings=app_settings.database)
-
-            main(host=args.host, port=args.port, database=database, topic=args.topic)
+            raise NotImplementedError("v1 is not supported")
         elif args.use_version == "v2":
             from slurm_monitor.db.v2.db import ClusterDB
 

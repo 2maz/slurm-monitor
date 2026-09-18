@@ -3,7 +3,7 @@ import json
 from argparse import ArgumentParser
 
 from slurm_monitor.cli.base import BaseParser
-from slurm_monitor.db.v1.data_publisher import (
+from slurm_monitor.db.data_publisher import (
     KAFKA_NODE_STATUS_TOPIC,
     KAFKA_PROBE_CONTROL_TOPIC,
     NodeStatusCollector,
