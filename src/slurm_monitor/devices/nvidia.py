@@ -150,7 +150,7 @@ class Nvidia(GPU):
         samples = []
         utcnow()
 
-        for _, value in enumerate(records):
+        for value in records:
             sample = GPUProcessStatus(
                 uuid=value["gpu_uuid"],
                 pid=int(value["pid"]),

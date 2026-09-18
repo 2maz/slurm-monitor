@@ -820,7 +820,7 @@ class MessageSubscriber:
             while self.database and db is None and not self._stop_event.is_set():
                 try:
                     db = self.database.clone()
-                except Exception as e:
+                except sqlalchemy.exc.SQLAlchemyError as e:
                     msg = (
                         f"{topic}: failed to open DB connection - retrying in {self.retry_timeout_in_s}s"
                         f" (see {self.log_output}) - {e}"
