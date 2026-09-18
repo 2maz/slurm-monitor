@@ -40,7 +40,8 @@ class AutoDeployParser(BaseParser):
             "--log-output",
             type=str,
             default=None,
-            help="Output file for the log - default: slurm-monitor.auto-deploy.<cluster-name>.log, disable logging to file by specifying 'none'",
+            help="Output file for the log - default: slurm-monitor.auto-deploy.<cluster-name>.log, disable logging to"
+            " file by specifying 'none'",
         )
 
         parser.add_argument(

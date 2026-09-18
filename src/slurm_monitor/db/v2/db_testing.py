@@ -174,7 +174,7 @@ def create_test_db(
 
                 gpu_samples = []
 
-                for s in range(0, config.number_of_samples):
+                for _ in range(0, config.number_of_samples):
                     gpu_samples.append(
                         SampleGpu(
                             uuid=uuid,
@@ -292,7 +292,7 @@ def create_test_db(
                         ),
                     )
 
-                    for cIdx, card in enumerate(cards):
+                    for _, card in enumerate(cards):
                         sample_process_gpu.append(
                             SampleProcessGpu(
                                 cluster=cluster_name,

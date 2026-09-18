@@ -228,13 +228,17 @@ class AutoDeployer:
 
                     last_seen_in_s = (now - node_time).total_seconds()
                     msg = f"{node} last seen: {last_seen_in_s:10.1f} s ago"
-                    if self.allow_list is None or node in self.allow_list:
-                        if last_seen_in_s > self._sampling_interval_in_s:
-                            if not loop.run_until_complete(self.is_drained(node)):
-                                msg = f"{msg} -- requires redeployment of probe"
-                                self.deploy(node)
-                            else:
-                                msg = f"{msg} -- but node is drained"
+
+                    is_allowed = self.allow_list is None or node in self.allow_list
+                    is_drained = loop.run_until_complete(self.is_drained(node))
+                    beyond_sampling_interval = last_seen_in_s > self._sampling_interval_in_s
+
+                    if is_allowed and beyond_sampling_interval:
+                        if not is_drained:
+                            msg = f"{msg} -- requires redeployment of probe"
+                            self.deploy(node)
+                        else:
+                            msg = f"{msg} -- but node is drained"
                     self.messages.append(msg)
 
                 self.save_stats()
@@ -257,11 +261,7 @@ class AutoDeployerSonar(AutoDeployer):
         if not node_states:
             return False
 
-        for state in node_states[0]["states"]:
-            if state.lower().startswith("drain"):
-                return True
-
-        return False
+        return any(state.lower().startswith("drain") for state in node_states[0]["states"])
 
     def deploy(self, node: str) -> str:
         try:

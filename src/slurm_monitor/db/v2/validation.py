@@ -96,12 +96,12 @@ class Specification:
             covered_spec[spec_object]["required"] = fields_in_spec
 
         if show:
-            warnings.warn(f"Extra tables: {ignored_tables} - table has no associated info in 'spec'")
+            warnings.warn(f"Extra tables: {ignored_tables} - table has no associated info in 'spec'", stacklevel=2)
 
         ignored_spec = set(
             [
                 x
-                for x in self._spec.keys()
+                for x in self._spec
                 if "meta" not in self._spec[x]["fields"]
                 and "attributes" not in self._spec[x]["fields"]
                 and not x.endswith("Object")
@@ -112,7 +112,7 @@ class Specification:
             print("Spec Implementation Status")
             for spec_object, fulfillment in covered_spec.items():
                 all_implemented_columns = set()
-                for table_name, implemented_columns in fulfillment["implemented"].items():
+                for _, implemented_columns in fulfillment["implemented"].items():
                     all_implemented_columns |= implemented_columns
 
                 missing_columns = fulfillment["required"] - all_implemented_columns
@@ -124,11 +124,12 @@ class Specification:
                     )
                 else:
                     print(
-                        f"     {ljust_spec_object} "
-                        f"COMPLETE (implemented by {[x for x in fulfillment['implemented'].keys()]})"
+                        f"     {ljust_spec_object} COMPLETE (implemented by {[x for x in fulfillment['implemented']]})"
                     )
 
-            warnings.warn(f"Potentially missing implementation: {ignored_spec} - specs have no associated tables")
+            warnings.warn(
+                f"Potentially missing implementation: {ignored_spec} - specs have no associated tables", stacklevel=2
+            )
 
         return {"ignored_spec": ignored_spec, "covered_spec": covered_spec}
 

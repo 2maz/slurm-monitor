@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import datetime as dt
 import os
 import signal
@@ -158,7 +159,7 @@ async def test_collector_collect_max_samples(controller, mock_slurm_command_hint
 
 def test_controller_set_sampling_interval(controller, nodename):
     interval_in_s = 40
-    for node in [nodename, f"{nodename[:4]}-.*", nodename[:4]]:
+    for _ in [nodename, f"{nodename[:4]}-.*", nodename[:4]]:
         data = {"node": nodename, "action": "set_interval", "interval_in_s": interval_in_s}
         controller.handle(data)
 
@@ -202,7 +203,7 @@ def test_main(mocker, mock_slurm_command_hint):
     mock_consumer_instance = mock_consumer.return_value
     mock_consumer_instance.poll.return_value = None
 
-    try:
+    with contextlib.suppress(asyncio.TimeoutError):
         asyncio.run(
             asyncio.wait_for(
                 main(
@@ -214,7 +215,5 @@ def test_main(mocker, mock_slurm_command_hint):
                 timeout=5,
             ),
         )
-    except asyncio.TimeoutError:
-        pass
 
     assert published_messages

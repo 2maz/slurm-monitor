@@ -252,7 +252,8 @@ async def test_spec_gpu(gpu_model, expected_vendor, expected_model, client):
             False,
         ],
         [
-            # no cluster or sysinfo messages for some nodes in other clusters, but available for the node being requested
+            # no cluster or sysinfo messages for some nodes in other clusters, but available for the node being
+            # requested
             "/api/v2/cluster/{cluster}/nodes/{nodename}/info",
             "cluster-0",
             "cluster-0-node-0",
@@ -374,11 +375,11 @@ async def test_ensure_response_for_prefetch(prefix, name, client, test_db_v2, db
         assert FastAPICache.get_backend()._store == {}, "Expect FastAPICache to be cleared, after API call"
 
         start_time = time.time()
-        nodes_sysinfo = await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster, dbi=dbi)
+        await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster, dbi=dbi)
         delay_in_s = time.time() - start_time
 
         start_time = time.time()
-        nodes_sysinfo = await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster, dbi=dbi)
+        await nodes_sysinfo_endpoint(token_payload=None, cluster=cluster, dbi=dbi)
         delay_in_s_cached = time.time() - start_time
 
         print(f"Cache improve: {delay_in_s / delay_in_s_cached}")

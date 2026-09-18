@@ -134,27 +134,27 @@ async def verify_token(token: str) -> TokenPayload:
         logger.info(f"Token validated for user: {payload.get('preferred_username')}")
         return TokenPayload(**payload)
 
-    except jwt.ExpiredSignatureError:
+    except jwt.ExpiredSignatureError as e:
         logger.error("Token has expired")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from e
     except jwt.InvalidTokenError as e:
         logger.error(f"Invalid token: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Could not validate credentials: {str(e)}",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from e
     except Exception as e:
         logger.error(f"Token verification failed: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from e
 
 
 async def get_token_payload(request: Request) -> TokenPayload:
@@ -185,7 +185,8 @@ class RequiredPermissions:
     def __call__(self, token_payload: Annotated[TokenPayload, Depends(get_token_payload)]) -> None:
         if token_payload:
             logger.info(
-                f"Required roles: {self.required_roles} - available roles: {token_payload.resource_access.account.roles}"
+                f"Required roles: {self.required_roles} - "
+                f"available roles: {token_payload.resource_access.account.roles}"
             )
 
         for role in self.required_roles:
@@ -211,7 +212,8 @@ class NoneForUserWithResourceRoles:
     def __call__(self, token_payload: Annotated[TokenPayload, Depends(get_token_payload)]) -> None:
         if token_payload:
             logger.info(
-                f"Optional roles: {self.optional_roles} - available roles: {token_payload.resource_access.account.roles}"
+                f"Optional roles: {self.optional_roles} - "
+                f"available roles: {token_payload.resource_access.account.roles}"
             )
 
         for role in self.optional_roles:

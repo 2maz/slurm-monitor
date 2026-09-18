@@ -226,10 +226,9 @@ class DBJsonImporter(Importer):
             for card in cards:
                 data = {}
                 for field in ["manufacturer", "model", "architecture", "memory"]:
-                    if field in card:
-                        if card[field] is not None:
-                            data[field] = card[field]
-                            del card[field]
+                    if field in card and card[field] is not None:
+                        data[field] = card[field]
+                        del card[field]
 
                 gpu_uuid = card["uuid"]
                 if gpu_uuid is None or gpu_uuid == "":
@@ -347,9 +346,8 @@ class DBJsonImporter(Importer):
             user = job["user"]
             epoch = job.get("epoch", 0)
 
-            if epoch == 0:
-                if job_id in self.config.jobs_blocklist:
-                    continue
+            if epoch == 0 and job_id in self.config.jobs_blocklist:
+                continue
 
             for process in job["processes"]:
                 if "pid" not in process:
@@ -463,9 +461,8 @@ class DBJsonImporter(Importer):
         slurm_job_samples = []
         for job_data in slurm_jobs:
             epoch = job_data.get("epoch", 0)
-            if epoch == 0:
-                if job_data["job_id"] in self.config.jobs_blocklist:
-                    continue
+            if epoch == 0 and job_data["job_id"] in self.config.jobs_blocklist:
+                continue
 
             if job_data.get("job_step", None) is None:
                 job_data["job_step"] = ""
@@ -500,18 +497,17 @@ class DBJsonImporter(Importer):
                     time=time,
                 ),
             )
-            if sacct:
-                if "job_step" in job_data:
-                    sacct["job_step"] = job_data["job_step"]
+            if sacct and "job_step" in job_data:
+                sacct["job_step"] = job_data["job_step"]
 
-                    slurm_job_samples.append(
-                        SampleSlurmJobAcc.create(
-                            cluster=cluster,
-                            job_id=job_data["job_id"],
-                            **sacct,
-                            time=time,
-                        ),
-                    )
+                slurm_job_samples.append(
+                    SampleSlurmJobAcc.create(
+                        cluster=cluster,
+                        job_id=job_data["job_id"],
+                        **sacct,
+                        time=time,
+                    ),
+                )
         return slurm_job_samples
 
     def parse_errors(self, msg: sonar.Message) -> list[TableBase | list[TableBase]]:

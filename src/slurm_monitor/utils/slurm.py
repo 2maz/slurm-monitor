@@ -67,7 +67,7 @@ class Slurm:
             return pids
 
         cmd = f"{scontrol} listpids {job_id}"
-        response = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        response = subprocess.run(cmd, shell=True, capture_output=True)
         if response.returncode != 0:
             error_msg = response.stderr.decode("UTF-8").strip()
             if re.match("No job steps", error_msg) or re.match(".*no steps.*", error_msg):
@@ -154,9 +154,8 @@ class Slurm:
             else:
                 current_expr += "," + chunk
 
-            if "[" in current_expr:
-                if "]" not in current_expr:
-                    continue
+            if "[" in current_expr and "]" not in current_expr:
+                continue
 
             m = COMPACT_NODE_EXPRESSION_REXEXP.match(current_expr)
             if m is None:

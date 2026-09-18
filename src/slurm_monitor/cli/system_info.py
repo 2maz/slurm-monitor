@@ -38,16 +38,16 @@ class SystemInfoParser(BaseParser):
                     if value is None:
                         try:
                             value = dict(si)[label]
-                        except KeyError:
-                            raise RuntimeError(f"{label} is not a key - choose from {','.join(dict(si).keys())}")
+                        except KeyError as e:
+                            raise RuntimeError(f"{label} is not a key - choose from {','.join(dict(si).keys())}") from e
                     else:
                         if type(value) is not dict:
                             raise ValueError(f"{value} contains no dictionary")
 
                         try:
                             value = value[label]
-                        except KeyError:
-                            raise RuntimeError(f"{label} is not a key - choose from {','.join(value.keys())}")
+                        except KeyError as e:
+                            raise RuntimeError(f"{label} is not a key - choose from {','.join(value.keys())}") from e
                 response.append(str(value))
             print(",".join(response))
             sys.exit(0)

@@ -80,7 +80,8 @@ class Sonar:
     def expand_hostname_range(cls, hostname_range: list | str) -> list[str]:
         """
         Expand hostname range so that processing `c[1-3,5]-[2-4].fox` yields:
-            `c1-2.fox`, `c1-3.fox`, `c1-4.fox`, `c2-2.fox`, `c2-3.fox`, `c2-4.fox`, `c3-2.fox`, `c3-3.fox`, `c3-4.fox`, `c5-2.fox`, ...
+            `c1-2.fox`, `c1-3.fox`, `c1-4.fox`, `c2-2.fox`, `c2-3.fox`, `c2-4.fox`, `c3-2.fox`,
+            `c3-3.fox`, `c3-4.fox`, `c5-2.fox`, ...
         """
 
         nodes = []
@@ -105,14 +106,12 @@ class Sonar:
 
             # Now we need to iterate over all ranges
             # a single match is now a triple (pre, range, post), where pre and post an constant elements
-            # we will create a set of partical completions that will be continously extended base on the encountered ranges
+            # we will create a set of partical completions that will be continously extended base on the encountered
+            # ranges
             nodenames = []
             for match_group in includes_ranges:
                 pre, hostname_range, post = match_group
-                if nodenames:
-                    nodenames = [x + pre for x in nodenames]
-                else:
-                    nodenames = [pre]
+                nodenames = [x + pre for x in nodenames] if nodenames else [pre]
                 expanded = cls.expand_simple_range(hostname_range)
                 nodenames = [n + str(e) for n in nodenames for e in expanded]
                 nodenames = [x + post for x in nodenames]

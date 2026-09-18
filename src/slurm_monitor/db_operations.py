@@ -80,11 +80,11 @@ class DBManager:
                 if use_cache:
                     cls._databases[app_settings.db_schema_version] = db
                 return db
-            except sqlalchemy.exc.OperationalError:
+            except sqlalchemy.exc.OperationalError as e:
                 raise HTTPException(
                     status_code=500,
                     detail=f"Cannot access monitor database - {app_settings.database.uri}",
-                )
+                ) from e
 
     @classmethod
     def get_status(cls, db_uri):
@@ -210,7 +210,8 @@ class DBManager:
 
                 index = indexes[index_name]
                 print(
-                    f"{c_prefix}              {index['name'].ljust(20)} columns: {','.join(index['column_names']).ljust(20)}"
+                    f"{c_prefix}              {index['name'].ljust(20)} columns:"
+                    f" {','.join(index['column_names']).ljust(20)}"
                 )
 
             for index_name in add[cls.INDEXES]:
@@ -274,7 +275,8 @@ class DBManager:
                         session.execute(sqlalchemy.text(alter_comment_stmt))
 
                 print(
-                    f"Adding column: {column_name.ljust(20)} {schema[table][cls.COLUMNS][column_name].type} with comment '{comment}'"
+                    f"Adding column: {column_name.ljust(20)} {schema[table][cls.COLUMNS][column_name].type} with"
+                    f" comment '{comment}'"
                 )
 
                 added_columns.append(f"{table}.{column_name}")

@@ -6,7 +6,7 @@ import re
 import socket
 from enum import Enum
 from pathlib import Path
-from typing import ClassVar, abstractmethod
+from typing import Any, ClassVar, abstractmethod
 
 import yaml
 from pydantic import BaseModel
@@ -118,9 +118,11 @@ class GPUInfo:
         count: int = 0,
         memory_total: int = 0,
         framework: Framework = Framework.UNKNOWN,
-        versions: dict[str, any] = {},
+        versions: dict[str, Any] | None = None,
     ):
 
+        if versions is None:
+            versions = dict()
         self.model = model
         self.count = count
         self.memory_total = memory_total

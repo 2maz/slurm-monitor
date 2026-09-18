@@ -41,7 +41,11 @@ class ListenParser(BaseParser):
         self.warn_missing_ui = True
 
         app_settings = AppSettings.get_instance()
-        parser.description = "listen - The listener component establishes a link between a kafka broker and a database. The (sonar) messages received by the kafka broker will be stored in the database. A listener can be monitored with the listen-ui component"
+        parser.description = (
+            "listen - The listener component establishes a link between a kafka broker and a database."
+            " The (sonar) messages received by the kafka broker will be stored in the database."
+            " A listener can be monitored with the listen-ui component"
+        )
 
         parser.add_argument(
             "--host",
@@ -96,7 +100,8 @@ class ListenParser(BaseParser):
             action="store_true",
             default=False,
             help="When receiving message, insert content only for messsages that contain only values "
-            "present in the table schema. This means, message format and table schema need to be in sync, since no extra / new fields are allowed",
+            "present in the table schema. This means, message format and table schema need to be in sync,"
+            " since no extra / new fields are allowed",
         )
 
         parser.add_argument(
@@ -127,7 +132,8 @@ class ListenParser(BaseParser):
             "--log-output",
             type=str,
             default=None,
-            help="Output file for the log - default: slurm-monitor.listen.<cluster-name>.log, disable logging to file by specifying 'none'",
+            help="Output file for the log - default: slurm-monitor.listen.<cluster-name>.log, disable logging to"
+            " file by specifying 'none'",
         )
 
         parser.add_argument(
@@ -172,12 +178,15 @@ class ListenParser(BaseParser):
         except zmq.error.Again:
             if self.warn_missing_ui:
                 logger.warning(
-                    f"Listen.publish_status: Socket is full (highwatermark: {self.socket.get_hwm()} reached, message could not be forwarded to listen-ui. (no further warning will be shown until ui is up and receiving"
+                    f"Listen.publish_status: Socket is full (highwatermark: {self.socket.get_hwm()} reached, message"
+                    " could not be forwarded to listen-ui. (no further warning will be shown until ui"
+                    " is up and receiving)"
                 )
                 self.warn_missing_ui = False
             else:
                 logger.debug(
-                    f"Listen.publish_status: Socket is full (highwatermark: {self.socket.get_hwm()} reached, message could not be forwarded to listen-ui."
+                    f"Listen.publish_status: Socket is full (highwatermark: {self.socket.get_hwm()} reached, message"
+                    " could not be forwarded to listen-ui."
                 )
             # If ui is not available not need to check for received control commands
             return None
@@ -192,7 +201,8 @@ class ListenParser(BaseParser):
             empty, json_bytes = self.socket.recv_multipart(zmq.NOBLOCK)
             self.message_rx_count += 1
             logger.debug(
-                f"Listen.publish_status (check control cmds from listen-ui) recv_multipart: complete (message_rx_count={self.message_rx_count} {cluster=})"
+                f"Listen.publish_status (check control cmds from listen-ui) recv_multipart: complete"
+                f" (message_rx_count={self.message_rx_count} {cluster=})"
             )
             control = json.loads(json_bytes.decode("UTF-8"))
             return MessageSubscriber.Control(**control)
@@ -372,7 +382,8 @@ class ListenUiParser(BaseParser):
             "--log-output",
             type=str,
             default=None,
-            help="Output file for the log - default: slurm-monitor.listen-ui.<cluster-name>.log, disable logging to file by specifying 'none'",
+            help="Output file for the log - default: slurm-monitor.listen-ui.<cluster-name>.log,"
+            " disable logging to file by specifying 'none'",
         )
 
     def execute(self, args):
@@ -428,7 +439,8 @@ class ListenUiParser(BaseParser):
                 return None
             except json.decoder.JSONDecodeError:
                 logger.warning(
-                    f"Failed to decode json content: message_rx_count={self.message_rx_count} {dealer_id=} {json_content=}"
+                    f"Failed to decode json content: message_rx_count={self.message_rx_count}"
+                    f" {dealer_id=} {json_content=}"
                 )
                 return None
 
@@ -439,11 +451,13 @@ class ListenUiParser(BaseParser):
                 self.socket.send_multipart([dealer_id.encode("UTF-8"), b"", json_bytes])
                 self.message_tx_count += 1
                 logger.info(
-                    f"ListenUiParser.send_multipart: complete (message_tx_count={self.message_tx_count} {dealer_id=} {json_bytes=})"
+                    f"ListenUiParser.send_multipart: complete (message_tx_count={self.message_tx_count}"
+                    f" {dealer_id=} {json_bytes=})"
                 )
             except zmq.error.Again:
                 logger.warning(
-                    f"Socket is full (highwatermark: {self.socket.get_hwm()} reached): message could not be forwarded to listener {dealer_id=}"
+                    f"Socket is full (highwatermark: {self.socket.get_hwm()} reached): message"
+                    f" could not be forwarded to listener {dealer_id=}"
                 )
             except zmq.error.ZMQError:
                 logger.warning(f"ListenUiParser.send_multipart: Error sending {dealer_id=} {json_bytes=}")

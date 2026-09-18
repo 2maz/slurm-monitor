@@ -150,7 +150,7 @@ async def test_DBJsonImporter_non_slurm(sonar_msg, test_db_v2):
         sonar_msg["data"]["attributes"]["node"] = node
         cluster = sonar_msg["data"]["attributes"]["cluster"]
         importers = []
-        for i in range(0, 3):
+        for _ in range(0, 3):
             importers.append(DBJsonImporter(db=test_db_v2))
 
         with test_db_v2.make_session() as session:
@@ -286,7 +286,8 @@ async def test_DBJsonImporter_sonar_examples(
     with db.make_session() as session:
         results = session.execute(
             sqlalchemy.text(
-                "SELECT c.cluster, c.nodes FROM cluster_attributes c JOIN ( SELECT cluster, max(time) as max_time FROM cluster_attributes GROUP BY cluster) t ON c.cluster = t.cluster and c.time = t.max_time"
+                "SELECT c.cluster, c.nodes FROM cluster_attributes c JOIN ( SELECT cluster, max(time) as max_time FROM"
+                " cluster_attributes GROUP BY cluster) t ON c.cluster = t.cluster and c.time = t.max_time"
             )
         ).all()
         clusters = {x[0]: set(x[1]) for x in results}
@@ -367,7 +368,8 @@ async def test_DBJsonImporter_autoupdate(
         with db.make_session() as session:
             results = session.execute(
                 sqlalchemy.text(
-                    f"SELECT cluster, nodes, partitions from cluster_attributes where cluster = '{cluster_name}' ORDER BY time DESC"
+                    f"SELECT cluster, nodes, partitions from cluster_attributes where cluster = '{cluster_name}'"
+                    " ORDER BY time DESC"
                 )
             ).all()
             assert results

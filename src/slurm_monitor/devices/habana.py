@@ -41,7 +41,7 @@ class Habana(GPU):
         except ImportError:
             logger.debug("pyhlml - failed to import - trying with hl-smi")
 
-        response = subprocess.run("command -v hl-smi", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        response = subprocess.run("command -v hl-smi", shell=True, capture_output=True)
         if response.returncode != 0:
             raise RuntimeError("hl-smi is not available")
 

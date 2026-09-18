@@ -13,7 +13,7 @@ def test_AutoDeployer_v2(timescaledb, test_db_v2, db_config, monkeypatch):
 
     # exclude drained nodes from redeployment
     async def mock_is_drained(self, node):
-        return True if node == "cluster-0-node-0" else False
+        return node == "cluster-0-node-0"
 
     def mock_all_nodes(self) -> list[str]:
         return [f"cluster-0-node-{x}" for x in range(0, db_config.number_of_nodes)]
@@ -35,6 +35,7 @@ def test_AutoDeployer_v2(timescaledb, test_db_v2, db_config, monkeypatch):
     auto_deployer.stop()
 
     assert len(redeploy_nodes) == db_config.number_of_nodes - 1, (
-        f"Trying to redeploy {redeploy_nodes}, but expected only {db_config.number_of_nodes - 1} nodes, due to one drained node"
+        f"Trying to redeploy {redeploy_nodes}, but expected only {db_config.number_of_nodes - 1} nodes,"
+        " due to one drained node."
     )
     assert "cluster-0-node-0" not in redeploy_nodes
