@@ -19,7 +19,6 @@ def test_AutoDeployer(timescaledb, test_db, db_config, monkeypatch):
         return [f"cluster-0-node-{x}" for x in range(0, db_config.number_of_nodes)]
 
     app_settings = AppSettings()
-    app_settings.db_schema_version = "v2"
     app_settings.database = DatabaseSettings(
         uri=timescaledb,
     )

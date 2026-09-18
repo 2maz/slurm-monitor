@@ -193,16 +193,14 @@ class AutoDeployer:
                 self.messages.append(f"-- autodeploy check: {now}")
 
                 last_probe_timestamp = None
-                if self.app_settings.db_schema_version == "v1":
-                    last_probe_timestamp = loop.run_until_complete(self.dbi.get_last_probe_timestamp())
-                else:
-                    if self.cluster_name is None:
-                        raise ValueError("Missing cluster_name")
 
-                    last_probe_timestamp = loop.run_until_complete(
-                        self.dbi.get_last_probe_timestamp(cluster=self.cluster_name),
-                    )
-                    logger.info(last_probe_timestamp)
+                if self.cluster_name is None:
+                    raise ValueError("Missing cluster_name")
+
+                last_probe_timestamp = loop.run_until_complete(
+                    self.dbi.get_last_probe_timestamp(cluster=self.cluster_name),
+                )
+                logger.info(last_probe_timestamp)
 
                 expected_nodes = self.all_nodes()
                 for node in expected_nodes:

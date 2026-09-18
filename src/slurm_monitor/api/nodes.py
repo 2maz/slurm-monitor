@@ -420,7 +420,7 @@ async def nodes_sample_gpu(
     "\n```"
     "\n    'delta value' = 'last-sample-in-bucket' - 'first-sample-in-bucket'"
     "\n```"
-    "\n(see [implementation](https://github.com/2maz/slurm-monitor/blob/d7ec63f54316e5d5a9cdc6bb2d68d66a5734cb0c/src/slurm_monitor/db/v2/db.py#L2024]))"
+    "\n(see [implementation](https://github.com/2maz/slurm-monitor/blob/d7ec63f54316e5d5a9cdc6bb2d68d66a5734cb0c/src/slurm_monitor/db/db.py#L2024]))"
     "\n\nAvailable fields:\n - {}".format("\n - ".join(SampleDisk.fieldnames())),
     tags=["node"],
     response_model=NodeDiskTimeseriesResponse,
@@ -434,7 +434,7 @@ async def nodes_sample_gpu(
     "\n```"
     "\n    'delta value' = 'last-sample-in-bucket' - 'first-sample-in-bucket'"
     "\n```"
-    "\n(see [implementation](https://github.com/2maz/slurm-monitor/blob/d7ec63f54316e5d5a9cdc6bb2d68d66a5734cb0c/src/slurm_monitor/db/v2/db.py#L2024]))"
+    "\n(see [implementation](https://github.com/2maz/slurm-monitor/blob/d7ec63f54316e5d5a9cdc6bb2d68d66a5734cb0c/src/slurm_monitor/db/db.py#L2024]))"
     "\n\nAvailable fields:\n - {}".format("\n - ".join(SampleDisk.fieldnames())),
     tags=["cluster"],
     response_model=NodeDiskTimeseriesResponse,
