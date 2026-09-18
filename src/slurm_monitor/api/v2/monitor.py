@@ -293,7 +293,7 @@ async def queries(
         raise HTTPException(
             status_code=404,
             detail=f"Query not found: '{query_name}' -- {e}",
-        )
+        ) from e
     return await query.execute_async(params={"cluster": cluster})
 
 

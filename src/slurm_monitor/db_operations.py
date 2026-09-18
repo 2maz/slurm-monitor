@@ -80,11 +80,11 @@ class DBManager:
                 if use_cache:
                     cls._databases[app_settings.db_schema_version] = db
                 return db
-            except sqlalchemy.exc.OperationalError:
+            except sqlalchemy.exc.OperationalError as e:
                 raise HTTPException(
                     status_code=500,
                     detail=f"Cannot access monitor database - {app_settings.database.uri}",
-                )
+                ) from e
 
     @classmethod
     def get_status(cls, db_uri):

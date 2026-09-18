@@ -362,7 +362,7 @@ async def nodes_process_cpu_memory_timeseries(
             )
         return {node: (await tasks[node]) for node in nodes}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @api_router.get(
@@ -408,7 +408,7 @@ async def nodes_sample_gpu(
             )
         return {node: (await tasks[node]) for node in nodes}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @api_router.get(
@@ -471,4 +471,4 @@ async def nodes_sample_disk(
             )
         return {node: (await tasks[node]) for node in nodes}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
