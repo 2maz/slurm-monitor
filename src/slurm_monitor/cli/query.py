@@ -6,8 +6,8 @@ from pprint import pprint
 
 from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.cli.base import BaseParser
-from slurm_monitor.db.v2.db import ClusterDB
-from slurm_monitor.db.v2.query import QueryMaker
+from slurm_monitor.db.db import ClusterDB
+from slurm_monitor.db.query import QueryMaker
 
 
 class QueryParser(BaseParser):

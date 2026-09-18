@@ -13,7 +13,7 @@ from slurm_monitor.app_settings import (
     AppSettings,
 )
 from slurm_monitor.cli.base import BaseParser
-from slurm_monitor.db.v2.message_subscriber import MessageSubscriber, TerminalDisplay
+from slurm_monitor.db.message_subscriber import MessageSubscriber, TerminalDisplay
 
 logger = logging.getLogger(__name__)
 
@@ -86,13 +86,6 @@ class ListenParser(BaseParser):
             help="Topic name(s) - if given, cluster-name has no relevance "
             "can be used with lower and upper offset bounds <topic-name>:<lb-offset-<ub-offset>"
             " after reached the upper bound, processing will be stopped for the topic",
-        )
-
-        parser.add_argument(
-            "--use-version",
-            type=str,
-            default="v2",
-            help="Use this API and DB version",
         )
 
         parser.add_argument(
@@ -227,121 +220,116 @@ class ListenParser(BaseParser):
         # Listener should only operate on an already initialized database
         app_settings.database.create_missing = False
 
-        if args.use_version == "v1":
-            raise NotImplementedError("v1 is not supported")
-        elif args.use_version == "v2":
-            from slurm_monitor.db.v2.db import ClusterDB
+        from slurm_monitor.db.db import ClusterDB
 
-            # Ensure commandline overrides .env file settings
+        # Ensure commandline overrides .env file settings
+        if args.cluster_name:
+            app_settings.listen.cluster = args.cluster_name
+            self.cluster_name = args.cluster_name
+
+        if args.port:
+            app_settings.listen.kafka.port = args.port
+
+        if args.host:
+            app_settings.listen.kafka.host = args.host
+
+        lookback_in_h = MessageSubscriber.extract_lookbacks(args.lookback)
+
+        database = None
+        if args.db_uri is not None and args.db_uri.lower() != "none":
+            database = ClusterDB(db_settings=app_settings.database)
+
+            inspector = None
+            while inspector is None:
+                try:
+                    inspector = inspect(database.engine)
+                except sqlalchemy.exc.OperationalError as e:
+                    if re.search("refused", str(e)) is not None:
+                        logger.warning("Connection refused - please verify connection settings.")
+                        sys.exit(10)
+                    elif re.search("is starting up", str(e)) is not None:
+                        logger.warning(f"Database is starting up - retrying in {args.retry_timeout_in_s}s -- {e}")
+                    elif re.search("server closed the connection unexpectedly", str(e)) is not None:
+                        logger.warning(f"Database closed connection - retrying in {args.retry_timeout_in_s}s -- {e}")
+                    else:
+                        raise
+
+                    time.sleep(args.retry_timeout_in_s)
+
+            if not inspector.get_table_names():
+                raise RuntimeError(
+                    "Listener is trying to connect to an uninitialized database."
+                    f" Call 'slurm-monitor db --init --db-uri {app_settings.database.uri}' for the database first"
+                )
+
+            suggested_lookback = database.suggest_lookback(args.cluster_name)
+            logger.info("Adapting lookback time based on db information")
+            for topic, suggested in suggested_lookback.items():
+                lookback_in_h[topic] = min(lookback_in_h[topic], suggested)
+        else:
+            logger.info("Running in listen mode")
+
+        print("Connecting with")
+        print(f"    kafka bootstrap server: {app_settings.listen.kafka.host}:{app_settings.listen.kafka.port}")
+        print(f"    listen-ui: {args.ui_host}:{args.ui_port}")
+        print("    lookbacks: ")
+        for x, y in lookback_in_h.items():
+            print(f"        {x.rjust(10)}: {str(y).rjust(4)}h")
+
+        stats_output = args.stats_output
+        if stats_output is None:
+            stats_output = "slurm-monitor.listen.stats.json"
             if args.cluster_name:
-                app_settings.listen.cluster = args.cluster_name
-                self.cluster_name = args.cluster_name
+                stats_output = f"slurm-monitor.listen.{args.cluster_name}.stats.json"
 
-            if args.port:
-                app_settings.listen.kafka.port = args.port
+        log_output = args.log_output
+        # if log_output is None (the default), we set the default
+        # log file name
+        if log_output is None:
+            log_output = "slurm-monitor.listen.log"
+            if args.cluster_name:
+                log_output = f"slurm-monitor.listen.{args.cluster_name}.log"
+        # to explicitely disable log_output, user needs to set it to 'none'
+        elif log_output.lower() == "none":
+            log_output = None
+        else:
+            # user has specified a 'custom' filename for logging, so use it
+            pass
+        print(f"Logging to: {log_output}")
 
-            if args.host:
-                app_settings.listen.kafka.host = args.host
+        context = zmq.Context()
+        self.socket = context.socket(zmq.DEALER)
 
-            lookback_in_h = MessageSubscriber.extract_lookbacks(args.lookback)
+        # default is an infinite wait (-1)
+        self.socket.RCVTIMEO = 0
+        # default is an infinite wait (-1)
+        self.socket.SNDTIMEO = 0
+        # Setting the high-water mark to keep only one message
+        self.socket.SNDHWM = 1
+        # immediately discard messages in memory if socket is closed
+        self.socket.LINGER = 0
 
-            database = None
-            if args.db_uri is not None and args.db_uri.lower() != "none":
-                database = ClusterDB(db_settings=app_settings.database)
+        if args.ui_host and args.ui_port:
+            self.socket.setsockopt_string(zmq.IDENTITY, args.cluster_name)
+            self.socket.connect(f"tcp://{args.ui_host}:{args.ui_port}")
 
-                inspector = None
-                while inspector is None:
-                    try:
-                        inspector = inspect(database.engine)
-                    except sqlalchemy.exc.OperationalError as e:
-                        if re.search("refused", str(e)) is not None:
-                            logger.warning("Connection refused - please verify connection settings.")
-                            sys.exit(10)
-                        elif re.search("is starting up", str(e)) is not None:
-                            logger.warning(f"Database is starting up - retrying in {args.retry_timeout_in_s}s -- {e}")
-                        elif re.search("server closed the connection unexpectedly", str(e)) is not None:
-                            logger.warning(
-                                f"Database closed connection - retrying in {args.retry_timeout_in_s}s -- {e}"
-                            )
-                        else:
-                            raise
-
-                        time.sleep(args.retry_timeout_in_s)
-
-                if not inspector.get_table_names():
-                    raise RuntimeError(
-                        "Listener is trying to connect to an uninitialized database."
-                        f" Call 'slurm-monitor db --init --db-uri {app_settings.database.uri}' for the database first"
-                    )
-
-                suggested_lookback = database.suggest_lookback(args.cluster_name)
-                logger.info("Adapting lookback time based on db information")
-                for topic, suggested in suggested_lookback.items():
-                    lookback_in_h[topic] = min(lookback_in_h[topic], suggested)
-            else:
-                logger.info("Running in listen mode")
-
-            print("Connecting with")
-            print(f"    kafka bootstrap server: {app_settings.listen.kafka.host}:{app_settings.listen.kafka.port}")
-            print(f"    listen-ui: {args.ui_host}:{args.ui_port}")
-            print("    lookbacks: ")
-            for x, y in lookback_in_h.items():
-                print(f"        {x.rjust(10)}: {str(y).rjust(4)}h")
-
-            stats_output = args.stats_output
-            if stats_output is None:
-                stats_output = "slurm-monitor.listen.stats.json"
-                if args.cluster_name:
-                    stats_output = f"slurm-monitor.listen.{args.cluster_name}.stats.json"
-
-            log_output = args.log_output
-            # if log_output is None (the default), we set the default
-            # log file name
-            if log_output is None:
-                log_output = "slurm-monitor.listen.log"
-                if args.cluster_name:
-                    log_output = f"slurm-monitor.listen.{args.cluster_name}.log"
-            # to explicitely disable log_output, user needs to set it to 'none'
-            elif log_output.lower() == "none":
-                log_output = None
-            else:
-                # user has specified a 'custom' filename for logging, so use it
-                pass
-            print(f"Logging to: {log_output}")
-
-            context = zmq.Context()
-            self.socket = context.socket(zmq.DEALER)
-
-            # default is an infinite wait (-1)
-            self.socket.RCVTIMEO = 0
-            # default is an infinite wait (-1)
-            self.socket.SNDTIMEO = 0
-            # Setting the high-water mark to keep only one message
-            self.socket.SNDHWM = 1
-            # immediately discard messages in memory if socket is closed
-            self.socket.LINGER = 0
-
-            if args.ui_host and args.ui_port:
-                self.socket.setsockopt_string(zmq.IDENTITY, args.cluster_name)
-                self.socket.connect(f"tcp://{args.ui_host}:{args.ui_port}")
-
-            subscriber = MessageSubscriber(
-                host=args.host,
-                port=args.port,
-                database=database,
-                topics=args.topic,
-                cluster_name=args.cluster_name,
-                verbose=args.verbose,
-                strict_mode=args.use_strict_mode,
-                lookback_in_h=lookback_in_h,
-                stats_output=stats_output,
-                stats_interval_in_s=args.stats_interval,
-                log_output=log_output,
-                log_level=args.log_level,
-                output_fn=self.publish_status,
-                retry_timeout_in_s=args.retry_timeout_in_s,
-            )
-            subscriber.run()
+        subscriber = MessageSubscriber(
+            host=args.host,
+            port=args.port,
+            database=database,
+            topics=args.topic,
+            cluster_name=args.cluster_name,
+            verbose=args.verbose,
+            strict_mode=args.use_strict_mode,
+            lookback_in_h=lookback_in_h,
+            stats_output=stats_output,
+            stats_interval_in_s=args.stats_interval,
+            log_output=log_output,
+            log_level=args.log_level,
+            output_fn=self.publish_status,
+            retry_timeout_in_s=args.retry_timeout_in_s,
+        )
+        subscriber.run()
 
 
 class ListenUiParser(BaseParser):

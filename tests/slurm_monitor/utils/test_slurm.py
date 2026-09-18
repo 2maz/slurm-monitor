@@ -1,6 +1,6 @@
 import pytest
 
-from slurm_monitor.api.v2.response_models import AllocTRES
+from slurm_monitor.api.response_models import AllocTRES
 from slurm_monitor.utils.slurm import Slurm
 
 

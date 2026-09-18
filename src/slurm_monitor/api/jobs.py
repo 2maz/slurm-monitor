@@ -5,7 +5,7 @@ import fastapi_pagination
 from fastapi import Depends
 from fastapi_cache.decorator import cache
 
-from slurm_monitor.api.v2.response_models import (
+from slurm_monitor.api.response_models import (
     JobNodeSampleProcessGpuTimeseriesResponse,
     JobReport,
     JobResponse,
@@ -13,14 +13,14 @@ from slurm_monitor.api.v2.response_models import (
     SystemProcessTimeseriesResponse,
     SystemProcessTreeResponse,
 )
-from slurm_monitor.api.v2.routes import (
+from slurm_monitor.api.routes import (
     NoneForUserWithRealmRoles,
     Role,
     api_router,
     create_custom_page,
     validate_interval,
 )
-from slurm_monitor.db.v2.db import ClusterDB
+from slurm_monitor.db.db import ClusterDB
 from slurm_monitor.db_operations import DBManager
 from slurm_monitor.utils import utcnow
 

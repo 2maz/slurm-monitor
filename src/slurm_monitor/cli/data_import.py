@@ -4,8 +4,8 @@ from pathlib import Path
 
 from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.cli.base import BaseParser
-from slurm_monitor.db.v2.db import ClusterDB
-from slurm_monitor.db.v2.importer import DBJsonImporter
+from slurm_monitor.db.db import ClusterDB
+from slurm_monitor.db.importer import DBJsonImporter
 
 
 class ImportParser(BaseParser):

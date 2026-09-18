@@ -6,9 +6,9 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-import slurm_monitor.db.v2.sonar as sonar
-from slurm_monitor.db.v2.db import ClusterDB
-from slurm_monitor.db.v2.db_tables import (
+import slurm_monitor.db.sonar as sonar
+from slurm_monitor.db.db import ClusterDB
+from slurm_monitor.db.db_tables import (
     Cluster,
     ErrorMessage,
     Node,

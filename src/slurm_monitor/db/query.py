@@ -3,7 +3,7 @@ from typing import ClassVar
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 
-from slurm_monitor.db.v2.db_base import Database
+from slurm_monitor.db.db_base import Database
 
 
 class QueryParams(BaseModel):

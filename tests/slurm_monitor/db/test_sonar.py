@@ -1,6 +1,6 @@
 import pytest
 
-from slurm_monitor.db.v2.sonar import Sonar
+from slurm_monitor.db.sonar import Sonar
 
 
 @pytest.mark.parametrize(

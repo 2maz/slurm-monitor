@@ -19,7 +19,7 @@ from fastapi_utils.tasks import repeat_every
 from prometheus_fastapi_instrumentator import Instrumentator
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from slurm_monitor.api.v2.router import app as api_v2_app
+from slurm_monitor.api.router import app as api_app
 from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.db_operations import DBManager
 from slurm_monitor.utils.api import createFastAPI, find_endpoint_by_name
@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
     )
 
     logger.info("Setting up database ...")
-    app_settings = AppSettings.initialize(db_schema_version="v2", force=True)
+    app_settings = AppSettings.initialize(force=True)
     if app_settings.prefetch.enabled:
         logger.info("Setting up prefetching ...")
 
@@ -165,4 +165,4 @@ async def prefetch_data():
 
 # Serve API. We want the API to take full charge of its prefix, not involve the SPA mount
 # at all, hence we use a submount rather than subrouter.
-app.mount(path=api_v2_app.root_path, app=api_v2_app, name="api/v2")
+app.mount(path=api_app.root_path, app=api_app, name="api/v2")

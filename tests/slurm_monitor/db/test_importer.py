@@ -8,8 +8,8 @@ import psutil
 import pytest
 import sqlalchemy
 
-from slurm_monitor.db.v2.db_tables import TableBase
-from slurm_monitor.db.v2.importer import DBJsonImporter
+from slurm_monitor.db.db_tables import TableBase
+from slurm_monitor.db.importer import DBJsonImporter
 from slurm_monitor.utils import utcnow
 from slurm_monitor.utils.system_info import SystemInfo
 
@@ -121,8 +121,8 @@ def sonar_sysinfo_message():
         [sonar_sysinfo_message(), 4],
     ],
 )
-def test_DBJsonImporter_extra_attributes(sonar_msg, expected_samples, test_db_v2):
-    importer = DBJsonImporter(db=test_db_v2)
+def test_DBJsonImporter_extra_attributes(sonar_msg, expected_samples, test_db):
+    importer = DBJsonImporter(db=test_db)
     msg = importer.to_message(sonar_msg)
 
     TableBase.__extra_values__ = "forbid"
@@ -144,16 +144,16 @@ def test_DBJsonImporter_extra_attributes(sonar_msg, expected_samples, test_db_v2
     "sonar_msg",
     [sonar_sample_message()],
 )
-async def test_DBJsonImporter_non_slurm(sonar_msg, test_db_v2):
+async def test_DBJsonImporter_non_slurm(sonar_msg, test_db):
     nodes = []
     for node in ["c-0-n-1", "c-0-n-2"]:
         sonar_msg["data"]["attributes"]["node"] = node
         cluster = sonar_msg["data"]["attributes"]["cluster"]
         importers = []
         for _ in range(0, 3):
-            importers.append(DBJsonImporter(db=test_db_v2))
+            importers.append(DBJsonImporter(db=test_db))
 
-        with test_db_v2.make_session() as session:
+        with test_db.make_session() as session:
             results = session.execute(
                 sqlalchemy.text(f"SELECT * from cluster_attributes WHERE cluster='{cluster}'")
             ).all()
@@ -166,7 +166,7 @@ async def test_DBJsonImporter_non_slurm(sonar_msg, test_db_v2):
             for importer in importers:
                 await importer.insert(copy.deepcopy(sonar_msg))
 
-            with test_db_v2.make_session() as session:
+            with test_db.make_session() as session:
                 results = session.execute(
                     sqlalchemy.text(f"SELECT * from cluster_attributes WHERE cluster='{cluster}'")
                 ).all()
@@ -263,9 +263,9 @@ async def test_DBJsonImporter_non_slurm(sonar_msg, test_db_v2):
     ],
 )
 async def test_DBJsonImporter_sonar_examples(
-    sonar_msg_files, expected_clusters, test_db_v2__function_scope, db_config, test_data_dir
+    sonar_msg_files, expected_clusters, test_db__function_scope, db_config, test_data_dir
 ):
-    db = test_db_v2__function_scope
+    db = test_db__function_scope
     importer = DBJsonImporter(db=db)
 
     in_msg_uuids = set()
@@ -350,9 +350,9 @@ async def test_DBJsonImporter_sonar_examples(
     ],
 )
 async def test_DBJsonImporter_autoupdate(
-    sonar_msg_files, expected_clusters, test_db_v2__function_scope, db_config, test_data_dir
+    sonar_msg_files, expected_clusters, test_db__function_scope, db_config, test_data_dir
 ):
-    db = test_db_v2__function_scope
+    db = test_db__function_scope
     importer = DBJsonImporter(db=db)
 
     for idx, sonar_msg_file in enumerate(sonar_msg_files):
