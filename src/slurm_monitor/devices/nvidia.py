@@ -53,7 +53,7 @@ class Nvidia(GPU):
         except Exception as e:
             logger.debug(f"{cls}.detect: failed to extract information - {e}")
 
-        response = subprocess.run("command -v nvidia-smi", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        response = subprocess.run("command -v nvidia-smi", shell=True, capture_output=True)
         if response.returncode != 0:
             raise RuntimeError("nvidia-smi is not available")
 

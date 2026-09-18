@@ -47,7 +47,7 @@ class ROCM(GPU):
         except Exception as e:
             logger.debug(f"{cls}.detect: failed to extract information - {e}")
 
-        response = subprocess.run("command -v rocm-smi", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        response = subprocess.run("command -v rocm-smi", shell=True, capture_output=True)
         if response.returncode != 0:
             raise RuntimeError("rocm-smi is not available")
 

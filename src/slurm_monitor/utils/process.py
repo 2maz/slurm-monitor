@@ -66,7 +66,7 @@ class JobMonitor:
             return active_jobs
 
         cmd = f"{scontrol} listpids"
-        response = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        response = subprocess.run(cmd, shell=True, capture_output=True)
         if response.returncode != 0:
             error_msg = response.stderr.decode("UTF-8").strip()
             if re.match("No job steps", error_msg):

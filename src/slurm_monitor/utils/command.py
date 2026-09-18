@@ -34,9 +34,7 @@ class Command:
     @classmethod
     def run(cls, command: str, decode: str | None = "utf-8", timeout: int | None = None) -> str | bytes:
         try:
-            response = subprocess.run(
-                command, shell=True, check=True, timeout=timeout, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-            )
+            response = subprocess.run(command, shell=True, check=True, timeout=timeout, capture_output=True)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             raise RuntimeError(f"Command.run: '{command}' failed") from e
 
