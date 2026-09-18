@@ -150,7 +150,7 @@ async def test_DBJsonImporter_non_slurm(sonar_msg, test_db_v2):
         sonar_msg["data"]["attributes"]["node"] = node
         cluster = sonar_msg["data"]["attributes"]["cluster"]
         importers = []
-        for i in range(0, 3):
+        for _ in range(0, 3):
             importers.append(DBJsonImporter(db=test_db_v2))
 
         with test_db_v2.make_session() as session:

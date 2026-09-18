@@ -158,7 +158,7 @@ async def test_collector_collect_max_samples(controller, mock_slurm_command_hint
 
 def test_controller_set_sampling_interval(controller, nodename):
     interval_in_s = 40
-    for node in [nodename, f"{nodename[:4]}-.*", nodename[:4]]:
+    for _ in [nodename, f"{nodename[:4]}-.*", nodename[:4]]:
         data = {"node": nodename, "action": "set_interval", "interval_in_s": interval_in_s}
         controller.handle(data)
 

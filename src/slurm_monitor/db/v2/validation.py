@@ -112,7 +112,7 @@ class Specification:
             print("Spec Implementation Status")
             for spec_object, fulfillment in covered_spec.items():
                 all_implemented_columns = set()
-                for table_name, implemented_columns in fulfillment["implemented"].items():
+                for _, implemented_columns in fulfillment["implemented"].items():
                     all_implemented_columns |= implemented_columns
 
                 missing_columns = fulfillment["required"] - all_implemented_columns
