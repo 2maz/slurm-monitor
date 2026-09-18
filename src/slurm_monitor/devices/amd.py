@@ -21,7 +21,7 @@ class ROCM(GPU):
     def detect(cls):
         versions = {}
         if "ROCm_ROOT" in os.environ:
-            for file in (Path(os.environ["ROCm_ROOT"]) / ".info").glob("version*"):
+            for file in (Path(os.environ["ROCm_ROOT"]) / ".info").glob("version*"):  # noqa: SIM112
                 with open(file) as f:
                     versions[file.name] = f.read().strip()
         try:

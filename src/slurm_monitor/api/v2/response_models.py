@@ -38,7 +38,7 @@ doc_sacct = (
 
 
 class SAcctResponse(BaseModel):
-    f"""Slurm Job Accounting Response {doc_sacct}"""
+    f"""Slurm Job Accounting Response {doc_sacct}"""  # noqa: B021
 
     AllocTRES: str = Field(description=f"Allocated Trackable resources (TRES) {doc_sacct}")
     ElapsedRaw: int = Field(description=f"The job's elapsed time in seconds {doc_sacct}")

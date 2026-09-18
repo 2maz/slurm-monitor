@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import datetime as dt
 import os
 import signal
@@ -202,7 +203,7 @@ def test_main(mocker, mock_slurm_command_hint):
     mock_consumer_instance = mock_consumer.return_value
     mock_consumer_instance.poll.return_value = None
 
-    try:
+    with contextlib.suppress(asyncio.TimeoutError):
         asyncio.run(
             asyncio.wait_for(
                 main(
@@ -214,7 +215,5 @@ def test_main(mocker, mock_slurm_command_hint):
                 timeout=5,
             ),
         )
-    except asyncio.TimeoutError:
-        pass
 
     assert published_messages

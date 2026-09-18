@@ -2153,11 +2153,9 @@ class ClusterDB(Database):
         return:
             [ { name: string, major: int, minor: int, data: Array[SampleDisk] } ]
         """
-        if resolution_in_s is None:
-            resolution_in_s = 60
-        else:
-            # resolution needs to be at least a minute
-            resolution_in_s = max(resolution_in_s, 60)
+
+        # resolution needs to be at least a minute
+        resolution_in_s = max(resolution_in_s, 60) if resolution_in_s is not None else 60
 
         query = select(
             SampleDisk.name.distinct(),

@@ -101,7 +101,7 @@ class Specification:
         ignored_spec = set(
             [
                 x
-                for x in self._spec.keys()
+                for x in self._spec
                 if "meta" not in self._spec[x]["fields"]
                 and "attributes" not in self._spec[x]["fields"]
                 and not x.endswith("Object")
@@ -124,8 +124,7 @@ class Specification:
                     )
                 else:
                     print(
-                        f"     {ljust_spec_object} "
-                        f"COMPLETE (implemented by {[x for x in fulfillment['implemented'].keys()]})"
+                        f"     {ljust_spec_object} COMPLETE (implemented by {[x for x in fulfillment['implemented']]})"
                     )
 
             warnings.warn(

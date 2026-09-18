@@ -54,10 +54,11 @@ def ttl_cache_async(*, ttl, maxsize: int = 128, ignore_args: list[str] | None = 
 
             v = await func(*args, **kwargs)
 
-            try:
+            try:  # noqa: SIM105
                 cache[k] = v
             except ValueError:
                 pass  # value too large
+
             return v
 
         return wrapped

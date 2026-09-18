@@ -14,7 +14,6 @@ from threading import Thread
 
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
-from sqlalchemy.sql.operators import is_
 
 from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.db_operations import DBManager
@@ -262,11 +261,7 @@ class AutoDeployerSonar(AutoDeployer):
         if not node_states:
             return False
 
-        for state in node_states[0]["states"]:
-            if state.lower().startswith("drain"):
-                return True
-
-        return False
+        return any(state.lower().startswith("drain") for state in node_states[0]["states"])
 
     def deploy(self, node: str) -> str:
         try:
