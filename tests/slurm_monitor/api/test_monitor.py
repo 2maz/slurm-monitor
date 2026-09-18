@@ -16,16 +16,16 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from fastapi_cache import FastAPICache
 
-from slurm_monitor.api.v2.router import app as api_v2_app
+from slurm_monitor.api.router import app as api_app
+from slurm_monitor.app import app, prefetch_data
 from slurm_monitor.app_settings import AppSettings
-from slurm_monitor.db.v2.db_base import DatabaseSettings
-from slurm_monitor.db.v2.importer import DBJsonImporter
+from slurm_monitor.db.db_base import DatabaseSettings
+from slurm_monitor.db.importer import DBJsonImporter
 from slurm_monitor.db_operations import DBManager
 from slurm_monitor.devices.gpu import GPUInfo
 from slurm_monitor.utils import utcnow
 from slurm_monitor.utils.api import find_endpoint_by_name, flatten_router_routes
 from slurm_monitor.utils.slurm import Slurm
-from slurm_monitor.v2 import app, prefetch_data
 
 
 @pytest.fixture
@@ -131,7 +131,7 @@ v2_routes = get_routes(identifier="v2")
 
 
 @pytest_asyncio.fixture(loop_scope="module", scope="module")
-def client(mock_slurm_command_hint, test_db_v2, timescaledb, monkeypatch_module):
+def client(mock_slurm_command_hint, test_db, timescaledb, monkeypatch_module):
     Slurm._BIN_HINTS = [mock_slurm_command_hint]
 
     monkeypatch_module.setenv("SLURM_MONITOR_DATABASE_URI", f"{timescaledb}")
@@ -285,12 +285,12 @@ async def test_ensure_response_with_partial_rows(
     expected_exception,
     has_sysinfo,
     client,
-    test_db_v2__function_scope,
+    test_db__function_scope,
     test_data_dir,
     mock_token,
     monkeypatch,
 ):
-    db = test_db_v2__function_scope
+    db = test_db__function_scope
     importer = DBJsonImporter(db=db)
 
     await FastAPICache.clear()
@@ -336,7 +336,7 @@ async def test_ensure_response_with_partial_rows(
         ["api/v2", "cluster"],
     ],
 )
-async def test_ensure_response_for_prefetch(prefix, name, client, test_db_v2, db_config, monkeypatch):
+async def test_ensure_response_for_prefetch(prefix, name, client, test_db, db_config, monkeypatch):
     clear_cache = find_endpoint_by_name(app=app, name="clear_cache", prefix=prefix)
 
     # Ensure to disable the TTLCache (that cache queries at db interface level)
@@ -352,10 +352,10 @@ async def test_ensure_response_for_prefetch(prefix, name, client, test_db_v2, db
     # `client`'s portal loop (module-scoped, shared across the whole
     # module), while this test calls the endpoint functions directly on its
     # own per-test event loop - a cross-loop mismatch that surfaces as
-    # `InterfaceError: another operation is in progress`. `test_db_v2` is
+    # `InterfaceError: another operation is in progress`. `test_db` is
     # never touched by any HTTP request through `client`, so its first use
     # here binds it consistently to this test's own loop.
-    dbi = test_db_v2
+    dbi = test_db
     endpoint = find_endpoint_by_name(app=app, name="cluster", prefix=prefix)
     clusters = await endpoint(token_payload=None, dbi=dbi)
 
@@ -462,14 +462,14 @@ async def test_app_with_sonar_examples(
     sonar_msg_files,
     expected_clusters,
     client__function_scope,
-    test_db_v2__function_scope,
+    test_db__function_scope,
     db_config,
     test_data_dir,
     mock_token,
     monkeypatch,
 ):
 
-    db = test_db_v2__function_scope
+    db = test_db__function_scope
 
     def mock_get_database():
         return db
@@ -483,7 +483,7 @@ async def test_app_with_sonar_examples(
     # prefetch_data() calls DBManager.get_database() directly (not via
     # Depends), so it still needs the plain attribute patch too - both are
     # required, not just one.
-    monkeypatch.setitem(api_v2_app.dependency_overrides, DBManager.get_database, mock_get_database)
+    monkeypatch.setitem(api_app.dependency_overrides, DBManager.get_database, mock_get_database)
     monkeypatch.setattr(DBManager, "get_database", mock_get_database)
 
     importer = DBJsonImporter(db=db)
@@ -543,20 +543,20 @@ async def test_node_sysinfo_interval(
     last_sysinfo_in_days,
     expected_nodeinfo,
     client__function_scope,
-    test_db_v2__function_scope,
+    test_db__function_scope,
     db_config,
     test_data_dir,
     mock_token,
     monkeypatch,
 ):
 
-    db = test_db_v2__function_scope
+    db = test_db__function_scope
 
     def mock_get_database():
         return db
 
     # see test_app_with_sonar_examples for why both of these are needed
-    monkeypatch.setitem(api_v2_app.dependency_overrides, DBManager.get_database, mock_get_database)
+    monkeypatch.setitem(api_app.dependency_overrides, DBManager.get_database, mock_get_database)
     monkeypatch.setattr(DBManager, "get_database", mock_get_database)
     importer = DBJsonImporter(db=db)
 

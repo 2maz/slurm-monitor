@@ -21,7 +21,7 @@ from slurm_monitor.cli.restapi import RestapiParser
 from slurm_monitor.cli.spec import SpecParser
 from slurm_monitor.cli.system_info import SystemInfoParser
 from slurm_monitor.cli.test import TestParser
-from slurm_monitor.db.v2.db_tables import SampleDisk
+from slurm_monitor.db.db_tables import SampleDisk
 from slurm_monitor.db_operations import DBManager
 from slurm_monitor.utils.command import Command
 
@@ -135,8 +135,8 @@ def test_db_parser(script_runner, timescaledb_db):
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_db_apply_changes(script_runner, test_db_v2, db_config, timescaledb):
-    SampleDisk.__table__.drop(test_db_v2.engine)
+async def test_db_apply_changes(script_runner, test_db, db_config, timescaledb):
+    SampleDisk.__table__.drop(test_db.engine)
     tablename = SampleDisk.__tablename__
 
     initial_status = DBManager.get_status(timescaledb)
@@ -151,13 +151,13 @@ async def test_db_apply_changes(script_runner, test_db_v2, db_config, timescaled
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_restapi_env_file_not_existing(script_runner, test_db_v2, db_config, timescaledb):
+async def test_restapi_env_file_not_existing(script_runner, test_db, db_config, timescaledb):
     result = script_runner.run(["slurm-monitor", "restapi", "--env-file", "non-existing-envfile"])
     assert result.returncode != 0
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_restapi_env_file_via_args(script_runner, tmp_path, test_db_v2, db_config, timescaledb):
+async def test_restapi_env_file_via_args(script_runner, tmp_path, test_db, db_config, timescaledb):
     """
     Use --env-file <filename> to point to the envfile which should be used
     """
@@ -180,7 +180,7 @@ async def test_restapi_env_file_via_args(script_runner, tmp_path, test_db_v2, db
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_restapi_env_file_via_env(script_runner, tmp_path, test_db_v2, db_config, timescaledb):
+async def test_restapi_env_file_via_env(script_runner, tmp_path, test_db, db_config, timescaledb):
     """
     Set the SLURM_MONITOR_ENVFILE to point to the envfile which should be used
     """
@@ -202,7 +202,7 @@ async def test_restapi_env_file_via_env(script_runner, tmp_path, test_db_v2, db_
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_restapi_env_file_with_overrides(script_runner, tmp_path, test_db_v2, db_config, timescaledb):
+async def test_restapi_env_file_with_overrides(script_runner, tmp_path, test_db, db_config, timescaledb):
     """
     Using --env-file <filename> to point to the envfile which should be used, should take precedence over
     environment variables
@@ -230,7 +230,7 @@ async def test_restapi_env_file_with_overrides(script_runner, tmp_path, test_db_
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_restapi_settings_from_env(script_runner, tmp_path, test_db_v2, db_config, timescaledb):
+async def test_restapi_settings_from_env(script_runner, tmp_path, test_db, db_config, timescaledb):
     """
     AppSettings should read setting plainly from env as well
     """

@@ -4,7 +4,7 @@ from pathlib import Path
 from time import monotonic, sleep
 
 from slurm_monitor.cli.base import BaseParser
-from slurm_monitor.db.v2.db_testing import create_test_db
+from slurm_monitor.db.db_testing import create_test_db
 from slurm_monitor.utils.command import Command
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ def start_timescaledb_container(
     volumes = ""
     start_postgres = ""
     if stats:
-        path = Path(__file__).parent.parent / "db" / "v2" / "postgresql.conf"
+        path = Path(__file__).parent.parent / "db" / "postgresql.conf"
         if path.exists():
             conf_dir = "/var/lib/postgresql/conf"
             volumes += f" -v {path.resolve()}:{conf_dir}/postgresql.conf -e POSTGRESQL_CONF_DIR={conf_dir}"

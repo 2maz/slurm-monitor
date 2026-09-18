@@ -5,7 +5,7 @@ from slurm_monitor.autodeploy import AutoDeployerSonar
 from slurm_monitor.db.settings import DatabaseSettings
 
 
-def test_AutoDeployer_v2(timescaledb, test_db_v2, db_config, monkeypatch):
+def test_AutoDeployer(timescaledb, test_db, db_config, monkeypatch):
     redeploy_nodes = set()
 
     def mock_deploy(self, node):

@@ -24,11 +24,11 @@ from kafka.errors import KafkaError
 from kafka.structs import TopicPartition
 from pydantic import BaseModel
 
-import slurm_monitor.db.v2.sonar as sonar
+import slurm_monitor.db.sonar as sonar
 from slurm_monitor.config import SLURM_MONITOR_LOG_DATE_FORMAT, SLURM_MONITOR_LOG_FORMAT, SLURM_MONITOR_LOG_STYLE
-from slurm_monitor.db.v2.db import ClusterDB
-from slurm_monitor.db.v2.db_tables import TableBase
-from slurm_monitor.db.v2.importer import DBJsonImporter, Importer
+from slurm_monitor.db.db import ClusterDB
+from slurm_monitor.db.db_tables import TableBase
+from slurm_monitor.db.importer import DBJsonImporter, Importer
 from slurm_monitor.utils import utcnow
 
 logger = logging.getLogger(__name__)

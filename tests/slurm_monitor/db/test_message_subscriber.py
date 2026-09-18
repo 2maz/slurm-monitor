@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy
-from kafka import TopicPartition
+from kafka.structs import TopicPartition
 
-from slurm_monitor.db.v2 import message_subscriber as message_subscriber_module
-from slurm_monitor.db.v2.importer import DBJsonImporter
-from slurm_monitor.db.v2.message_subscriber import MessageSubscriber
+from slurm_monitor.db import message_subscriber as message_subscriber_module
+from slurm_monitor.db.importer import DBJsonImporter
+from slurm_monitor.db.message_subscriber import MessageSubscriber
 from slurm_monitor.utils import utcnow
 
 
@@ -231,9 +231,9 @@ def test_MessageSubscriber_extract_offset_bounds(txt, expected_topic, expected_l
     ],
 )
 async def test_MessageSubscriber_sonar_examples(
-    sonar_msg_files, expected_clusters, test_db_v2__function_scope, db_config, test_data_dir
+    sonar_msg_files, expected_clusters, test_db__function_scope, db_config, test_data_dir
 ):
-    db = test_db_v2__function_scope
+    db = test_db__function_scope
 
     consumer = MockKafkaConsumer(sonar_msg_files, test_data_dir)
     message_subscriber = MessageSubscriber(
@@ -282,7 +282,7 @@ async def test_MessageSubscriber_sonar_examples(
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_MessageSubscriber_run_uses_one_db_connection_per_topic(
-    test_db_v2__function_scope, db_config, test_data_dir, monkeypatch
+    test_db__function_scope, db_config, test_data_dir, monkeypatch
 ):
     """
     _run() spawns one consumer thread per topic (via
@@ -290,7 +290,7 @@ async def test_MessageSubscriber_run_uses_one_db_connection_per_topic(
     own ClusterDB rather than sharing the MessageSubscriber's, so a
     connection issue or a leak in one topic can't affect the others.
     """
-    db = test_db_v2__function_scope
+    db = test_db__function_scope
 
     # One topic per mock consumer, mirroring one file each - a shared
     # MockKafkaConsumer would reject messages from two different clusters
@@ -347,7 +347,7 @@ async def test_MessageSubscriber_run_uses_one_db_connection_per_topic(
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_MessageSubscriber_run_aggregates_per_topic_output(
-    test_db_v2__function_scope, db_config, test_data_dir, monkeypatch
+    test_db__function_scope, db_config, test_data_dir, monkeypatch
 ):
     """
     _run()'s aggregator loop should surface each topic's own highlight
@@ -356,7 +356,7 @@ async def test_MessageSubscriber_run_aggregates_per_topic_output(
     omitting it, and merge msg_timestamps across topics into the single
     public `output`.
     """
-    db = test_db_v2__function_scope
+    db = test_db__function_scope
 
     per_topic_consumer: dict[str, MockKafkaConsumer] = {}
     for sonar_msg_file in ["0+job-srl-login3.ex3.simula.no.json", "0+sample-g001.ex3.simula.no.json"]:

@@ -3,61 +3,19 @@ from pathlib import Path
 
 import pytest
 
-from slurm_monitor.db.v2.validation import Specification
+from slurm_monitor.db.validation import Specification
 from slurm_monitor.utils import utcnow
 
 
 @pytest.fixture
 def test_data_dir():
-    return Path(__file__).parent.parent.parent.parent.resolve() / "data" / "db" / "v2"
-
-
-# @pytest.mark.parametrize("sysinfo_filename, ps_filename, cluster, node, gpu_uuids",[
-#    ["fox-sysinfo.json", "fox-ps.json", "fox.uio.no", "c1-10.fox", []],
-#    ["ml1-sysinfo.json", "ml1-ps.json", "", "ml1.hpc.uio.no", [
-#          "GPU-35080357-601c-7113-ec05-f6ca1e58a91e",
-#          "GPU-be013a01-364d-ca23-f871-206fe3f259ba",
-#          "GPU-daa9f6ac-c8bf-87be-8adc-89b1e7d3f38a",
-#        ]]
-#    ])
-# @pytest.mark.asyncio(loop_scope="module")
-# async def test_db_json_import(sysinfo_filename, ps_filename, cluster, node, gpu_uuids,
-#        test_data_dir, timescaledb):
-#    db_settings = DatabaseSettings(uri=timescaledb)
-#    time.sleep(1)
-#    db = ClusterDB(db_settings)
-#    time.sleep(1)
-#    importer = DBJsonImporter(db)
-#
-#    # Ensure that sysinfo is available before ps can be sampled
-#    sysinfo_json = test_data_dir / sysinfo_filename
-#    with open(sysinfo_json, 'r') as f:
-#        data = json.load(f)
-#
-#    importer.insert(data)
-#
-#    ps_json = test_data_dir / ps_filename
-#    with open(ps_json, 'r') as f:
-#        data = json.load(f)
-#
-#    importer.insert(data)
-#
-#    nodes = await db.get_nodes(cluster=cluster)
-#    assert nodes == [node]
-#
-#    gpu_nodes = await db.get_gpu_nodes(cluster=cluster)
-#    if gpu_uuids:
-#        assert node in gpu_nodes
-#    else:
-#        assert node not in gpu_nodes
-#
-#    nodes_info = await db.get_nodes_info(cluster=cluster)
+    return Path(__file__).parent.parent.parent.resolve() / "data" / "db"
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_get_slurm_jobs(test_db_v2, db_config):
+async def test_get_slurm_jobs(test_db, db_config):
     time_in_s = utcnow().timestamp()
-    running_jobs = await test_db_v2.get_slurm_jobs(
+    running_jobs = await test_db.get_slurm_jobs(
         cluster="cluster-0",
         partition="cluster-0-partition-0",
         states=["RUNNING"],
@@ -69,12 +27,12 @@ async def test_get_slurm_jobs(test_db_v2, db_config):
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_clusters(test_db_v2, db_config):
-    clusters = await test_db_v2.get_clusters()
+async def test_clusters(test_db, db_config):
+    clusters = await test_db.get_clusters()
     assert len(clusters) == db_config.number_of_clusters
 
     for cluster in clusters:
-        partitions = await test_db_v2.get_partitions(cluster=cluster["cluster"])
+        partitions = await test_db.get_partitions(cluster=cluster["cluster"])
         assert len(partitions) == db_config.number_of_partitions
 
         # only the first partition has running jobs
@@ -90,9 +48,9 @@ async def test_clusters(test_db_v2, db_config):
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_get_node_sample_gpu_timeseries(test_db_v2):
+async def test_get_node_sample_gpu_timeseries(test_db):
 
-    gpu_timeseries = await test_db_v2.get_node_sample_gpu_timeseries(
+    gpu_timeseries = await test_db.get_node_sample_gpu_timeseries(
         cluster="cluster-0",
         node="cluster-0-node-1",
         start_time_in_s=utcnow().timestamp() - 3600,
@@ -104,9 +62,9 @@ async def test_get_node_sample_gpu_timeseries(test_db_v2):
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_job_sample_process_gpu_timeseries(test_db_v2):
+async def test_job_sample_process_gpu_timeseries(test_db):
 
-    gpu_timeseries = await test_db_v2.get_jobs_sample_process_gpu_timeseries(
+    gpu_timeseries = await test_db.get_jobs_sample_process_gpu_timeseries(
         cluster="cluster-0",
         job_id=1,
         epoch=0,
@@ -126,18 +84,18 @@ async def test_job_sample_process_gpu_timeseries(test_db_v2):
     "ensure_sysinfo",
     [True, False],
 )
-async def test_nodes(ensure_sysinfo, test_db_v2, db_config):
-    nodes = await test_db_v2.get_nodes(cluster="cluster-1", ensure_sysinfo=ensure_sysinfo)
+async def test_nodes(ensure_sysinfo, test_db, db_config):
+    nodes = await test_db.get_nodes(cluster="cluster-1", ensure_sysinfo=ensure_sysinfo)
     assert len(nodes) == db_config.number_of_nodes
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_nodes_info(test_db_v2, db_config):
+async def test_nodes_info(test_db, db_config):
 
-    clusters = await test_db_v2.get_clusters()
+    clusters = await test_db.get_clusters()
     assert len(clusters) == db_config.number_of_clusters
 
-    nodes = await test_db_v2.get_nodes_sysinfo(cluster="cluster-1")
+    nodes = await test_db.get_nodes_sysinfo(cluster="cluster-1")
     for value in nodes.values():
         assert len(value["cards"]) == db_config.number_of_gpus
 
@@ -153,22 +111,22 @@ async def test_nodes_info(test_db_v2, db_config):
         ["SampleProcess", "sample_process", "num_threads"],
     ],
 )
-def test_comments_from_spec(spec_table, db_schema_table, column, test_db_v2, db_config):
+def test_comments_from_spec(spec_table, db_schema_table, column, test_db, db_config):
     spec = Specification()
 
-    in_db_description = test_db_v2.get_column_description(db_schema_table, column)
+    in_db_description = test_db.get_column_description(db_schema_table, column)
     spec_doc = spec[spec_table]["fields"][column]["doc"].strip()
 
     assert spec_doc == in_db_description
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_get_node_sample_disk_timeseries(test_db_v2, db_config):
+async def test_get_node_sample_disk_timeseries(test_db, db_config):
     cluster_name = db_config.cluster_names[0]
     node_name = f"{cluster_name}-node-0"
     end_time_in_s = utcnow().timestamp()
     start_time_in_s = (utcnow() - dt.timedelta(hours=12)).timestamp()
-    timeseries = await test_db_v2.get_node_sample_disk_timeseries(
+    timeseries = await test_db.get_node_sample_disk_timeseries(
         cluster=cluster_name,
         node=node_name,
         start_time_in_s=start_time_in_s,
@@ -179,8 +137,8 @@ async def test_get_node_sample_disk_timeseries(test_db_v2, db_config):
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_get_latest_topics_timestamp(test_db_v2, db_config):
-    topics = test_db_v2.get_latest_topics_timestamp("cluster-0")
+async def test_get_latest_topics_timestamp(test_db, db_config):
+    topics = test_db.get_latest_topics_timestamp("cluster-0")
 
     for x in ["cluster", "job", "sample", "sysinfo"]:
         assert x in topics
@@ -188,8 +146,8 @@ async def test_get_latest_topics_timestamp(test_db_v2, db_config):
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_suggest_lookback(test_db_v2, db_config):
-    topics = test_db_v2.suggest_lookback("cluster-0")
+async def test_suggest_lookback(test_db, db_config):
+    topics = test_db.suggest_lookback("cluster-0")
 
     for x in ["cluster", "job", "sample", "sysinfo"]:
         assert x in topics

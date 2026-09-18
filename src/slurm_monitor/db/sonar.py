@@ -4,7 +4,7 @@ import dataclasses
 import re
 from enum import Enum
 
-from slurm_monitor.db.v2.db_tables import ErrorMessage
+from slurm_monitor.db.db_tables import ErrorMessage
 
 
 @dataclasses.dataclass

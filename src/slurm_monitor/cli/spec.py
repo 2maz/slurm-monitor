@@ -2,8 +2,8 @@ from argparse import ArgumentParser
 from pathlib import Path
 
 from slurm_monitor.cli.base import BaseParser
-from slurm_monitor.db.v2.db_tables import TableBase
-from slurm_monitor.db.v2.validation import SONAR_DEFAULT_SPEC_FILENAME, Specification
+from slurm_monitor.db.db_tables import TableBase
+from slurm_monitor.db.validation import SONAR_DEFAULT_SPEC_FILENAME, Specification
 
 
 class SpecParser(BaseParser):

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-import slurm_monitor.db.v2 as db_v2
-import slurm_monitor.db.v2.db_testing as db_v2_testing
+from slurm_monitor.db.db import ClusterDB
+from slurm_monitor.db.db_testing import TestDBConfig, create_test_db
 from slurm_monitor.devices.gpu import GPU
 from slurm_monitor.utils.command import Command
 
@@ -389,8 +389,8 @@ def mock_gpu(gpu_type, gpu_responses, monkeypatch):
 
 ## DB V2
 @pytest.fixture(scope="module")
-def db_config() -> db_v2_testing.TestDBConfig:
-    return db_v2_testing.TestDBConfig()
+def db_config() -> TestDBConfig:
+    return TestDBConfig()
 
 
 @pytest.fixture(scope="session")
@@ -412,8 +412,8 @@ def timescaledb_db(timescaledb):
     return timescaledb.rsplit("/", 1)[0] + "/test_db_parser"
 
 
-def _make_test_db_v2(request, uri, db_config) -> db_v2.db.ClusterDB:
-    db_test = db_v2_testing.create_test_db(uri, db_config)
+def _make_test_db(request, uri, db_config) -> ClusterDB:
+    db_test = create_test_db(uri, db_config)
     request.addfinalizer(
         lambda: (
             db_test.engine.dispose(),
@@ -424,10 +424,10 @@ def _make_test_db_v2(request, uri, db_config) -> db_v2.db.ClusterDB:
 
 
 @pytest.fixture(scope="module")
-def test_db_v2(request, timescaledb, db_config) -> db_v2.db.ClusterDB:
-    return _make_test_db_v2(request, timescaledb, db_config)
+def test_db(request, timescaledb, db_config) -> ClusterDB:
+    return _make_test_db(request, timescaledb, db_config)
 
 
 @pytest.fixture(scope="function")
-def test_db_v2__function_scope(request, timescaledb, db_config) -> db_v2.db.ClusterDB:
-    return _make_test_db_v2(request, timescaledb, db_config)
+def test_db__function_scope(request, timescaledb, db_config) -> ClusterDB:
+    return _make_test_db(request, timescaledb, db_config)
