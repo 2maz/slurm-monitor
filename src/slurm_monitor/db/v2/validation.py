@@ -96,7 +96,7 @@ class Specification:
             covered_spec[spec_object]["required"] = fields_in_spec
 
         if show:
-            warnings.warn(f"Extra tables: {ignored_tables} - table has no associated info in 'spec'")
+            warnings.warn(f"Extra tables: {ignored_tables} - table has no associated info in 'spec'", stacklevel=2)
 
         ignored_spec = set(
             [
@@ -128,7 +128,9 @@ class Specification:
                         f"COMPLETE (implemented by {[x for x in fulfillment['implemented'].keys()]})"
                     )
 
-            warnings.warn(f"Potentially missing implementation: {ignored_spec} - specs have no associated tables")
+            warnings.warn(
+                f"Potentially missing implementation: {ignored_spec} - specs have no associated tables", stacklevel=2
+            )
 
         return {"ignored_spec": ignored_spec, "covered_spec": covered_spec}
 

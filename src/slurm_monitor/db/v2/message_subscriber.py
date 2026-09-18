@@ -877,7 +877,7 @@ class MessageSubscriber:
                         f" in {self.retry_timeout_in_s}s (check {self.log_output}) - {e}"
                     )
                     logger.warning(msg)
-                    warnings.warn(msg)
+                    warnings.warn(msg, stacklevel=2)
                     time.sleep(self.retry_timeout_in_s)
                 except TimeoutError:
                     raise
@@ -887,7 +887,7 @@ class MessageSubscriber:
                         f" (see {self.log_output}) - {e}"
                     )
                     logger.warning(msg)
-                    warnings.warn(msg)
+                    warnings.warn(msg, stacklevel=2)
                     time.sleep(self.retry_timeout_in_s)
         finally:
             if db:
