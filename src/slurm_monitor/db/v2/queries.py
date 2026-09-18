@@ -6,6 +6,7 @@ class CommonQueryParams(QueryParams):
     time_in_s: float | int
     interval_in_s: float | int
 
+
 class ClusterQuery(Query):
     statement = """
         SELECT c.* FROM cluster_attributes c
@@ -15,6 +16,7 @@ class ClusterQuery(Query):
         ) latest
         ON c.cluster = latest.cluster and c.time = latest.max_time;
     """
+
 
 class NodesQuery(Query):
     parameters = CommonQueryParams
@@ -30,6 +32,7 @@ class NodesQuery(Query):
         ;
     """
 
+
 class NodesPartitionsQuery(Query):
     parameters = CommonQueryParams
     statement = """
@@ -43,6 +46,7 @@ class NodesPartitionsQuery(Query):
         LIMIT 1
         ;
     """
+
 
 class GpuNodesQuery(Query):
     parameters = CommonQueryParams
@@ -58,6 +62,7 @@ class GpuNodesQuery(Query):
             cluster, node
         ;
     """
+
 
 class PartitionsQuery(Query):
     parameters = CommonQueryParams

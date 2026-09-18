@@ -124,6 +124,33 @@ source = ["src"]
 [tool.ruff]
 line-length = 120
 
+[tool.ruff.lint]
+# Explicit selection so the enabled rule set doesn't silently grow when ruff
+# is upgraded -- ruff's own default selection is not guaranteed stable across
+# versions. Extend this list deliberately, not implicitly.
+#
+# COM812 (missing trailing comma) is included only for this pass: run before
+# `ruff format`, it adds a magic trailing comma to every call/def/collection
+# that was already split one item per line, so the formatter preserves that
+# layout instead of collapsing it onto fewer lines. It is removed from this
+# list again immediately after, since it is documented to conflict with the
+# formatter if left enabled continuously.
+select = [
+    "E",     # pycodestyle errors
+    "F",     # pyflakes
+    "W",     # pycodestyle warnings
+    "I",     # isort
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "SIM",   # flake8-simplify
+    "COM812", # missing trailing comma -- one-time formatting-preservation pass
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's Depends()/Query()/Path() are meant to be called in argument
+# defaults -- that's the framework's DI pattern, not the bug B008 looks for.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path"]
+
 [tool.isort]
 multi_line_output = 8
 

@@ -1,20 +1,21 @@
 from __future__ import annotations
 
-from psutil import Process, NoSuchProcess
-from typing import ClassVar
+import logging
 import re
 import subprocess
-from pydantic import (
-        BaseModel
-)
-from pydantic_settings import BaseSettings
-import logging
 from functools import reduce
+from typing import ClassVar
+
+from psutil import NoSuchProcess, Process
+from pydantic import BaseModel
+from pydantic_settings import BaseSettings
+
+from slurm_monitor.utils.docker import Docker
 from slurm_monitor.utils.slurm import Slurm
 from slurm_monitor.utils.stats_types import ProcessStats
-from slurm_monitor.utils.docker import Docker
 
 logger = logging.getLogger(__name__)
+
 
 class JobStats(BaseModel):
     cpu_percent: float = 0.0
@@ -25,19 +26,20 @@ class JobStats(BaseModel):
         self.memory_percent += other.memory_percent
         return self
 
+
 class JobList(BaseSettings):
     # map from slurm jobs to processes
     jobs: dict[int, list[ProcessStats]] = {}
 
     def get_job_stats(self, job_id) -> JobStats:
         """
-            Compute the aggregated stats for a single slurm job
+        Compute the aggregated stats for a single slurm job
         """
         if job_id not in self.jobs:
             raise KeyError(f"Job {job_id} does not exist")
 
-        def add_fn(a,b):
-            return a+b
+        def add_fn(a, b):
+            return a + b
 
         return reduce(add_fn, self.jobs[job_id], JobStats())
 
@@ -66,7 +68,7 @@ class JobMonitor:
         cmd = f"{scontrol} listpids"
         response = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if response.returncode != 0:
-            error_msg = response.stderr.decode('UTF-8').strip()
+            error_msg = response.stderr.decode("UTF-8").strip()
             if re.match("No job steps", error_msg):
                 return active_jobs
             elif re.match("Unable to connect to slurmstepd", error_msg):
@@ -101,7 +103,7 @@ class JobMonitor:
                             process_description.memory_percent = p.memory_percent()
 
                         if job_id not in active_jobs.jobs:
-                            active_jobs.jobs[job_id] = [ process_description ]
+                            active_jobs.jobs[job_id] = [process_description]
                         else:
                             active_jobs.jobs[job_id].append(process_description)
                     except NoSuchProcess:
@@ -114,7 +116,7 @@ class JobMonitor:
         # Identify cpu/memory of associated containers
         docker = Docker()
         if docker.is_available():
-            for job_id,_ in active_jobs.jobs.items():
+            for job_id, _ in active_jobs.jobs.items():
                 # identify docker related process stats
                 docker_process_stats = docker.get_process_stats(job_id=job_id)
                 if docker_process_stats:

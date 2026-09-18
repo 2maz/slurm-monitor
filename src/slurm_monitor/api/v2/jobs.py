@@ -1,28 +1,28 @@
-from fastapi import Depends
-from fastapi_cache.decorator import cache
-import fastapi_pagination
 import logging
 from typing import Annotated
 
-from slurm_monitor.utils import utcnow
-from slurm_monitor.db_operations import DBManager
-from slurm_monitor.db.v2.db import ClusterDB
-from slurm_monitor.api.v2.routes import (
-    api_router,
-    create_custom_page,
-    validate_interval,
-    Role,
-    NoneForUserWithRealmRoles
-)
+import fastapi_pagination
+from fastapi import Depends
+from fastapi_cache.decorator import cache
 
 from slurm_monitor.api.v2.response_models import (
+    JobNodeSampleProcessGpuTimeseriesResponse,
     JobReport,
     JobResponse,
     JobsResponse,
     SystemProcessTimeseriesResponse,
     SystemProcessTreeResponse,
-    JobNodeSampleProcessGpuTimeseriesResponse,
 )
+from slurm_monitor.api.v2.routes import (
+    NoneForUserWithRealmRoles,
+    Role,
+    api_router,
+    create_custom_page,
+    validate_interval,
+)
+from slurm_monitor.db.v2.db import ClusterDB
+from slurm_monitor.db_operations import DBManager
+from slurm_monitor.utils import utcnow
 
 # avoid warning on not using sqlalchemy.ext.paginate
 # we query directly to cache the full query response on the db layer
@@ -32,15 +32,18 @@ logger = logging.getLogger(__name__)
 
 JobsPage = create_custom_page("jobs")
 
-@api_router.get("/cluster/{cluster}/jobs/process/timeseries",
-        summary="Get all jobs process timeseries-data (cpu/memory/gpu) on a given cluster",
-        tags=["cluster"],
-        response_model=list[SystemProcessTimeseriesResponse]
+
+@api_router.get(
+    "/cluster/{cluster}/jobs/process/timeseries",
+    summary="Get all jobs process timeseries-data (cpu/memory/gpu) on a given cluster",
+    tags=["cluster"],
+    response_model=list[SystemProcessTimeseriesResponse],
 )
-@api_router.get("/cluster/{cluster}/jobs/{job_id}/process/timeseries",
-        summary="Get **job**-specific process (cpu/memory/gpu) timeseries data",
-        tags=["job"],
-        response_model=list[SystemProcessTimeseriesResponse]
+@api_router.get(
+    "/cluster/{cluster}/jobs/{job_id}/process/timeseries",
+    summary="Get **job**-specific process (cpu/memory/gpu) timeseries data",
+    tags=["job"],
+    response_model=list[SystemProcessTimeseriesResponse],
 )
 @cache(expire=90)
 async def job_sample_process_system(
@@ -52,7 +55,7 @@ async def job_sample_process_system(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi: ClusterDB = Depends(DBManager.get_database)
+    dbi: ClusterDB = Depends(DBManager.get_database),
 ):
     """
     Get job-related timeseries for all processes running on cpu and gpu
@@ -63,27 +66,29 @@ async def job_sample_process_system(
     That will be separated in 'cpu_memory' and 'gpus'
     """
     start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s
+        start_time_in_s=start_time_in_s,
+        end_time_in_s=end_time_in_s,
+        resolution_in_s=resolution_in_s,
     )
 
     nodes = None if nodename is None else [nodename]
     return await dbi.get_jobs_sample_process_system_timeseries(
-            cluster=cluster,
-            nodes=nodes,
-            job_id=job_id,
-            epoch=epoch,
-            user=user,
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s
-        )
+        cluster=cluster,
+        nodes=nodes,
+        job_id=job_id,
+        epoch=epoch,
+        user=user,
+        start_time_in_s=start_time_in_s,
+        end_time_in_s=end_time_in_s,
+        resolution_in_s=resolution_in_s,
+    )
 
-@api_router.get("/cluster/{cluster}/jobs/{job_id}/process/tree",
-        summary="Get **job**-specific process tree",
-        tags=["job"],
-        response_model=SystemProcessTreeResponse
+
+@api_router.get(
+    "/cluster/{cluster}/jobs/{job_id}/process/tree",
+    summary="Get **job**-specific process tree",
+    tags=["job"],
+    response_model=SystemProcessTreeResponse,
 )
 @cache(expire=90)
 async def job_sample_process_system_tree(
@@ -95,7 +100,7 @@ async def job_sample_process_system_tree(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi: ClusterDB = Depends(DBManager.get_database)
+    dbi: ClusterDB = Depends(DBManager.get_database),
 ):
     """
     Get job-related process tree providing process level data for all related nodes
@@ -105,34 +110,37 @@ async def job_sample_process_system_tree(
     """
     if start_time_in_s is not None and end_time_in_s is not None:
         start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
-                start_time_in_s=start_time_in_s,
-                end_time_in_s=end_time_in_s,
-                resolution_in_s=resolution_in_s
+            start_time_in_s=start_time_in_s,
+            end_time_in_s=end_time_in_s,
+            resolution_in_s=resolution_in_s,
         )
 
     if not resolution_in_s:
-        resolution_in_s = 5*60 # 5 mins
+        resolution_in_s = 5 * 60  # 5 mins
 
     nodes_data = await dbi.get_job_sample_system_per_pid_timeseries(
-            cluster=cluster,
-            job_id=job_id,
-            epoch=epoch,
-            user=user,
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s
-        )
+        cluster=cluster,
+        job_id=job_id,
+        epoch=epoch,
+        user=user,
+        start_time_in_s=start_time_in_s,
+        end_time_in_s=end_time_in_s,
+        resolution_in_s=resolution_in_s,
+    )
     return SystemProcessTreeResponse(job=job_id, epoch=epoch, nodes=nodes_data)
 
-@api_router.get("/cluster/{cluster}/jobs/process/gpu/timeseries",
-        summary="Get GPU samples as timeseries, aggregated per job (for all jobs) and processes on a given cluster",
-        tags=["cluster"],
-        response_model=list[JobNodeSampleProcessGpuTimeseriesResponse]
+
+@api_router.get(
+    "/cluster/{cluster}/jobs/process/gpu/timeseries",
+    summary="Get GPU samples as timeseries, aggregated per job (for all jobs) and processes on a given cluster",
+    tags=["cluster"],
+    response_model=list[JobNodeSampleProcessGpuTimeseriesResponse],
 )
-@api_router.get("/cluster/{cluster}/jobs/{job_id}/process/gpu/timeseries",
-        summary="Get GPU sample as timeseries aggregated for a specific job on a given cluster",
-        tags=["job"],
-        response_model=list[JobNodeSampleProcessGpuTimeseriesResponse]
+@api_router.get(
+    "/cluster/{cluster}/jobs/{job_id}/process/gpu/timeseries",
+    summary="Get GPU sample as timeseries aggregated for a specific job on a given cluster",
+    tags=["job"],
+    response_model=list[JobNodeSampleProcessGpuTimeseriesResponse],
 )
 async def job_sample_process_gpu_timeseries(
     user: Annotated[NoneForUserWithRealmRoles, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
@@ -143,42 +151,46 @@ async def job_sample_process_gpu_timeseries(
     start_time_in_s: float | None = None,
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
-    dbi: ClusterDB = Depends(DBManager.get_database)
+    dbi: ClusterDB = Depends(DBManager.get_database),
 ):
     """
     Get job-related timeseries data for processes running on gpu
     """
     start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s
+        start_time_in_s=start_time_in_s,
+        end_time_in_s=end_time_in_s,
+        resolution_in_s=resolution_in_s,
     )
 
     nodes = None if nodename is None else [nodename]
     data = await dbi.get_jobs_sample_process_gpu_timeseries(
-            cluster=cluster,
-            nodes=nodes,
-            job_id=job_id,
-            epoch=epoch,
-            user=user,
-            start_time_in_s=start_time_in_s,
-            end_time_in_s=end_time_in_s,
-            resolution_in_s=resolution_in_s
-        )
+        cluster=cluster,
+        nodes=nodes,
+        job_id=job_id,
+        epoch=epoch,
+        user=user,
+        start_time_in_s=start_time_in_s,
+        end_time_in_s=end_time_in_s,
+        resolution_in_s=resolution_in_s,
+    )
     return data
 
-@api_router.get("/cluster/{cluster}/jobs",
-        summary="Get jobs running on the given cluster",
-        tags=["cluster"],
-        response_model=JobsResponse)
+
+@api_router.get(
+    "/cluster/{cluster}/jobs",
+    summary="Get jobs running on the given cluster",
+    tags=["cluster"],
+    response_model=JobsResponse,
+)
 @cache(expire=30)
-async def jobs(cluster: str,
+async def jobs(
+    cluster: str,
     user: Annotated[str | None, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     start_time_in_s: int | None = None,
     end_time_in_s: int | None = None,
     states: str | None = None,
-    dbi: ClusterDB = Depends(DBManager.get_database)
-   ):
+    dbi: ClusterDB = Depends(DBManager.get_database),
+):
     """
     Check current status of jobs
     """
@@ -186,38 +198,47 @@ async def jobs(cluster: str,
         end_time_in_s = utcnow().timestamp()
 
     if start_time_in_s is None:
-        start_time_in_s = end_time_in_s - 60*15 # last 15 min
+        start_time_in_s = end_time_in_s - 60 * 15  # last 15 min
 
     job_states = None
     if states:
         job_states = states.split(",")
 
-    return { 'jobs' : await dbi.get_jobs(
-                cluster=cluster,
-                user=user,
-                start_time_in_s=start_time_in_s,
-                end_time_in_s=end_time_in_s,
-                states=job_states
-        )}
+    return {
+        "jobs": await dbi.get_jobs(
+            cluster=cluster,
+            user=user,
+            start_time_in_s=start_time_in_s,
+            end_time_in_s=end_time_in_s,
+            states=job_states,
+        )
+    }
 
-@api_router.get("/cluster/{cluster}/jobs/{job_id}",
-        summary="Get SLURM job (epoch == 0) information by id for the given cluster",
-        tags=["job"],
-        response_model=JobResponse
+
+@api_router.get(
+    "/cluster/{cluster}/jobs/{job_id}",
+    summary="Get SLURM job (epoch == 0) information by id for the given cluster",
+    tags=["job"],
+    response_model=JobResponse,
 )
-@api_router.get("/cluster/{cluster}/jobs/{job_id}/info",
-        summary="Get SLURM job (epoch == 0) information by id for the given cluster",
-        tags=["job"],
-        response_model=JobResponse
+@api_router.get(
+    "/cluster/{cluster}/jobs/{job_id}/info",
+    summary="Get SLURM job (epoch == 0) information by id for the given cluster",
+    tags=["job"],
+    response_model=JobResponse,
 )
-@api_router.get("/cluster/{cluster}/jobs/{job_id}/epoch/{epoch}",
-        summary="Get job information by id and epoch for the given cluster, if epoch == 0, only SLURM jobs will be fetched",
-        tags=["job"],
-        response_model=JobResponse)
-@api_router.get("/cluster/{cluster}/jobs/{job_id}/epoch/{epoch}/info, if epoch == 0, only SLURM jobs will be fetched",
-        summary="Get job information by id and epoch for the given cluster",
-        tags=["job"],
-        response_model=JobResponse)
+@api_router.get(
+    "/cluster/{cluster}/jobs/{job_id}/epoch/{epoch}",
+    summary="Get job information by id and epoch for the given cluster, if epoch == 0, only SLURM jobs will be fetched",
+    tags=["job"],
+    response_model=JobResponse,
+)
+@api_router.get(
+    "/cluster/{cluster}/jobs/{job_id}/epoch/{epoch}/info, if epoch == 0, only SLURM jobs will be fetched",
+    summary="Get job information by id and epoch for the given cluster",
+    tags=["job"],
+    response_model=JobResponse,
+)
 async def job_status(
     user: Annotated[NoneForUserWithRealmRoles, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     cluster: str,
@@ -227,7 +248,7 @@ async def job_status(
     end_time_in_s: float | None = None,
     resolution_in_s: int | None = None,
     states: str | None = None,
-    dbi: ClusterDB = Depends(DBManager.get_database)
+    dbi: ClusterDB = Depends(DBManager.get_database),
 ):
     """
     Get job information optionally limited by a given timeframe and output provided in a specified resolution of time
@@ -237,24 +258,26 @@ async def job_status(
         job_states = states.split(",")
 
     return await dbi.get_job(
-                cluster=cluster,
-                job_id=job_id,
-                epoch=epoch,
-                user=user,
-                start_time_in_s=start_time_in_s,
-                end_time_in_s=end_time_in_s,
-                states=job_states
+        cluster=cluster,
+        job_id=job_id,
+        epoch=epoch,
+        user=user,
+        start_time_in_s=start_time_in_s,
+        end_time_in_s=end_time_in_s,
+        states=job_states,
     )
 
-@api_router.get("/cluster/{cluster}/query/jobs",
-        summary="Provides a generic job query interface with filter options",
-        tags=["cluster"],
-        response_model=None
-        )
+
+@api_router.get(
+    "/cluster/{cluster}/query/jobs",
+    summary="Provides a generic job query interface with filter options",
+    tags=["cluster"],
+    response_model=None,
+)
 async def query_jobs(
     as_user: Annotated[NoneForUserWithRealmRoles, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     cluster: str,
-    user: str  | None = None,
+    user: str | None = None,
     user_id: int | None = None,
     job_id: int | None = None,
     start_before_in_s: float | None = None,
@@ -267,7 +290,7 @@ async def query_jobs(
     max_duration_in_s: float | None = None,
     states: str | None = None,
     limit: int = 100,
-    dbi: ClusterDB = Depends(DBManager.get_database)
+    dbi: ClusterDB = Depends(DBManager.get_database),
 ):
     job_states = None
     if states:
@@ -277,29 +300,32 @@ async def query_jobs(
         logger.warning(f"User {as_user} is quering other {user=} without admin privilegde")
         user = as_user
 
-    return {"jobs": await dbi.query_jobs(
-        cluster=cluster,
-        user=user,
-        user_id=user_id,
-        job_id=job_id,
-        start_before_in_s=start_before_in_s,
-        start_after_in_s=start_after_in_s,
-        end_before_in_s=end_before_in_s,
-        end_after_in_s=end_after_in_s,
-        submit_before_in_s=submit_before_in_s,
-        submit_after_in_s=submit_after_in_s,
-        min_duration_in_s=min_duration_in_s,
-        max_duration_in_s=max_duration_in_s,
-        states=job_states,
-        limit=limit,
-        )
+    return {
+        "jobs": await dbi.query_jobs(
+            cluster=cluster,
+            user=user,
+            user_id=user_id,
+            job_id=job_id,
+            start_before_in_s=start_before_in_s,
+            start_after_in_s=start_after_in_s,
+            end_before_in_s=end_before_in_s,
+            end_after_in_s=end_after_in_s,
+            submit_before_in_s=submit_before_in_s,
+            submit_after_in_s=submit_after_in_s,
+            min_duration_in_s=min_duration_in_s,
+            max_duration_in_s=max_duration_in_s,
+            states=job_states,
+            limit=limit,
+        ),
     }
 
-@api_router.get("/cluster/{cluster}/query/jobs/pages",
-        summary="Provides a generic job query interface provides paginated results",
-        tags=["cluster"],
-        response_model=JobsPage[JobResponse]
-        )
+
+@api_router.get(
+    "/cluster/{cluster}/query/jobs/pages",
+    summary="Provides a generic job query interface provides paginated results",
+    tags=["cluster"],
+    response_model=JobsPage[JobResponse],
+)
 async def query_jobs_pages(
     as_user: Annotated[NoneForUserWithRealmRoles, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     cluster: str,
@@ -317,9 +343,9 @@ async def query_jobs_pages(
     states: str | None = None,
     timestamp: int = int(utcnow().timestamp()),
     limit: int = 100,
-    page: int = 1 ,
+    page: int = 1,
     page_size: int = 50,
-    dbi: ClusterDB = Depends(DBManager.get_database)
+    dbi: ClusterDB = Depends(DBManager.get_database),
 ):
     job_states = None
     if states:
@@ -343,27 +369,28 @@ async def query_jobs_pages(
         max_duration_in_s=max_duration_in_s,
         states=job_states,
         limit=limit,
-        timestamp=timestamp
-        )
+        timestamp=timestamp,
+    )
 
     return fastapi_pagination.paginate(jobs, params=fastapi_pagination.Params(page=page, size=page_size))
 
 
-@api_router.get("/cluster/{cluster}/jobs/{job_id}/report",
-        summary="Get a **job**-specific report on stats for the job",
-        tags=["job"],
-        response_model=JobReport
+@api_router.get(
+    "/cluster/{cluster}/jobs/{job_id}/report",
+    summary="Get a **job**-specific report on stats for the job",
+    tags=["job"],
+    response_model=JobReport,
 )
 async def job_report(
     user: Annotated[str | None, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     cluster: str,
     job_id: int,
     time_in_s: float | None = None,
-    dbi : ClusterDB = Depends(DBManager.get_database)
-    ):
+    dbi: ClusterDB = Depends(DBManager.get_database),
+):
     return await dbi.get_job_report(
-            cluster=cluster,
-            user=user,
-            job_id=job_id,
-            time_in_s=time_in_s
-        )
+        cluster=cluster,
+        user=user,
+        job_id=job_id,
+        time_in_s=time_in_s,
+    )

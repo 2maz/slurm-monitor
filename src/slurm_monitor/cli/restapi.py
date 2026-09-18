@@ -1,15 +1,16 @@
-from argparse import ArgumentParser
 import ctypes
 import json
 import logging
-from pathlib import Path
 import signal
 import subprocess
 import sys
+from argparse import ArgumentParser
+from pathlib import Path
+
 import yaml
 
-from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.app_settings import AppSettings
+from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.v2 import api_v2_app
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ def _set_pdeathsig():
     except OSError as e:
         logger.warning(f"Could not set PR_SET_PDEATHSIG on the uvicorn child: {e}")
 
+
 class RestapiParser(BaseParser):
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
@@ -39,33 +41,43 @@ class RestapiParser(BaseParser):
         app_settings = AppSettings.get_instance()
 
         http = "https" if app_settings.ssl.keyfile else "http"
-        parser.description = f"slurm-monitor's RESTAPI -- Once started check the interface documentation " \
-             f"under {http}://{app_settings.host}:{app_settings.port}/api/v2/docs"
-        parser.add_argument("--host", type=str,
-                            default=app_settings.host,
-                            help=f"Set the RESTAPI host, default is {app_settings.host}"
+        parser.description = (
+            f"slurm-monitor's RESTAPI -- Once started check the interface documentation "
+            f"under {http}://{app_settings.host}:{app_settings.port}/api/v2/docs"
+        )
+        parser.add_argument(
+            "--host",
+            type=str,
+            default=app_settings.host,
+            help=f"Set the RESTAPI host, default is {app_settings.host}",
         )
 
-        parser.add_argument("--port", type=int,
-                            default=app_settings.port,
-                            help=f"Set the RESTAPI listen port, default is {app_settings.port}"
+        parser.add_argument(
+            "--port",
+            type=int,
+            default=app_settings.port,
+            help=f"Set the RESTAPI listen port, default is {app_settings.port}",
         )
 
-        parser.add_argument("--ssl-keyfile", type=str,
-                            default=app_settings.ssl.keyfile,
-                            help=f"Set ssl-keyfile, default is {app_settings.ssl.keyfile}"
+        parser.add_argument(
+            "--ssl-keyfile",
+            type=str,
+            default=app_settings.ssl.keyfile,
+            help=f"Set ssl-keyfile, default is {app_settings.ssl.keyfile}",
         )
 
-        parser.add_argument("--ssl-certfile", type=str,
-                            default=app_settings.ssl.certfile,
-                            help=f"Set ssl-certfile, default is {app_settings.ssl.certfile}"
+        parser.add_argument(
+            "--ssl-certfile",
+            type=str,
+            default=app_settings.ssl.certfile,
+            help=f"Set ssl-certfile, default is {app_settings.ssl.certfile}",
         )
 
         parser.add_argument(
             "--export-openapi",
             type=str,
             default=None,
-            help="Export the current openapi schema"
+            help="Export the current openapi schema",
         )
 
     def execute(self, args):
@@ -100,7 +112,6 @@ class RestapiParser(BaseParser):
             env_file = sys.argv[idx + 1]
             cmd += ["--env-file", env_file]
 
-
         # forward extra arguments to uvicorn
         cmd += self.unknown_args
 
@@ -110,7 +121,7 @@ class RestapiParser(BaseParser):
         if app_settings.ssl.certfile:
             cmd += ["--ssl-certfile", app_settings.ssl.certfile]
 
-        cmd_txt = ' '.join(cmd)
+        cmd_txt = " ".join(cmd)
         logger.info(f"Execute: {cmd_txt}")
         returncode = 0
         try:

@@ -26,24 +26,17 @@ class Command:
     @classmethod
     def run_and_get_exit_code(cls, command: str) -> bool:
         try:
-            _ = subprocess.run(command,
-                    shell=True,
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL)
+            _ = subprocess.run(command, shell=True, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return True
         except subprocess.CalledProcessError:
             return False
 
     @classmethod
-    def run(cls, command: str, decode: str | None = 'utf-8', timeout: int | None = None) -> str | bytes:
+    def run(cls, command: str, decode: str | None = "utf-8", timeout: int | None = None) -> str | bytes:
         try:
-            response = subprocess.run(command,
-                    shell=True,
-                    check=True,
-                    timeout=timeout,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE)
+            response = subprocess.run(
+                command, shell=True, check=True, timeout=timeout, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             raise RuntimeError(f"Command.run: '{command}' failed") from e
 

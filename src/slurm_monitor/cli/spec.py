@@ -1,21 +1,22 @@
 from argparse import ArgumentParser
-from slurm_monitor.cli.base import BaseParser
-
-from slurm_monitor.db.v2.validation import Specification, SONAR_DEFAULT_SPEC_FILENAME
-from slurm_monitor.db.v2.db_tables import TableBase
 from pathlib import Path
+
+from slurm_monitor.cli.base import BaseParser
+from slurm_monitor.db.v2.db_tables import TableBase
+from slurm_monitor.db.v2.validation import SONAR_DEFAULT_SPEC_FILENAME, Specification
 
 
 class SpecParser(BaseParser):
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
 
-        parser.add_argument("--spec-file",
-                            required=False,
-                            type=str,
-                            help="YAML spec file of sonar-types",
-                            default=None,
-                            )
+        parser.add_argument(
+            "--spec-file",
+            required=False,
+            type=str,
+            help="YAML spec file of sonar-types",
+            default=None,
+        )
 
     def execute(self, args):
         super().execute(args)

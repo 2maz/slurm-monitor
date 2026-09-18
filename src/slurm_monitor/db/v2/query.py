@@ -12,6 +12,7 @@ class QueryParams(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+
 class Query:
     """Base class for database queries.
     Subclass this class to define specific queries."""
@@ -39,8 +40,10 @@ class Query:
         """Parse and validate the query parameters against the schema."""
         return self.parameters.model_validate(params).model_dump()
 
+
 class CommonUsageStatQueryParams(QueryParams):
     cluster: str
+
 
 class UserJobResults(Query):
     """
@@ -49,6 +52,7 @@ class UserJobResults(Query):
         number_of_jobs (total), avg_time (per job),
         min_time, max_time, avg_cpu_count, avg_node_count
     """
+
     parameters = CommonUsageStatQueryParams
 
     statement = """
@@ -84,6 +88,7 @@ class UserJobResults(Query):
         ORDER BY number_of_jobs;
     """
 
+
 class UserSuccessJobResults(Query):
     """
     Generate a query to output:
@@ -91,7 +96,8 @@ class UserSuccessJobResults(Query):
         number_of_jobs (total), avg_time (per job),
         min_time, max_time, avg_cpu_count, avg_node_count
     """
-    statement= """
+
+    statement = """
         SELECT row_number() OVER(ORDER BY  user_name) as anon_user,
             user_name,
             COUNT(distinct job_id) AS number_of_successful_jobs,
@@ -118,6 +124,7 @@ class UserSuccessJobResults(Query):
         GROUP BY user_name
         ORDER BY number_of_successful_jobs;
     """
+
 
 class UserFailedJobResults(Query):
     """
@@ -156,12 +163,12 @@ class UserFailedJobResults(Query):
     """
 
 
-
 class PopularPartitionsByNumberOfJobs(Query):
     """
     Generate a query to output:
         partition, number_of_jobs (total), avg_time (per job)
     """
+
     parameters = CommonUsageStatQueryParams
 
     statement = """
@@ -203,6 +210,7 @@ class JobsExceedingRequestedResources(Query):
         max_virtual_memory_exceeded_requested,
         gpus_used_exceeded_requested
     """
+
     parameters = CommonUsageStatQueryParams
 
     statement = r"""
@@ -291,21 +299,20 @@ class JobsExceedingRequestedResources(Query):
     """
 
 
-
 class QueryMaker:
     _queries: ClassVar[dict[str, type[Query]]] = {
-            "user-job-results": UserJobResults,
-            "user-success-job-results": UserSuccessJobResults,
-            "user-failed-job-results": UserFailedJobResults,
-            "popular-partitions-by-number-of-jobs": PopularPartitionsByNumberOfJobs,
-            "jobs-exceeding-resource-usage": JobsExceedingRequestedResources,
+        "user-job-results": UserJobResults,
+        "user-success-job-results": UserSuccessJobResults,
+        "user-failed-job-results": UserFailedJobResults,
+        "popular-partitions-by-number-of-jobs": PopularPartitionsByNumberOfJobs,
+        "jobs-exceeding-resource-usage": JobsExceedingRequestedResources,
     }
 
     def create(self, db: Database, name: str) -> Query:
         if name not in self._queries:
             raise ValueError(f"QueryMaker.create: no query '{name}' exists")
 
-        return  self._queries[name](db)
+        return self._queries[name](db)
 
     @classmethod
     def list_available(cls) -> list[str]:

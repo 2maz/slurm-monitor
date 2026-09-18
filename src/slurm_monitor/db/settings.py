@@ -1,5 +1,7 @@
-from pydantic import BaseModel
 import os
+
+from pydantic import BaseModel
+
 
 class DatabaseSettings(BaseModel):
     user: str | None = None
