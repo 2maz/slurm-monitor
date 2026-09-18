@@ -186,7 +186,7 @@ def test_main(mocker, mock_slurm_command_hint):
         def __init__(self, **kwargs):
             pass
 
-    mock_producer = mocker.patch("slurm_monitor.db.v1.data_publisher.KafkaProducer")
+    mock_producer = mocker.patch("slurm_monitor.db.data_publisher.KafkaProducer")
     mock_producer_instance = mock_producer.return_value
 
     published_messages = []
