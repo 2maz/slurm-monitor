@@ -29,13 +29,16 @@ def hashkey_generator(*args, **kwargs):
     return hashkey(*updated_args, **updated_kwargs)
 
 
-def ttl_cache_async(*, ttl, maxsize: int = 128, ignore_args: list[str] = []):
+def ttl_cache_async(*, ttl, maxsize: int = 128, ignore_args: list[str] | None = None):
     """
     Enable a timeout cache for an async function
 
     At the same time handle the limitation of cachetools to deal with list
     and set arguments
     """
+    if ignore_args is None:
+        ignore_args = []
+
     cache = TTLCache(maxsize=maxsize, ttl=ttl)
 
     def decorator(func):
