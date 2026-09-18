@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, status
 from fastapi.encoders import jsonable_encoder
 
-from slurm_monitor.api.v2.routes import TokenPayload, api_router, get_token_payload
+from slurm_monitor.api.routes import TokenPayload, api_router, get_token_payload
 from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.db_operations import DBManager
 

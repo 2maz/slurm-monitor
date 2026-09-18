@@ -3,9 +3,9 @@ from typing import Annotated
 from fastapi import Depends
 from fastapi_cache.decorator import cache
 
-from slurm_monitor.api.v2.response_models import ClusterResponse
-from slurm_monitor.api.v2.routes import TokenPayload, api_router, get_token_payload
-from slurm_monitor.db.v2.db import ClusterDB
+from slurm_monitor.api.response_models import ClusterResponse
+from slurm_monitor.api.routes import TokenPayload, api_router, get_token_payload
+from slurm_monitor.db.db import ClusterDB
 from slurm_monitor.db_operations import DBManager
 
 

@@ -4,8 +4,8 @@ import logging
 from pydantic import BaseModel
 
 import slurm_monitor.timescaledb as timescaledb
-from slurm_monitor.db.v2.db import ClusterDB, DatabaseSettings
-from slurm_monitor.db.v2.db_tables import (
+from slurm_monitor.db.db import ClusterDB, DatabaseSettings
+from slurm_monitor.db.db_tables import (
     Cluster,
     Node,
     NodeState,

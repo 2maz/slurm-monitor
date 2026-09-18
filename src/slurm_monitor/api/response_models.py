@@ -4,7 +4,7 @@ from typing import Generic, TypeVar
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, RootModel, model_validator
 
-from slurm_monitor.db.v2.db_tables import SampleDisk
+from slurm_monitor.db.db_tables import SampleDisk
 
 UUID = str
 

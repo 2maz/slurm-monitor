@@ -20,9 +20,9 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import sessionmaker
 
+from slurm_monitor.db.db_tables import TableBase
 from slurm_monitor.db.settings import DatabaseSettings
-from slurm_monitor.db.v2.db_tables import TableBase
-from slurm_monitor.db.v2.validation import Specification
+from slurm_monitor.db.validation import Specification
 
 logger = logging.getLogger(__name__)
 

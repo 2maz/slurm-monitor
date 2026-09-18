@@ -8,7 +8,7 @@ import sqlalchemy
 from fastapi import HTTPException
 
 from slurm_monitor.app_settings import AppSettings
-from slurm_monitor.db.v2.db_tables import ExtraIndexPrefix
+from slurm_monitor.db.db_tables import ExtraIndexPrefix
 
 logger: Logger = getLogger(__name__)
 
@@ -71,7 +71,7 @@ class DBManager:
                 if app_settings.db_schema_version == "v1":
                     raise RuntimeError("v1 schema is no longer supported")
                 elif app_settings.db_schema_version == "v2":
-                    from slurm_monitor.db.v2.db import ClusterDB
+                    from slurm_monitor.db.db import ClusterDB
 
                     db = ClusterDB(app_settings.database)
                 else:

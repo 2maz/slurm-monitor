@@ -15,8 +15,8 @@ from sqlalchemy import (
 )
 from tqdm import tqdm
 
-import slurm_monitor.db.v2.sonar as sonar
-from slurm_monitor.api.v2.response_models import (
+import slurm_monitor.db.sonar as sonar
+from slurm_monitor.api.response_models import (
     AllocTRES,
     ErrorMessageResponse,
     GpusProcessTimeSeriesResponse,
@@ -36,7 +36,7 @@ from slurm_monitor.api.v2.response_models import (
     SampleProcessGpuAccResponse,
     UserSettingsResponse,
 )
-from slurm_monitor.db.v2.db_base import (
+from slurm_monitor.db.db_base import (
     DEFAULT_HISTORY_INTERVAL_IN_S,
     INTERVAL_1DAY,  # noqa
     INTERVAL_1WEEK,  # noqa
@@ -44,7 +44,7 @@ from slurm_monitor.db.v2.db_base import (
     Database,
     DatabaseSettings,  # noqa
 )
-from slurm_monitor.db.v2.queries import PartitionsQuery
+from slurm_monitor.db.queries import PartitionsQuery
 from slurm_monitor.timescaledb import time_bucket
 from slurm_monitor.timescaledb.functions import (
     first,

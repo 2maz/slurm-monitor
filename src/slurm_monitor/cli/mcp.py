@@ -103,7 +103,7 @@ class MCPParser(BaseParser):
         verify = not args.insecure
 
         # Fetch the live OpenAPI schema from the running RESTAPI instance,
-        # rather than importing api_v2_app and calling .openapi() locally,
+        # rather than importing api_app and calling .openapi() locally,
         # so this always reflects whatever that instance is actually
         # serving (including a remote or differently-versioned one).
         openapi_url = f"{args.api_url.rstrip('/')}/openapi.json"

@@ -1,4 +1,4 @@
-from slurm_monitor.db.v2.query import Query, QueryParams
+from slurm_monitor.db.query import Query, QueryParams
 
 
 class CommonQueryParams(QueryParams):

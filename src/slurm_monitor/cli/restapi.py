@@ -9,9 +9,9 @@ from pathlib import Path
 
 import yaml
 
+from slurm_monitor.app import api_app
 from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.cli.base import BaseParser
-from slurm_monitor.v2 import api_v2_app
 
 logger = logging.getLogger(__name__)
 
@@ -87,10 +87,10 @@ class RestapiParser(BaseParser):
             with open(args.export_openapi, "w") as f:
                 path = Path(args.export_openapi)
                 if path.suffix in [".yaml", ".yml"]:
-                    yaml.dump(api_v2_app.openapi(), f)
+                    yaml.dump(api_app.openapi(), f)
                     print(f"Exported openapi spec in 'yaml' format: {path.resolve()}")
                 elif path.suffix in [".json"]:
-                    json.dump(api_v2_app.openapi(), f)
+                    json.dump(api_app.openapi(), f)
                     print(f"Exported openapi spec in 'json' format: {path.resolve()}")
                 else:
                     raise RuntimeError(f"Unknown export type: '{path.suffix}'")
@@ -99,7 +99,7 @@ class RestapiParser(BaseParser):
 
         cmd = [
             "uvicorn",
-            "slurm_monitor.v2:app",
+            "slurm_monitor.app:app",
             "--port",
             str(args.port),
             "--host",

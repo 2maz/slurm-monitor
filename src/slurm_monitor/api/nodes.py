@@ -8,7 +8,7 @@ import fastapi_pagination
 from fastapi import Depends, HTTPException, Response
 from fastapi_cache.decorator import cache
 
-from slurm_monitor.api.v2.response_models import (
+from slurm_monitor.api.response_models import (
     ErrorMessageResponse,
     NodeDiskTimeseriesResponse,
     NodeGpuJobSampleProcessGpuTimeseriesResponse,
@@ -18,15 +18,15 @@ from slurm_monitor.api.v2.response_models import (
     NodeStateResponse,
     SampleProcessAccResponse,
 )
-from slurm_monitor.api.v2.routes import (
+from slurm_monitor.api.routes import (
     TokenPayload,
     api_router,
     create_custom_page,
     get_token_payload,
     validate_interval,
 )
-from slurm_monitor.db.v2.db import ClusterDB
-from slurm_monitor.db.v2.db_tables import SampleDisk
+from slurm_monitor.db.db import ClusterDB
+from slurm_monitor.db.db_tables import SampleDisk
 from slurm_monitor.db_operations import DBManager
 
 logger = logging.getLogger(__name__)

@@ -13,7 +13,7 @@ from slurm_monitor.app_settings import (
     AppSettings,
 )
 from slurm_monitor.cli.base import BaseParser
-from slurm_monitor.db.v2.message_subscriber import MessageSubscriber, TerminalDisplay
+from slurm_monitor.db.message_subscriber import MessageSubscriber, TerminalDisplay
 
 logger = logging.getLogger(__name__)
 
@@ -230,7 +230,7 @@ class ListenParser(BaseParser):
         if args.use_version == "v1":
             raise NotImplementedError("v1 is not supported")
         elif args.use_version == "v2":
-            from slurm_monitor.db.v2.db import ClusterDB
+            from slurm_monitor.db.db import ClusterDB
 
             # Ensure commandline overrides .env file settings
             if args.cluster_name:

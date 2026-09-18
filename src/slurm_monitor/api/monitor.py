@@ -11,10 +11,10 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi_cache import FastAPICache
 from fastapi_cache.decorator import cache
 
-from slurm_monitor.api.v2.routes import RequiredPermissions, TokenPayload, api_router, get_token_payload
+from slurm_monitor.api.routes import RequiredPermissions, TokenPayload, api_router, get_token_payload
 from slurm_monitor.app_settings import AppSettings
-from slurm_monitor.db.v2.db import ClusterDB
-from slurm_monitor.db.v2.query import QueryMaker
+from slurm_monitor.db.db import ClusterDB
+from slurm_monitor.db.query import QueryMaker
 from slurm_monitor.db_operations import DBManager
 from slurm_monitor.devices.gpu import GPUInfo
 from slurm_monitor.utils import utcnow
