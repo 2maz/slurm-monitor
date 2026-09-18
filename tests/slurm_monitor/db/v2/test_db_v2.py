@@ -117,7 +117,7 @@ async def test_job_sample_process_gpu_timeseries(test_db_v2):
     )
     gpu_data = gpu_timeseries[0].nodes["cluster-0-node-0"].gpus
     assert len(gpu_data) == 2
-    for _, samples in gpu_data.items():
+    for samples in gpu_data.values():
         assert len(samples) > 0
 
 
@@ -138,7 +138,7 @@ async def test_nodes_info(test_db_v2, db_config):
     assert len(clusters) == db_config.number_of_clusters
 
     nodes = await test_db_v2.get_nodes_sysinfo(cluster="cluster-1")
-    for _, value in nodes.items():
+    for value in nodes.values():
         assert len(value["cards"]) == db_config.number_of_gpus
 
 
