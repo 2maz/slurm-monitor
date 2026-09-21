@@ -2142,7 +2142,7 @@ class ClusterDB(Database):
         node: str,
         start_time_in_s: int,
         end_time_in_s: int,
-        resolution_in_s: int | None = None,
+        resolution_in_s: int = 60,
     ) -> list[SampleDiskTimeseriesResponse]:
         """
         Get SampleDisk timeseries for a given timeframe.
@@ -2155,7 +2155,7 @@ class ClusterDB(Database):
         """
 
         # resolution needs to be at least a minute
-        resolution_in_s = max(resolution_in_s, 60) if resolution_in_s is not None else 60
+        resolution_in_s = max(resolution_in_s, 60)
 
         query = select(
             SampleDisk.name.distinct(),

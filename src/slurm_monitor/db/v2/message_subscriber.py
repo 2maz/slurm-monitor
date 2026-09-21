@@ -20,7 +20,7 @@ from pathlib import Path
 
 import sqlalchemy
 from kafka import KafkaConsumer
-from kafka.errors import KafkaError
+from kafka.errors import NoBrokersAvailable
 from kafka.structs import TopicPartition
 from pydantic import BaseModel
 
@@ -884,7 +884,7 @@ class MessageSubscriber:
                         )
                     )
                     return
-                except KafkaError as e:
+                except NoBrokersAvailable as e:
                     msg = (
                         f"{topic}: no brokers available using bootstrap_servers: {self.host}:{self.port} retrying"
                         f" in {self.retry_timeout_in_s}s (check {self.log_output}) - {e}"

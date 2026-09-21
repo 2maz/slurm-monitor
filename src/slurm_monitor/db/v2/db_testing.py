@@ -292,7 +292,7 @@ def create_test_db(
                         ),
                     )
 
-                    for _, card in enumerate(cards):
+                    for card in cards:
                         sample_process_gpu.append(
                             SampleProcessGpu(
                                 cluster=cluster_name,
