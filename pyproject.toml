@@ -1,5 +1,4 @@
-### Project ###
-
+# https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
 [project]
 name = "slurm-monitor"
 dynamic = ["version"]
@@ -57,6 +56,9 @@ dependencies = [
 
 [project.optional-dependencies]
 # Optional deps that library consumers can install to enable vendorlib features
+#      pip install slurm-monitor[vendorlibs]
+# or using uv:
+#     uv add slurm-monitor[vendorlibs]
 vendorlibs = [
     "nvidia-ml-py",
     "pyrsmi"
@@ -71,10 +73,11 @@ repository = "https://github.com/2maz/slurm-monitor"
 slurm-monitor = "slurm_monitor.cli.main:run"
 
 
-### Dependencies for development and testing ###
-
 [dependency-groups]
-# Dependencies for development and testing
+# To install with pip, requires pip >= 25.1:
+#     pip install --group dev slurm-monitor
+# or using uv:
+#     uv sync --dev
 dev = [
     "alembic",
     "isort",
@@ -82,6 +85,9 @@ dev = [
     "pre-commit",
     "ruff",
     "sphinx-autoapi",
+    {include-group = "test"}
+]
+test = [
     "coverage",
     "httpx",
     "pytest",
@@ -95,16 +101,12 @@ dev = [
 ]
 
 
-### Build System ###
-
 [build-system]
 requires = ["setuptools >= 61.0.0",
     "build",
     "sphinx"]
 build-backend = "setuptools.build_meta"
 
-
-### Tools ###
 
 [tool.setuptools]
     script-files = [

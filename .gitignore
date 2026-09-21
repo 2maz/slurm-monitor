@@ -11,3 +11,5 @@ docs/_build/
 docs/_autosummary
 
 artifacts
+
+uv.lock
