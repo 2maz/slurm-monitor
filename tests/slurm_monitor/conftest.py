@@ -1,26 +1,12 @@
-import datetime as dt
 import json
 import subprocess
 from pathlib import Path
 
-import psutil
 import pytest
 
-import slurm_monitor.db.v2 as db_v2
-import slurm_monitor.db.v2.db_testing as db_v2_testing
-from slurm_monitor.db.v1.db import DatabaseSettings, SlurmMonitorDB
-from slurm_monitor.db.v1.db_tables import (
-    CPUStatus,
-    GPUs,
-    GPUStatus,
-    JobStatus,
-    LocalIndexedGPUs,
-    MemoryStatus,
-    Nodes,
-    ProcessStatus,
-)
+from slurm_monitor.db.db import ClusterDB
+from slurm_monitor.db.db_testing import TestDBConfig, create_test_db
 from slurm_monitor.devices.gpu import GPU
-from slurm_monitor.utils import utcnow
 from slurm_monitor.utils.command import Command
 
 
@@ -71,158 +57,6 @@ def test_db_uri(tmp_path_factory, pytestconfig):
         path = tmp_path_factory.mktemp("data") / "slurm-monitor.test.sqlite"
         return f"sqlite:///{path}"
     return db_uri
-
-
-@pytest.fixture(scope="module")
-def test_db(test_db_uri, number_of_nodes, number_of_cpus, number_of_gpus, number_of_samples) -> SlurmMonitorDB:
-    db_settings = DatabaseSettings(uri=test_db_uri)
-    db = SlurmMonitorDB(db_settings)
-
-    db.clear()
-
-    virtual_memory = psutil.virtual_memory()._asdict()
-    for i in range(0, number_of_nodes):
-        nodename = f"node-{i}"
-        db.insert_or_update(
-            Nodes(name=nodename, cpu_count=number_of_cpus, cpu_model="Intel Xeon", memory_total=256 * 1024**2)
-        )
-
-        start_time = utcnow() - dt.timedelta(seconds=number_of_samples)
-
-        db.insert(
-            [
-                CPUStatus(
-                    node=nodename,
-                    local_id=c,
-                    cpu_percent=25,
-                    timestamp=start_time + dt.timedelta(seconds=s),
-                )
-                for s in range(number_of_samples)
-                for c in range(number_of_cpus)
-            ]
-        )
-
-        db.insert(
-            [
-                MemoryStatus(
-                    total=virtual_memory["total"],
-                    available=virtual_memory["available"],
-                    percent=virtual_memory["percent"],
-                    used=virtual_memory["used"],
-                    free=virtual_memory["free"],
-                    # not present in psutil.virtual_memory() on macOS/BSD - default to 0
-                    active=virtual_memory.get("active", 0),
-                    inactive=virtual_memory.get("inactive", 0),
-                    buffers=virtual_memory.get("buffers", 0),
-                    cached=virtual_memory.get("cached", 0),
-                    shared=virtual_memory.get("shared", 0),
-                    slab=virtual_memory.get("slab", 0),
-                    node=nodename,
-                    timestamp=start_time + dt.timedelta(seconds=s),
-                )
-                for s in range(number_of_samples)
-            ]
-        )
-
-        gpus = []
-        local_indexed_gpus = []
-        gpu_statuses = []
-        for g in range(0, number_of_gpus):
-            uuid = f"GPU-{nodename}:{g}"
-            gpus.append(
-                GPUs(
-                    uuid=uuid,
-                    model="Tesla V100",
-                    local_id=g,
-                    node=nodename,
-                    memory_total=16 * 1024**3,
-                )
-            )
-            local_indexed_gpus.append(
-                LocalIndexedGPUs(
-                    uuid=uuid,
-                    local_id=g,
-                    node=nodename,
-                    start_time=dt.datetime(2024, 6, 1),
-                    end_time=dt.datetime(2050, 5, 31),
-                )
-            )
-
-            for s in range(0, number_of_samples):
-                gpu_statuses.append(
-                    GPUStatus(
-                        uuid=uuid,
-                        power_draw=30,
-                        temperature_gpu=30,
-                        utilization_memory=10,
-                        utilization_gpu=12,
-                        timestamp=start_time + dt.timedelta(seconds=s),
-                    )
-                )
-
-        db.insert_or_update(gpus)
-        db.insert_or_update(local_indexed_gpus)
-        db.insert(gpu_statuses)
-
-        job_id = i
-        sample_count = 100
-
-        end_time = utcnow()
-        start_time = end_time - dt.timedelta(seconds=sample_count)
-        submit_time = start_time - dt.timedelta(seconds=20)
-        db.insert(
-            JobStatus(
-                job_id=job_id,
-                submit_time=submit_time,
-                name="test-job",
-                start_time=start_time,
-                end_time=end_time,
-                account="account",
-                accrue_time=10000,
-                admin_comment="",
-                array_job_id=1,
-                array_task_id=1,
-                array_max_tasks=20,
-                array_task_string="",
-                association_id=1,
-                batch_host=nodename,
-                cluster="slurm",
-                derived_exit_code=0,
-                eligible_time=1000,
-                exit_code=0,
-                gres_detail=[],
-                group_id=0,
-                job_state="COMPLETED",
-                nodes=nodename,
-                cpus=1,
-                node_count=1,
-                tasks=1,
-                partition="slowq",
-                state_description="",
-                state_reason="",
-                suspend_time=0,
-                time_limit=7200,
-                user_id=1000,
-            ),
-        )
-
-        process_statuses = []
-        for pid in range(1, 10):
-            for idx in range(1, sample_count + 1):
-                timestamp = end_time - dt.timedelta(seconds=idx)
-                process_statuses.append(
-                    ProcessStatus(
-                        pid=pid,
-                        node=nodename,
-                        job_id=job_id,
-                        job_submit_time=submit_time,
-                        cpu_percent=0.5,
-                        memory_percent=0.2,
-                        timestamp=timestamp,
-                    ),
-                )
-        db.insert(process_statuses)
-    return db
 
 
 ROCM_SMI_RESPONSE_V1 = [
@@ -555,8 +389,8 @@ def mock_gpu(gpu_type, gpu_responses, monkeypatch):
 
 ## DB V2
 @pytest.fixture(scope="module")
-def db_config() -> db_v2_testing.TestDBConfig:
-    return db_v2_testing.TestDBConfig()
+def db_config() -> TestDBConfig:
+    return TestDBConfig()
 
 
 @pytest.fixture(scope="session")
@@ -578,8 +412,8 @@ def timescaledb_db(timescaledb):
     return timescaledb.rsplit("/", 1)[0] + "/test_db_parser"
 
 
-def _make_test_db_v2(request, uri, db_config) -> db_v2.db.ClusterDB:
-    db_test = db_v2_testing.create_test_db(uri, db_config)
+def _make_test_db(request, uri, db_config) -> ClusterDB:
+    db_test = create_test_db(uri, db_config)
     request.addfinalizer(
         lambda: (
             db_test.engine.dispose(),
@@ -590,10 +424,10 @@ def _make_test_db_v2(request, uri, db_config) -> db_v2.db.ClusterDB:
 
 
 @pytest.fixture(scope="module")
-def test_db_v2(request, timescaledb, db_config) -> db_v2.db.ClusterDB:
-    return _make_test_db_v2(request, timescaledb, db_config)
+def test_db(request, timescaledb, db_config) -> ClusterDB:
+    return _make_test_db(request, timescaledb, db_config)
 
 
 @pytest.fixture(scope="function")
-def test_db_v2__function_scope(request, timescaledb, db_config) -> db_v2.db.ClusterDB:
-    return _make_test_db_v2(request, timescaledb, db_config)
+def test_db__function_scope(request, timescaledb, db_config) -> ClusterDB:
+    return _make_test_db(request, timescaledb, db_config)

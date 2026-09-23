@@ -6,9 +6,11 @@ from typing import ClassVar
 
 import sqlalchemy
 from fastapi import HTTPException
+from sqlalchemy.exc import OperationalError
 
 from slurm_monitor.app_settings import AppSettings
-from slurm_monitor.db.v2.db_tables import ExtraIndexPrefix
+from slurm_monitor.db.db_base import Database
+from slurm_monitor.db.db_tables import ExtraIndexPrefix
 
 logger: Logger = getLogger(__name__)
 
@@ -29,17 +31,15 @@ class DBManager:
     COLUMNS: str = "columns"
     INDEXES: str = "indexes"
 
-    _databases: ClassVar[dict[str, any]] = {}
+    _databases: ClassVar[Database | None] = None
     _lock: ClassVar[threading.Lock] = threading.Lock()
 
     @classmethod
     def get_database(cls, app_settings: AppSettings | None = None, use_cache: bool = True):
         """
-        Get the `Database` instance for `app_settings.db_schema_version`.
+        Get the `Database` instance.
 
         Args:
-            app_settings: Settings to build the database from; defaults to
-                the process-wide `AppSettings` singleton.
             use_cache: When True (default), reuse the cached instance across
                 calls - appropriate for a long-lived server process holding
                 one connection pool open. Pass False for a one-shot CLI
@@ -56,37 +56,30 @@ class DBManager:
             app_settings = AppSettings.get_instance()
 
         # Constructing a database instance builds a new engine + connection
-        if use_cache and app_settings.db_schema_version in cls._databases:
-            return cls._databases[app_settings.db_schema_version]
+        if use_cache and cls._databases is not None:
+            return cls._databases
 
         with cls._lock:
             # Recheck since another thread may have built it already
             # while waiting for the lock
-            if use_cache and app_settings.db_schema_version in cls._databases:
-                return cls._databases[app_settings.db_schema_version]
+            if use_cache and cls._databases is not None:
+                return cls._databases
 
             logger.info(f"Loading database with: {app_settings.database}")
 
             try:
-                if app_settings.db_schema_version == "v1":
-                    from slurm_monitor.db.v1.db import SlurmMonitorDB
+                from slurm_monitor.db.db import ClusterDB
 
-                    db = SlurmMonitorDB(app_settings.database)
-                elif app_settings.db_schema_version == "v2":
-                    from slurm_monitor.db.v2.db import ClusterDB
-
-                    db = ClusterDB(app_settings.database)
-                else:
-                    raise RuntimeError("AppSettings.db_schema_version is not set")
+                db = ClusterDB(app_settings.database)
 
                 if use_cache:
-                    cls._databases[app_settings.db_schema_version] = db
+                    cls._databases = db
                 return db
-            except sqlalchemy.exc.OperationalError:
+            except OperationalError as e:
                 raise HTTPException(
                     status_code=500,
                     detail=f"Cannot access monitor database - {app_settings.database.uri}",
-                )
+                ) from e
 
     @classmethod
     def get_status(cls, db_uri):
@@ -212,7 +205,8 @@ class DBManager:
 
                 index = indexes[index_name]
                 print(
-                    f"{c_prefix}              {index['name'].ljust(20)} columns: {','.join(index['column_names']).ljust(20)}"
+                    f"{c_prefix}              {index['name'].ljust(20)} columns:"
+                    f" {','.join(index['column_names']).ljust(20)}"
                 )
 
             for index_name in add[cls.INDEXES]:
@@ -276,7 +270,8 @@ class DBManager:
                         session.execute(sqlalchemy.text(alter_comment_stmt))
 
                 print(
-                    f"Adding column: {column_name.ljust(20)} {schema[table][cls.COLUMNS][column_name].type} with comment '{comment}'"
+                    f"Adding column: {column_name.ljust(20)} {schema[table][cls.COLUMNS][column_name].type} with"
+                    f" comment '{comment}'"
                 )
 
                 added_columns.append(f"{table}.{column_name}")

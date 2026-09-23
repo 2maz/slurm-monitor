@@ -13,13 +13,6 @@ class DBParser(BaseParser):
         super().__init__(parser=parser)
 
         parser.add_argument(
-            "--db-schema-version",
-            choices=["v1", "v2"],
-            default="v2",
-            help="Database schema version to use (default is 'v2')",
-        )
-
-        parser.add_argument(
             "--db-uri",
             type=str,
             help="Database uri",
@@ -57,13 +50,12 @@ class DBParser(BaseParser):
         super().execute(args)
 
         app_settings = AppSettings.initialize()
-        app_settings.db_schema_version = args.db_schema_version
 
         if args.db_uri:
             app_settings.database.uri = args.db_uri
 
         if args.insert_test_samples:
-            from slurm_monitor.db.v2.db_testing import TestDBConfig, create_test_db
+            from slurm_monitor.db.db_testing import TestDBConfig, create_test_db
 
             test_db_config = TestDBConfig(cluster_names=args.insert_test_samples)
             create_test_db(uri=app_settings.database.uri, config=test_db_config)

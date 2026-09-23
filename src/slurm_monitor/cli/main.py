@@ -55,7 +55,7 @@ class MainParser(ArgumentParser):
         self,
         subcommand: str,
         help: str,
-        parser_klass: BaseParser,
+        parser_klass: type[BaseParser],
     ):
         if not hasattr(self, "subparsers"):
             # lazy initialization, since it cannot be part of the __init__ function

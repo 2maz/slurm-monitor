@@ -1,0 +1,186 @@
+import datetime as dt
+from pathlib import Path
+
+import pytest
+
+from slurm_monitor.db.validation import Specification
+from slurm_monitor.utils import utcnow
+
+
+@pytest.fixture
+def test_data_dir():
+    return Path(__file__).parent.parent.parent.resolve() / "data" / "db"
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_get_slurm_jobs(test_db, db_config):
+    time_in_s = utcnow().timestamp()
+    running_jobs = await test_db.get_slurm_jobs(
+        cluster="cluster-0",
+        partition="cluster-0-partition-0",
+        states=["RUNNING"],
+        start_time_in_s=time_in_s - 5 * 60,
+        end_time_in_s=time_in_s + 5 * 60,
+    )
+
+    assert len(running_jobs) == db_config.number_of_jobs * db_config.number_of_nodes
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_clusters(test_db, db_config):
+    clusters = await test_db.get_clusters()
+    assert len(clusters) == db_config.number_of_clusters
+
+    for cluster in clusters:
+        partitions = await test_db.get_partitions(cluster=cluster["cluster"])
+        assert len(partitions) == db_config.number_of_partitions
+
+        # only the first partition has running jobs
+        p = partitions[0]
+        assert len(p["nodes"]) == db_config.number_of_nodes
+
+        job_ids = [x["job_id"] for x in p["jobs_running"]]
+        assert len(job_ids) == len(set(job_ids))
+        assert len(job_ids) == db_config.number_of_jobs * db_config.number_of_nodes
+
+        assert p["total_cpus"] == (2 * 24 * 2) * db_config.number_of_nodes
+        assert p["gpus_reserved"] == db_config.number_of_jobs * db_config.number_of_nodes
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_get_node_sample_gpu_timeseries(test_db):
+
+    gpu_timeseries = await test_db.get_node_sample_gpu_timeseries(
+        cluster="cluster-0",
+        node="cluster-0-node-1",
+        start_time_in_s=utcnow().timestamp() - 3600,
+        end_time_in_s=utcnow().timestamp(),
+        resolution_in_s=30,
+    )
+    gpu_data = gpu_timeseries[0].data
+    assert len(gpu_data) > 0
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_job_sample_process_gpu_timeseries(test_db):
+
+    gpu_timeseries = await test_db.get_jobs_sample_process_gpu_timeseries(
+        cluster="cluster-0",
+        job_id=1,
+        epoch=0,
+        start_time_in_s=utcnow().timestamp() - 3600,
+        end_time_in_s=utcnow().timestamp(),
+        resolution_in_s=30,
+        nodes=["cluster-0-node-0"],
+    )
+    gpu_data = gpu_timeseries[0].nodes["cluster-0-node-0"].gpus
+    assert len(gpu_data) == 2
+    for samples in gpu_data.values():
+        assert len(samples) > 0
+
+
+@pytest.mark.asyncio(loop_scope="module")
+@pytest.mark.parametrize(
+    "ensure_sysinfo",
+    [True, False],
+)
+async def test_nodes(ensure_sysinfo, test_db, db_config):
+    nodes = await test_db.get_nodes(cluster="cluster-1", ensure_sysinfo=ensure_sysinfo)
+    assert len(nodes) == db_config.number_of_nodes
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_nodes_info(test_db, db_config):
+
+    clusters = await test_db.get_clusters()
+    assert len(clusters) == db_config.number_of_clusters
+
+    nodes = await test_db.get_nodes_sysinfo(cluster="cluster-1")
+    for value in nodes.values():
+        assert len(value["cards"]) == db_config.number_of_gpus
+
+
+@pytest.mark.parametrize(
+    "spec_table,db_schema_table,column",
+    [
+        ["SysinfoAttributes", "sysinfo_attributes", "cluster"],
+        ["SampleGpu", "sample_gpu", "index"],
+        ["SampleGpu", "sample_gpu", "uuid"],
+        ["SampleGpu", "sample_gpu", "failing"],
+        ["SampleProcess", "sample_process", "resident_memory"],
+        ["SampleProcess", "sample_process", "num_threads"],
+    ],
+)
+def test_comments_from_spec(spec_table, db_schema_table, column, test_db, db_config):
+    spec = Specification()
+
+    in_db_description = test_db.get_column_description(db_schema_table, column)
+    spec_doc = spec[spec_table]["fields"][column]["doc"].strip()
+
+    assert spec_doc == in_db_description
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_get_node_sample_disk_timeseries(test_db, db_config):
+    cluster_name = db_config.cluster_names[0]
+    node_name = f"{cluster_name}-node-0"
+    end_time_in_s = utcnow().timestamp()
+    start_time_in_s = (utcnow() - dt.timedelta(hours=12)).timestamp()
+    timeseries = await test_db.get_node_sample_disk_timeseries(
+        cluster=cluster_name,
+        node=node_name,
+        start_time_in_s=start_time_in_s,
+        end_time_in_s=end_time_in_s,
+        resolution_in_s=60,
+    )
+    assert [x.name for x in timeseries] == ["disk-100-0", "disk-100-1"]
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_get_latest_topics_timestamp(test_db, db_config):
+    topics = test_db.get_latest_topics_timestamp("cluster-0")
+
+    for x in ["cluster", "job", "sample", "sysinfo"]:
+        assert x in topics
+        assert type(topics[x]) is dt.datetime
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_suggest_lookback(test_db, db_config):
+    topics = test_db.suggest_lookback("cluster-0")
+
+    for x in ["cluster", "job", "sample", "sysinfo"]:
+        assert x in topics
+        assert type(topics[x]) is float
+        assert type(topics[x] > 0)
+
+
+# def test_db_visualize(timescaledb):
+#
+#    #from sqlalchemy_data_model_visualizer import generate_data_model_diagram
+#    #models =[
+#    #    Core,
+#    #    Node,
+#    #    NodeConfig,
+#    #    GPUCard,
+#    #    GPUCardConfig,
+#    #    GPUCardProcessStatus,
+#    #    ProcessStatus,
+#    #    SlurmJobStatus,
+#    #    SoftwareVersion
+#    #]
+#
+#    #generate_data_model_diagram(models, "/tmp/test_output_filename.svg", )
+#
+#    from sqlalchemy import MetaData
+#    from sqlalchemy_schemadisplay import create_schema_graph
+#
+#    # create the pydot graph object by autoloading all tables via a bound metadata object
+#    graph = create_schema_graph(metadata=MetaData(timescaledb),
+#       show_datatypes=False, # The image would get nasty big if we'd show the datatypes
+#       show_indexes=False, # ditto for indexes
+#       rankdir='LR', # From left to right (instead of top to bottom)
+#       concentrate=False # Don't try to join the relation lines together
+#    )
+#    graph.write_png('/tmp/dbschema.png') # write out the file
+#

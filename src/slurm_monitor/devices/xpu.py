@@ -28,7 +28,7 @@ class XPU(GPU):
     @classmethod
     def detect(cls) -> GPUInfo:
         versions = {}
-        response = subprocess.run("command -v xpu-smi", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        response = subprocess.run("command -v xpu-smi", shell=True, capture_output=True)
         if response.returncode != 0:
             raise RuntimeError("xpu-smi is not available")
 

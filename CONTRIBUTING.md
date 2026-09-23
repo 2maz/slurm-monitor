@@ -3,14 +3,13 @@
 Great see that you are interested in contributing to this project.
 
 To make the process as smooth as possible for all involved parties, you will find some instructions
-below.  In case there is some information missing, or you feel lost, do not
+below. In case there is some information missing, or you feel lost, do not
 hesitate to ask or [open an issue](https://github.com/2maz/slurm-monitor/issues/new)
- on this project.
+on this project.
 
 ## Installation
 
 Follow the installation and setup instructions in the [README.md](README.md).
-
 
 ## Code and development style
 
@@ -50,12 +49,10 @@ to run all tests.
 Or:
 
 ```
-    pytest tests/slurm_monitor/api/v1/test_monitor.py -k nodeinfo -s
+    pytest tests/slurm_monitor/api/test_monitor.py -k nodeinfo -s
 ```
 
 to run a particular test case (-k) and redirecting the output to stdout (-s).
-
-
 
 ## Merge Requests
 

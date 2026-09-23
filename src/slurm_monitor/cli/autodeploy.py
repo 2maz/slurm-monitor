@@ -3,7 +3,7 @@ from argparse import ArgumentParser
 from logging.handlers import TimedRotatingFileHandler
 
 from slurm_monitor.app_settings import AppSettings
-from slurm_monitor.autodeploy import AutoDeployer, AutoDeployerSonar
+from slurm_monitor.autodeploy import AutoDeployerSonar
 from slurm_monitor.cli.base import BaseParser
 from slurm_monitor.config import SLURM_MONITOR_LOG_DATE_FORMAT, SLURM_MONITOR_LOG_FORMAT, SLURM_MONITOR_LOG_STYLE
 
@@ -14,13 +14,6 @@ logger.propagate = False
 class AutoDeployParser(BaseParser):
     def __init__(self, parser: ArgumentParser):
         super().__init__(parser=parser)
-
-        parser.add_argument(
-            "--use-version",
-            type=str,
-            default="v2",
-            help="Use this API and DB version",
-        )
 
         parser.add_argument(
             "--cluster-name",
@@ -40,7 +33,8 @@ class AutoDeployParser(BaseParser):
             "--log-output",
             type=str,
             default=None,
-            help="Output file for the log - default: slurm-monitor.auto-deploy.<cluster-name>.log, disable logging to file by specifying 'none'",
+            help="Output file for the log - default: slurm-monitor.auto-deploy.<cluster-name>.log, disable logging to"
+            " file by specifying 'none'",
         )
 
         parser.add_argument(
@@ -54,17 +48,13 @@ class AutoDeployParser(BaseParser):
         super().execute(args)
 
         app_settings = AppSettings.initialize()
-        app_settings.db_schema_version = args.use_version
 
-        if args.use_version == "v1":
-            deployer = AutoDeployer(app_settings=app_settings, allow_list=args.allow_list)
-        else:
-            deployer = AutoDeployerSonar(
-                app_settings=app_settings,
-                cluster_name=args.cluster_name,
-                deploy_command=args.command,
-                allow_list=args.allow_list,
-            )
+        deployer = AutoDeployerSonar(
+            app_settings=app_settings,
+            cluster_name=args.cluster_name,
+            deploy_command=args.command,
+            allow_list=args.allow_list,
+        )
 
         log_output = args.log_output
         # if log_output is None (the default), we set the default
