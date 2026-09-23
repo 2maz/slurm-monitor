@@ -1,9 +1,3 @@
-[build-system]
-requires = ["setuptools >= 61.0.0",
-    "build",
-    "sphinx"]
-build-backend = "setuptools.build_meta"
-
 # https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
 [project]
 name = "slurm-monitor"
@@ -16,11 +10,9 @@ authors = [
     { name = "Thomas Roehr", email = "roehr@simula.no" }
 ]
 requires-python = ">=3.10"
-
 maintainers = [
     { name = "Thomas Roehr", email = "roehr@simula.no" }
 ]
-
 classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Development Status :: 3 - Alpha",
@@ -30,7 +22,6 @@ classifiers = [
     "Programming Lanugage :: Python :: 3.12",
     "License :: OSI Approved :: BSD License",
 ]
-
 dependencies = [
     "asyncpg",
     "aiosqlite",
@@ -63,20 +54,30 @@ dependencies = [
     "fastmcp>=3.4.7",
 ]
 
-[project.urls]
-homepage = "https://github.com/2maz/slurm-monitor"
-documentation = "https://2maz.github.io/slurm-monitor"
-repository = "https://github.com/2maz/slurm-monitor"
-
-#[project.entry-points]
-
 [project.optional-dependencies]
-
+# Optional deps that library consumers can install to enable vendorlib features
+#      pip install slurm-monitor[vendorlibs]
+# or using uv:
+#     uv add slurm-monitor[vendorlibs]
 vendorlibs = [
     "nvidia-ml-py",
     "pyrsmi"
 ]
 
+[project.urls]
+homepage = "https://github.com/2maz/slurm-monitor"
+documentation = "https://2maz.github.io/slurm-monitor"
+repository = "https://github.com/2maz/slurm-monitor"
+
+[project.scripts]
+slurm-monitor = "slurm_monitor.cli.main:run"
+
+
+[dependency-groups]
+# To install with pip, requires pip >= 25.1:
+#     pip install --group dev slurm-monitor
+# or using uv:
+#     uv sync --dev
 dev = [
     "alembic",
     "isort",
@@ -84,9 +85,8 @@ dev = [
     "pre-commit",
     "ruff",
     "sphinx-autoapi",
-    "tox"
+    {include-group = "test"}
 ]
-
 test = [
     "coverage",
     "httpx",
@@ -96,15 +96,17 @@ test = [
     "pytest-cov",
     "pytest-mock",
     "pydot",
-    "tox"
+    "tox",
+    "basedpyright>=1.40.1",
 ]
 
 
-[project.scripts]
-slurm-monitor = "slurm_monitor.cli.main:run"
+[build-system]
+requires = ["setuptools >= 61.0.0",
+    "build",
+    "sphinx"]
+build-backend = "setuptools.build_meta"
 
-[tool.mypy]
-ignore_missing_imports = true
 
 [tool.setuptools]
     script-files = [
@@ -125,9 +127,6 @@ source = ["src"]
 line-length = 120
 
 [tool.ruff.lint]
-# Explicit selection so the enabled rule set doesn't silently grow when ruff
-# is upgraded -- ruff's own default selection is not guaranteed stable across
-# versions. Extend this list deliberately, not implicitly.
 select = [
     "E",   # pycodestyle errors
     "F",   # pyflakes
@@ -143,12 +142,5 @@ select = [
 # defaults -- that's the framework's DI pattern, not the bug B008 looks for.
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path"]
 
-[tool.isort]
-multi_line_output = 8
-
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
-
-[tool.ruff.lint.per-file-ignores]
-"conftest.py" = ["E501"]
-"test_gpu.py" = ["E501"]
