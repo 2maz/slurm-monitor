@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict
@@ -299,6 +300,53 @@ class JobsExceedingRequestedResources(Query):
     """
 
 
+class GPUUtilizationAggregationLevel(str, Enum):
+    CARD = "card"
+    MODEL = "model"
+    MANUFACTURER = "manufacturer"
+
+
+class GPUUtilizationBucketLength(str, Enum):
+    # corresponds to bucket length in timescaledb time buckets
+    FIFTEEN_MINUTES = "15 minutes"
+    HOUR = "1 hour"
+    DAY = "1 day"
+    WEEK = "1 week"
+    MONTH = "1 month"
+
+
+class GPUUtilizationLength(str, Enum):
+    FIFTEEN_MINUTES = "15 minutes"
+    HOUR = "1 hour"
+    DAY = "1 day"
+    WEEK = "1 week"
+    MONTH = "1 month"
+    YEAR = "1 year"
+
+
+class GPUUtilizationParams(QueryParams):
+    level: GPUUtilizationAggregationLevel
+    bucket_length: GPUUtilizationBucketLength
+    length: GPUUtilizationLength
+
+
+class GPUUtilization(Query):
+    parameters = GPUUtilizationParams
+
+    statement = """
+    select
+        time_bucket(:bucket_length, s.time) AS bucket,
+        :level,
+        round(avg(s.ce_util), 2) AS avg_ce_util
+    from sample_gpu s
+    inner join sysinfo_gpu_card c
+    using (uuid)
+    where time > now() - interval :length
+    group by bucket, :level
+    order by bucket, :level;
+    """
+
+
 class QueryMaker:
     _queries: ClassVar[dict[str, type[Query]]] = {
         "user-job-results": UserJobResults,
@@ -306,6 +354,7 @@ class QueryMaker:
         "user-failed-job-results": UserFailedJobResults,
         "popular-partitions-by-number-of-jobs": PopularPartitionsByNumberOfJobs,
         "jobs-exceeding-resource-usage": JobsExceedingRequestedResources,
+        "gpu-utilization": GPUUtilization,
     }
 
     def create(self, db: Database, name: str) -> Query:
