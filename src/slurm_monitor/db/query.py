@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict
@@ -299,6 +300,53 @@ class JobsExceedingRequestedResources(Query):
     """
 
 
+class GPUUtilizationAggregationLevel(str, Enum):
+    CARD = "card"
+    MODEL = "model"
+    MANUFACTURER = "manufacturer"
+
+
+class GPUUtilizationBucketLength(str, Enum):
+    # corresponds to bucket length in timescaledb time buckets
+    FIFTEEN_MINUTES = "15 minutes"
+    HOUR = "1 hour"
+    DAY = "1 day"
+    WEEK = "1 week"
+    MONTH = "1 month"
+
+
+class GPUUtilizationLength(str, Enum):
+    FIFTEEN_MINUTES = "15 minutes"
+    HOUR = "1 hour"
+    DAY = "1 day"
+    WEEK = "1 week"
+    MONTH = "1 month"
+    YEAR = "1 year"
+
+
+class GPUUtilizationParams(QueryParams):
+    level: GPUUtilizationAggregationLevel
+    bucket_length: GPUUtilizationBucketLength
+    length: GPUUtilizationLength
+
+
+class GPUUtilization(Query):
+    parameters = GPUUtilizationParams
+
+    statement = """
+    select
+        time_bucket(:bucket_length, s.time) AS bucket,
+        :level,
+        round(avg(s.ce_util), 2) AS avg_ce_util
+    from sample_gpu s
+    inner join sysinfo_gpu_card c
+    using (uuid)
+    where time > now() - interval :length
+    group by bucket, :level
+    order by bucket, :level;
+    """
+
+
 class QueryMaker:
     _queries: ClassVar[dict[str, type[Query]]] = {
         "user-job-results": UserJobResults,
@@ -306,6 +354,7 @@ class QueryMaker:
         "user-failed-job-results": UserFailedJobResults,
         "popular-partitions-by-number-of-jobs": PopularPartitionsByNumberOfJobs,
         "jobs-exceeding-resource-usage": JobsExceedingRequestedResources,
+        "gpu-utilization": GPUUtilization,
     }
 
     def create(self, db: Database, name: str) -> Query:
@@ -317,3 +366,87 @@ class QueryMaker:
     @classmethod
     def list_available(cls) -> list[str]:
         return sorted(cls._queries.keys())
+
+
+from slurm_monitor.db.query import Query, QueryParams
+
+
+class CommonQueryParams(QueryParams):
+    cluster: str
+    time_in_s: float | int
+    interval_in_s: float | int
+
+
+class ClusterQuery(Query):
+    statement = """
+        SELECT c.* FROM cluster_attributes c
+        JOIN (
+            SELECT cluster, max(time) as max_time
+            FROM cluster_attributes group by cluster
+        ) latest
+        ON c.cluster = latest.cluster and c.time = latest.max_time;
+    """
+
+
+class NodesQuery(Query):
+    parameters = CommonQueryParams
+    statement = """
+        SELECT nodes, time
+        FROM cluster_attributes
+        WHERE
+            cluster = :cluster and
+            time <= to_timestamp(:time_in_s) and
+            time >= to_timestamp(:time_in_s - :interval_in_s)
+        ORDER BY time DESC
+        LIMIT 1
+        ;
+    """
+
+
+class NodesPartitionsQuery(Query):
+    parameters = CommonQueryParams
+    statement = """
+        SELECT nodes, time
+        FROM cluster_attributes
+        WHERE
+            cluster = :cluster and
+            time <= to_timestamp(:time_in_s) and
+            time >= to_timestamp(:time_in_s - :interval_in_s)
+        ORDER BY time DESC
+        LIMIT 1
+        ;
+    """
+
+
+class GpuNodesQuery(Query):
+    parameters = CommonQueryParams
+    statement = """
+        SELECT cluster, node, max(time) as time
+        FROM sysinfo_attributes
+        WHERE
+            cluster = :cluster and
+            time <= to_timestamp(:time_in_s) and
+            time >= to_timestamp(:time_in_s - :interval_in_s) and
+            array_length(cards,1) > 0
+        GROUP BY
+            cluster, node
+        ;
+    """
+
+
+class PartitionsQuery(Query):
+    parameters = CommonQueryParams
+    statement = """
+        SELECT p.cluster, p.partition, p.nodes, p.nodes_compact, p.time
+        FROM partition p
+        JOIN (
+            SELECT max(time) AS max_time
+            FROM partition
+            WHERE
+                cluster = :cluster and
+                time <= to_timestamp(:time_in_s) and
+                time >= to_timestamp(:time_in_s - :interval_in_s)
+        ) latest
+        ON p.time = latest.max_time
+        ;
+    """
