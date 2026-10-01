@@ -35,7 +35,7 @@ jobs:
       IMAGE_NAME: 2maz/slurm-monitor-py${{matrix.python-version}}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.project_ref }}
 
