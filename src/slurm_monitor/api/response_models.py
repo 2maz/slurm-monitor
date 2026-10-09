@@ -147,7 +147,7 @@ class JobResponse(TimestampedModel):
     minimum_cpus_per_node: int = Field(description="DEPRECATED: Minimum required CPUs per node, use requested_cpus")
 
     # computed field: list of the actually used GPU uuids
-    #    what can be oberved in the process data)
+    #    what can be observed in the process data)
     used_gpu_uuids: list[str] = Field(
         default=[],
         description="UUIDs of GPUs that are actually used with this job "

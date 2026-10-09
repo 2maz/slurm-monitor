@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from slurm_monitor.db.db_tables import SampleProcessGpu
+from slurm_monitor.db.db_testing import create_test_db
 from slurm_monitor.db.validation import Specification
 from slurm_monitor.utils import utcnow
 
@@ -24,6 +26,38 @@ async def test_get_slurm_jobs(test_db, db_config):
     )
 
     assert len(running_jobs) == db_config.number_of_jobs * db_config.number_of_nodes
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_get_slurm_jobs_used_gpu_uuids(test_db__function_scope, timescaledb, db_config):
+    db = test_db__function_scope
+    cpu_only_job_id = 1
+
+    # turn one job into a cpu-only job by removing its gpu process samples
+    with db.make_writeable_session() as session:
+        session.query(SampleProcessGpu).filter(
+            (SampleProcessGpu.cluster == "cluster-0") & (SampleProcessGpu.job == cpu_only_job_id)
+        ).delete()
+
+    try:
+        time_in_s = utcnow().timestamp()
+        jobs = await db.get_slurm_jobs(
+            cluster="cluster-0",
+            start_time_in_s=time_in_s - 5 * 60,
+            end_time_in_s=time_in_s + 5 * 60,
+        )
+        assert len(jobs) == db_config.number_of_jobs * db_config.number_of_nodes
+
+        for job in jobs:
+            if job["job_id"] == cpu_only_job_id:
+                assert job["used_gpu_uuids"] == []
+            else:
+                node = job["nodes"][0]
+                expected = [f"gpu-uuid-{node}-{gpu}" for gpu in range(db_config.number_of_gpus)]
+                assert sorted(job["used_gpu_uuids"]) == expected
+    finally:
+        # the database is shared with module-scoped tests, so restore the removed samples
+        create_test_db(timescaledb, db_config)
 
 
 @pytest.mark.asyncio(loop_scope="module")
