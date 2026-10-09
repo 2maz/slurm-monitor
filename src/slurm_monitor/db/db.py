@@ -2805,7 +2805,8 @@ class ClusterDB(Database):
             for sample in data:
                 new_sample = dict(sample[0])
                 if sample[1]:
-                    new_sample["used_gpu_uuids"] = sample[2]
+                    # array_agg yields NULL for jobs without gpu samples
+                    new_sample["used_gpu_uuids"] = sample[2] if sample[2] is not None else []
                     new_sample["sacct"] = dict(sample[1])
                     del new_sample["sacct"]["job_id"]
                     del new_sample["sacct"]["job_step"]
