@@ -400,9 +400,6 @@ class QueryMaker:
         return sorted(cls._queries.keys())
 
 
-from slurm_monitor.db.query import Query, QueryParams
-
-
 class CommonQueryParams(QueryParams):
     cluster: str
     time_in_s: float | int

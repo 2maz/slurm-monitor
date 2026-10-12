@@ -10,9 +10,7 @@ from slurm_monitor.db.query import (
 
 def _expected_card_uuids(db_config) -> set[str]:
     nodes = [
-        f"{cluster_name}-node-{n}"
-        for cluster_name in db_config.cluster_names
-        for n in range(db_config.number_of_nodes)
+        f"{cluster_name}-node-{n}" for cluster_name in db_config.cluster_names for n in range(db_config.number_of_nodes)
     ]
     return {f"gpu-uuid-{node}-{gpu}" for node in nodes for gpu in range(db_config.number_of_gpus)}
 
