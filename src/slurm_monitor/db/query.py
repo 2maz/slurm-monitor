@@ -333,18 +333,50 @@ class GPUUtilizationParams(QueryParams):
 class GPUUtilization(Query):
     parameters = GPUUtilizationParams
 
+    # level is a grouping column, not a value, so it can't be a regular bind
+    # parameter (`:level`) - that would just select/group by the literal
+    # string 'card'/'model'/'manufacturer' instead of the column. Since the
+    # enum restricts the value to this fixed, hardcoded set of columns, it's
+    # safe to substitute directly into the statement.
+    _LEVEL_COLUMNS: ClassVar[dict[GPUUtilizationAggregationLevel, str]] = {
+        GPUUtilizationAggregationLevel.CARD: "c.uuid",
+        GPUUtilizationAggregationLevel.MODEL: "c.model",
+        GPUUtilizationAggregationLevel.MANUFACTURER: "c.manufacturer",
+    }
+
+    # The plain `(:x)::interval` cast makes asyncpg infer the bind parameter's
+    # type as `interval` during PREPARE, and then fail trying to encode the
+    # (text) value as a timedelta-like object. Casting through `text` first
+    # keeps the parameter typed as text for both the psycopg2 (sync) and
+    # asyncpg (async) drivers, and only converts to `interval` afterwards.
     statement = """
     select
-        time_bucket(:bucket_length, s.time) AS bucket,
-        :level,
+        time_bucket((:bucket_length)::text::interval, s.time) AS bucket,
+        {level_column} AS level,
         round(avg(s.ce_util), 2) AS avg_ce_util
     from sample_gpu s
     inner join sysinfo_gpu_card c
     using (uuid)
-    where time > now() - interval :length
-    group by bucket, :level
-    order by bucket, :level;
+    where time > now() - (:length)::text::interval
+    group by bucket, {level_column}
+    order by bucket, {level_column};
     """
+
+    def execute(self, params: dict[str, object]) -> list[dict[str, object]]:
+        parsed = self._parse_params(params)
+        level = parsed.pop("level")
+        statement = self.statement.format(level_column=self._LEVEL_COLUMNS[level])
+        with self.db.make_session() as session:
+            result = session.execute(text(statement), parsed)
+            return [dict(row._mapping) for row in result]
+
+    async def execute_async(self, params: dict[str, object]) -> list[dict[str, object]]:
+        parsed = self._parse_params(params)
+        level = parsed.pop("level")
+        statement = self.statement.format(level_column=self._LEVEL_COLUMNS[level])
+        async with self.db.make_async_session() as session:
+            result = await session.execute(text(statement), parsed)
+            return [dict(row._mapping) for row in result]
 
 
 class QueryMaker:
