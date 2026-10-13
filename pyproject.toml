@@ -32,7 +32,7 @@ dependencies = [
     "fastapi_utils",
     "fastapi-pagination",
     "greenlet",
-    "kafka-python<3.0.0",
+    "kafka-python<4.0.0",
     "networkx",
     "numpy",
     "pandas",
