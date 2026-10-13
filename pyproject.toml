@@ -122,6 +122,7 @@ version = { attr = "slurm_monitor.__version__" }
 
 [tool.coverage.run]
 source = ["src"]
+data_file = "artifacts/.coverage"
 
 [tool.ruff]
 line-length = 120

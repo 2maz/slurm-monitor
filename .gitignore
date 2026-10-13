@@ -11,5 +11,8 @@ docs/_build/
 docs/_autosummary
 
 artifacts
+.coverage
 
 uv.lock
+
+slurm-monitor.autodeployer.json

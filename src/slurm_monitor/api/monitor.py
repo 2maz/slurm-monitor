@@ -6,10 +6,11 @@ from typing import Annotated
 
 import pandas as pd
 import yaml
-from fastapi import Depends, HTTPException, Query
+from fastapi import Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi_cache import FastAPICache
 from fastapi_cache.decorator import cache
+from pydantic import ValidationError
 
 from slurm_monitor.api.routes import RequiredPermissions, TokenPayload, api_router, get_token_payload
 from slurm_monitor.app_settings import AppSettings
@@ -285,6 +286,7 @@ async def queries(
     _: Annotated[TokenPayload, Depends(get_token_payload)],
     cluster: str,
     query_name: str,
+    request: Request,
     dbi: Annotated[ClusterDB, Depends(DBManager.get_database)],
 ):
     try:
@@ -294,7 +296,22 @@ async def queries(
             status_code=404,
             detail=f"Query not found: '{query_name}' -- {e}",
         ) from e
-    return await query.execute_async(params={"cluster": cluster})
+
+    # Not every named query takes a 'cluster' param (e.g. gpu-utilization),
+    # so only inject it when the query actually declares that field; any
+    # other params it needs (e.g. level, bucket_length, length) come from
+    # the request's query string.
+    params: dict[str, object] = dict(request.query_params)
+    if "cluster" in query.parameters.model_fields:
+        params.setdefault("cluster", cluster)
+
+    try:
+        return await query.execute_async(params=params)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid parameters for query '{query_name}': {e}",
+        ) from e
 
 
 @api_router.get(

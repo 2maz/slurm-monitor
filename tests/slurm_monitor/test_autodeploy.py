@@ -5,7 +5,7 @@ from slurm_monitor.autodeploy import AutoDeployerSonar
 from slurm_monitor.db.settings import DatabaseSettings
 
 
-def test_AutoDeployer(timescaledb, test_db, db_config, monkeypatch):
+def test_AutoDeployer(timescaledb, test_db, db_config, monkeypatch, tmp_path):
     redeploy_nodes = set()
 
     def mock_deploy(self, node):
@@ -27,7 +27,12 @@ def test_AutoDeployer(timescaledb, test_db, db_config, monkeypatch):
     monkeypatch.setattr(AutoDeployerSonar, "is_drained", mock_is_drained)
     monkeypatch.setattr(AutoDeployerSonar, "all_nodes", mock_all_nodes)
 
-    auto_deployer = AutoDeployerSonar(app_settings=app_settings, sampling_interval_in_s=1, cluster_name="cluster-0")
+    auto_deployer = AutoDeployerSonar(
+        app_settings=app_settings,
+        sampling_interval_in_s=1,
+        cluster_name="cluster-0",
+        stats_filename=tmp_path / "slurm-monitor.autodeployer.json",
+    )
     auto_deployer.start()
 
     time.sleep(3)

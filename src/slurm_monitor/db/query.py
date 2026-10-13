@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict
@@ -299,6 +300,85 @@ class JobsExceedingRequestedResources(Query):
     """
 
 
+class GPUUtilizationAggregationLevel(str, Enum):
+    CARD = "card"
+    MODEL = "model"
+    MANUFACTURER = "manufacturer"
+
+
+class GPUUtilizationBucketLength(str, Enum):
+    # corresponds to bucket length in timescaledb time buckets
+    FIFTEEN_MINUTES = "15 minutes"
+    HOUR = "1 hour"
+    DAY = "1 day"
+    WEEK = "1 week"
+    MONTH = "1 month"
+
+
+class GPUUtilizationLength(str, Enum):
+    FIFTEEN_MINUTES = "15 minutes"
+    HOUR = "1 hour"
+    DAY = "1 day"
+    WEEK = "1 week"
+    MONTH = "1 month"
+    YEAR = "1 year"
+
+
+class GPUUtilizationParams(QueryParams):
+    level: GPUUtilizationAggregationLevel
+    bucket_length: GPUUtilizationBucketLength
+    length: GPUUtilizationLength
+
+
+class GPUUtilization(Query):
+    parameters = GPUUtilizationParams
+
+    # level is a grouping column, not a value, so it can't be a regular bind
+    # parameter (`:level`) - that would just select/group by the literal
+    # string 'card'/'model'/'manufacturer' instead of the column. Since the
+    # enum restricts the value to this fixed, hardcoded set of columns, it's
+    # safe to substitute directly into the statement.
+    _LEVEL_COLUMNS: ClassVar[dict[GPUUtilizationAggregationLevel, str]] = {
+        GPUUtilizationAggregationLevel.CARD: "c.uuid",
+        GPUUtilizationAggregationLevel.MODEL: "c.model",
+        GPUUtilizationAggregationLevel.MANUFACTURER: "c.manufacturer",
+    }
+
+    # The plain `(:x)::interval` cast makes asyncpg infer the bind parameter's
+    # type as `interval` during PREPARE, and then fail trying to encode the
+    # (text) value as a timedelta-like object. Casting through `text` first
+    # keeps the parameter typed as text for both the psycopg2 (sync) and
+    # asyncpg (async) drivers, and only converts to `interval` afterwards.
+    statement = """
+    select
+        time_bucket((:bucket_length)::text::interval, s.time) AS bucket,
+        {level_column} AS level,
+        round(avg(s.ce_util), 2) AS avg_ce_util
+    from sample_gpu s
+    inner join sysinfo_gpu_card c
+    using (uuid)
+    where time > now() - (:length)::text::interval
+    group by bucket, {level_column}
+    order by bucket, {level_column};
+    """
+
+    def execute(self, params: dict[str, object]) -> list[dict[str, object]]:
+        parsed = self._parse_params(params)
+        level = parsed.pop("level")
+        statement = self.statement.format(level_column=self._LEVEL_COLUMNS[level])
+        with self.db.make_session() as session:
+            result = session.execute(text(statement), parsed)
+            return [dict(row._mapping) for row in result]
+
+    async def execute_async(self, params: dict[str, object]) -> list[dict[str, object]]:
+        parsed = self._parse_params(params)
+        level = parsed.pop("level")
+        statement = self.statement.format(level_column=self._LEVEL_COLUMNS[level])
+        async with self.db.make_async_session() as session:
+            result = await session.execute(text(statement), parsed)
+            return [dict(row._mapping) for row in result]
+
+
 class QueryMaker:
     _queries: ClassVar[dict[str, type[Query]]] = {
         "user-job-results": UserJobResults,
@@ -306,6 +386,7 @@ class QueryMaker:
         "user-failed-job-results": UserFailedJobResults,
         "popular-partitions-by-number-of-jobs": PopularPartitionsByNumberOfJobs,
         "jobs-exceeding-resource-usage": JobsExceedingRequestedResources,
+        "gpu-utilization": GPUUtilization,
     }
 
     def create(self, db: Database, name: str) -> Query:
@@ -317,3 +398,84 @@ class QueryMaker:
     @classmethod
     def list_available(cls) -> list[str]:
         return sorted(cls._queries.keys())
+
+
+class CommonQueryParams(QueryParams):
+    cluster: str
+    time_in_s: float | int
+    interval_in_s: float | int
+
+
+class ClusterQuery(Query):
+    statement = """
+        SELECT c.* FROM cluster_attributes c
+        JOIN (
+            SELECT cluster, max(time) as max_time
+            FROM cluster_attributes group by cluster
+        ) latest
+        ON c.cluster = latest.cluster and c.time = latest.max_time;
+    """
+
+
+class NodesQuery(Query):
+    parameters = CommonQueryParams
+    statement = """
+        SELECT nodes, time
+        FROM cluster_attributes
+        WHERE
+            cluster = :cluster and
+            time <= to_timestamp(:time_in_s) and
+            time >= to_timestamp(:time_in_s - :interval_in_s)
+        ORDER BY time DESC
+        LIMIT 1
+        ;
+    """
+
+
+class NodesPartitionsQuery(Query):
+    parameters = CommonQueryParams
+    statement = """
+        SELECT nodes, time
+        FROM cluster_attributes
+        WHERE
+            cluster = :cluster and
+            time <= to_timestamp(:time_in_s) and
+            time >= to_timestamp(:time_in_s - :interval_in_s)
+        ORDER BY time DESC
+        LIMIT 1
+        ;
+    """
+
+
+class GpuNodesQuery(Query):
+    parameters = CommonQueryParams
+    statement = """
+        SELECT cluster, node, max(time) as time
+        FROM sysinfo_attributes
+        WHERE
+            cluster = :cluster and
+            time <= to_timestamp(:time_in_s) and
+            time >= to_timestamp(:time_in_s - :interval_in_s) and
+            array_length(cards,1) > 0
+        GROUP BY
+            cluster, node
+        ;
+    """
+
+
+class PartitionsQuery(Query):
+    parameters = CommonQueryParams
+    statement = """
+        SELECT p.cluster, p.partition, p.nodes, p.nodes_compact, p.time
+        FROM partition p
+        JOIN (
+            SELECT max(time) AS max_time
+            FROM partition
+            WHERE
+                cluster = :cluster and
+                time <= to_timestamp(:time_in_s) and
+                time >= to_timestamp(:time_in_s - :interval_in_s)
+        ) latest
+        ON p.time = latest.max_time
+        ;
+    """

@@ -44,7 +44,7 @@ from slurm_monitor.db.db_base import (
     Database,
     DatabaseSettings,  # noqa
 )
-from slurm_monitor.db.queries import PartitionsQuery
+from slurm_monitor.db.query import PartitionsQuery
 from slurm_monitor.timescaledb import time_bucket
 from slurm_monitor.timescaledb.functions import (
     first,
