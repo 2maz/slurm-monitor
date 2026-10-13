@@ -81,7 +81,7 @@ slurm-monitor = "slurm_monitor.cli.main:run"
 dev = [
     "alembic",
     "isort",
-    "jupyter-book<2",
+    "jupyter-book<3",
     "pre-commit",
     "ruff",
     "sphinx-autoapi",
