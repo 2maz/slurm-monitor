@@ -51,7 +51,7 @@ dependencies = [
     "tqdm",
     "typing_inspect",
     "uvicorn",
-    "fastmcp",
+    "fastmcp>=4",
 ]
 
 [project.optional-dependencies]
@@ -102,7 +102,7 @@ test = [
 
 
 [build-system]
-requires = ["setuptools",
+requires = ["setuptools >= 84.0.0",
     "build",
     "sphinx"]
 build-backend = "setuptools.build_meta"
