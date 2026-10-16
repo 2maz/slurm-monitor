@@ -1,7 +1,8 @@
+import datetime as dt
 from enum import Enum
 from typing import ClassVar
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import AwareDatetime, BaseModel, ConfigDict, model_validator
 from sqlalchemy import text
 
 from slurm_monitor.db.db_base import Database
@@ -324,59 +325,112 @@ class GPUUtilizationLength(str, Enum):
     YEAR = "1 year"
 
 
+# approximate, for capping the number of buckets
+_SECONDS = {
+    "15 minutes": 900,
+    "1 hour": 3600,
+    "1 day": 86400,
+    "1 week": 604800,
+    "1 month": 2592000,
+    "1 year": 31536000,
+}
+MAX_GPU_UTILIZATION_BUCKETS = 400
+
+
 class GPUUtilizationParams(QueryParams):
+    """Either a preset `length` up to now, or a custom `start` (and optional `end`)."""
+
+    cluster: str
     level: GPUUtilizationAggregationLevel
     bucket_length: GPUUtilizationBucketLength
-    length: GPUUtilizationLength
+    length: GPUUtilizationLength | None = None
+    start: AwareDatetime | None = None
+    end: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def _check_window(self):
+        if (self.length is None) == (self.start is None):
+            raise ValueError("give either 'length' or 'start'")
+        if self.start is None:
+            seconds = _SECONDS[self.length.value]
+        else:
+            seconds = ((self.end or dt.datetime.now(dt.timezone.utc)) - self.start).total_seconds()
+        if seconds <= 0:
+            raise ValueError("'start' must be before 'end'")
+        # keeps queries (and the frontend heatmap) small
+        buckets = seconds / _SECONDS[self.bucket_length.value]
+        if buckets > MAX_GPU_UTILIZATION_BUCKETS:
+            raise ValueError(f"{buckets:.0f} buckets exceed the maximum of {MAX_GPU_UTILIZATION_BUCKETS}")
+        return self
 
 
 class GPUUtilization(Query):
     parameters = GPUUtilizationParams
 
-    # level is a grouping column, not a value, so it can't be a regular bind
-    # parameter (`:level`) - that would just select/group by the literal
-    # string 'card'/'model'/'manufacturer' instead of the column. Since the
-    # enum restricts the value to this fixed, hardcoded set of columns, it's
-    # safe to substitute directly into the statement.
-    _LEVEL_COLUMNS: ClassVar[dict[GPUUtilizationAggregationLevel, str]] = {
-        GPUUtilizationAggregationLevel.CARD: "c.uuid",
-        GPUUtilizationAggregationLevel.MODEL: "c.model",
-        GPUUtilizationAggregationLevel.MANUFACTURER: "c.manufacturer",
-    }
-
-    # The plain `(:x)::interval` cast makes asyncpg infer the bind parameter's
-    # type as `interval` during PREPARE, and then fail trying to encode the
-    # (text) value as a timedelta-like object. Casting through `text` first
-    # keeps the parameter typed as text for both the psycopg2 (sync) and
-    # asyncpg (async) drivers, and only converts to `interval` afterwards.
+    # The window runs from the bucket containing `start` (or now - `length`) to `end` (or now).
     statement = """
+    -- each card's latest config; configs come every ~30 min, so a day before the window finds all cards
+    with cluster_cards as (
+        select distinct on (uuid)
+            uuid, node, index,
+            -- some cards (e.g. Intel) get a new uuid every boot, node/<boot epoch>/<pci address>
+            regexp_replace(uuid::text, '^([^/]+)/\\d{9,}/', '\\1/') as card
+        from sysinfo_gpu_card_config
+        where cluster = :cluster
+          and time >= time_bucket((:bucket_length)::text::interval,
+                                  coalesce((:start)::timestamptz, now() - (:length)::text::interval)) - interval '1 day'
+        order by uuid, time desc
+    ),
+    -- aggregated before joining: joining raw samples makes the planner loop over every chunk per card
+    per_card as (
+        select
+            time_bucket((:bucket_length)::text::interval, time) as period_start,
+            uuid,
+            count(*) as samples,
+            sum(ce_util) as ce_util_sum,
+            count(ce_util) as ce_util_count,
+            -- some cards (e.g. Habana, Intel) report 0 for both power and limit
+            sum(power) filter (where power_limit > 0) as power_sum,
+            sum(power_limit) filter (where power_limit > 0 and power is not null) as power_limit_sum,
+            count(power) filter (where power_limit > 0) as power_count
+        from sample_gpu
+        where time >= time_bucket((:bucket_length)::text::interval,
+                                  coalesce((:start)::timestamptz, now() - (:length)::text::interval))
+          and time < coalesce((:end)::timestamptz, now())
+        group by 1, 2
+    )
     select
-        time_bucket((:bucket_length)::text::interval, s.time) AS bucket,
-        {level_column} AS level,
-        round(avg(s.ce_util), 2) AS avg_ce_util
-    from sample_gpu s
-    inner join sysinfo_gpu_card c
-    using (uuid)
-    where time > now() - (:length)::text::interval
-    group by bucket, {level_column}
-    order by bucket, {level_column};
+        period_start,
+        case (:level)::text
+            when 'card' then cc.card
+            when 'model' then c.model
+            when 'manufacturer' then c.manufacturer
+        end as gpu_group,
+        -- for display only, as node/index need not be unique
+        min(case (:level)::text
+            when 'card' then format('%s / GPU %s', cc.node, cc.index)
+            when 'model' then c.model
+            when 'manufacturer' then c.manufacturer
+        end) as gpu_label,
+        -- for grouping rows in the frontend; a manufacturer spans several models
+        case when (:level)::text <> 'manufacturer' then c.model end as model,
+        c.manufacturer,
+        -- distinct cards, as a card that rebooted within a bucket reports under two uuids
+        count(distinct cc.card) as gpus_reporting,
+        -- assumes a sample every 30s; the last bucket counts up to the window end or now (least() skips nulls)
+        round(100.0 * sum(samples) * 30 / (count(distinct cc.card) * extract(epoch from
+            least(period_start + (:bucket_length)::text::interval, (:end)::timestamptz, now()) - period_start
+        )), 1) as percent_time_online,
+        round(sum(ce_util_sum) / nullif(sum(ce_util_count), 0), 2) as avg_utilization_percent_while_online,
+        round(100.0 * sum(power_sum) / nullif(sum(power_limit_sum), 0), 1) as power_percent_of_limit,
+        round(sum(power_sum) / nullif(sum(power_count), 0)) as avg_power_watts,
+        round(sum(power_limit_sum) / nullif(sum(power_count), 0)) as avg_power_limit_watts
+    from per_card
+    inner join sysinfo_gpu_card c using (uuid)
+    inner join cluster_cards cc using (uuid)
+    group by 1, 2, 4, 5
+    order by 1, 2;
     """
-
-    def execute(self, params: dict[str, object]) -> list[dict[str, object]]:
-        parsed = self._parse_params(params)
-        level = parsed.pop("level")
-        statement = self.statement.format(level_column=self._LEVEL_COLUMNS[level])
-        with self.db.make_session() as session:
-            result = session.execute(text(statement), parsed)
-            return [dict(row._mapping) for row in result]
-
-    async def execute_async(self, params: dict[str, object]) -> list[dict[str, object]]:
-        parsed = self._parse_params(params)
-        level = parsed.pop("level")
-        statement = self.statement.format(level_column=self._LEVEL_COLUMNS[level])
-        async with self.db.make_async_session() as session:
-            result = await session.execute(text(statement), parsed)
-            return [dict(row._mapping) for row in result]
 
 
 class QueryMaker:

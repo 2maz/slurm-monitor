@@ -276,12 +276,20 @@ async def list_queries(
     return {"queries": QueryMaker.list_available()}
 
 
+def _url_key_builder(func, namespace: str = "", *, request: Request, **_) -> str:
+    # The default key builder hashes the endpoint's arguments, which include
+    # the Request object itself, so it would never produce a cache hit here.
+    return f"{namespace}:{func.__name__}:{request.url.path}:{sorted(request.query_params.multi_items())}"
+
+
 @api_router.get(
     "/cluster/{cluster}/queries/{query_name}",
     summary="Execute the named query",
     tags=["cluster"],
     response_model=None,
 )
+# Long time ranges take tens of seconds to compute, and change little within 15 minutes.
+@cache(expire=900, key_builder=_url_key_builder)
 async def queries(
     _: Annotated[TokenPayload, Depends(get_token_payload)],
     cluster: str,
@@ -297,13 +305,7 @@ async def queries(
             detail=f"Query not found: '{query_name}' -- {e}",
         ) from e
 
-    # Not every named query takes a 'cluster' param (e.g. gpu-utilization),
-    # so only inject it when the query actually declares that field; any
-    # other params it needs (e.g. level, bucket_length, length) come from
-    # the request's query string.
-    params: dict[str, object] = dict(request.query_params)
-    if "cluster" in query.parameters.model_fields:
-        params.setdefault("cluster", cluster)
+    params: dict[str, object] = {**request.query_params, "cluster": cluster}
 
     try:
         return await query.execute_async(params=params)
@@ -356,7 +358,7 @@ def spec_gpu(gpu_name: str):
     if datasheet_url:
         return RedirectResponse(url=datasheet_url)
 
-    return HTTPException(
+    raise HTTPException(
         status_code=404,
         detail=f"Failed to locate a specsheet for: {gpu_name}",
     )
