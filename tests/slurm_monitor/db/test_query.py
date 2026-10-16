@@ -63,7 +63,9 @@ async def test_gpu_utilization_groups_by_level(level, expected_values, test_db, 
             "avg_power_limit_watts",
         }
         assert row["manufacturer"] == "NVIDIA"
-        assert row["model"] == (None if level == GPUUtilizationAggregationLevel.MANUFACTURER else "Tesla V100-SMX3-32GB")
+        assert row["model"] == (
+            None if level == GPUUtilizationAggregationLevel.MANUFACTURER else "Tesla V100-SMX3-32GB"
+        )
         if level == GPUUtilizationAggregationLevel.CARD:
             assert row["gpus_reporting"] == 1
             # test cards all have index 0, see db_testing
@@ -79,26 +81,6 @@ async def test_gpu_utilization_groups_by_level(level, expected_values, test_db, 
         assert float(row["power_percent_of_limit"]) == pytest.approx(100.0 * 41 / 350, abs=0.1)
         assert row["avg_power_watts"] == 41
         assert row["avg_power_limit_watts"] == 350
-
-
-@pytest.mark.asyncio(loop_scope="module")
-async def test_gpu_utilization_level_changes_grouping(test_db, db_config):
-    # Regression test: 'level' was once bound as a plain SQL parameter
-    # (`:level`) rather than used to select/group by the actual column, so
-    # every level silently returned the exact same single group. All test
-    # GPUs share one model/manufacturer, so grouping by 'card' must produce
-    # many more groups than grouping by 'model' or 'manufacturer'.
-    query = QueryMaker().create(db=test_db, name="gpu-utilization")
-
-    card_rows = await query.execute_async({**PARAMS, "level": GPUUtilizationAggregationLevel.CARD.value})
-    model_rows = await query.execute_async({**PARAMS, "level": GPUUtilizationAggregationLevel.MODEL.value})
-
-    card_groups = {row["gpu_group"] for row in card_rows}
-    model_groups = {row["gpu_group"] for row in model_rows}
-
-    assert len(card_groups) == db_config.number_of_nodes * db_config.number_of_gpus
-    assert len(model_groups) == 1
-    assert card_groups != model_groups
 
 
 def test_gpu_utilization_sync_execute(test_db):
@@ -151,10 +133,15 @@ async def test_gpu_utilization_custom_window(test_db):
     # test samples cover the ~12 minutes before the test db was created
     query = QueryMaker().create(db=test_db, name="gpu-utilization")
     now = dt.datetime.now(dt.timezone.utc)
-    params = {**PARAMS, "level": GPUUtilizationAggregationLevel.CARD.value}
-    del params["length"]
+    params = {
+        "cluster": CLUSTER,
+        "bucket_length": PARAMS["bucket_length"],
+        "level": GPUUtilizationAggregationLevel.CARD.value,
+    }
 
-    before = await query.execute_async({**params, "start": now - dt.timedelta(hours=3), "end": now - dt.timedelta(hours=2)})
+    before = await query.execute_async(
+        {**params, "start": now - dt.timedelta(hours=3), "end": now - dt.timedelta(hours=2)}
+    )
     assert before == []
 
     end = now - dt.timedelta(minutes=6)

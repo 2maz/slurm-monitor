@@ -367,33 +367,21 @@ class GPUUtilizationParams(QueryParams):
 class GPUUtilization(Query):
     parameters = GPUUtilizationParams
 
-    # The window runs from the bucket containing `start` (or now - `length`) to
-    # `end` (or now). percent_time_online assumes each GPU reports a sample every
-    # 30 seconds (the `* 30` below), and counts a bucket only up to the window end
-    # or now (least() ignores a null `end`).
-    # Configs are reported every ~30 min, so looking back one day before the
-    # window start is enough to find all active cards without scanning the
-    # entire config history. A card's latest config gives its node and index
-    # for gpu_label; groups stay keyed by card, as node/index need not be unique.
-    # Some cards (e.g. Intel) get a new uuid on every boot, node/<boot epoch>/<pci
-    # address>, so a card is its uuid without the epoch. Counting distinct cards
-    # rather than uuids also keeps a card that rebooted within a bucket from
-    # being counted twice.
-    # Power only counts samples with a power limit, as some cards (e.g. Habana,
-    # Intel) report 0 for both power and limit.
-    # per_card reduces the raw samples to one row per card and bucket before
-    # joining. Joining the raw samples instead makes the planner loop over every
-    # chunk per card and sort all rows for count(distinct uuid).
+    # The window runs from the bucket containing `start` (or now - `length`) to `end` (or now).
     statement = """
+    -- each card's latest config; configs come every ~30 min, so a day before the window finds all cards
     with cluster_cards as (
         select distinct on (uuid)
-            uuid, node, index, regexp_replace(uuid::text, '^([^/]+)/\\d{9,}/', '\\1/') as card
+            uuid, node, index,
+            -- some cards (e.g. Intel) get a new uuid every boot, node/<boot epoch>/<pci address>
+            regexp_replace(uuid::text, '^([^/]+)/\\d{9,}/', '\\1/') as card
         from sysinfo_gpu_card_config
         where cluster = :cluster
           and time >= time_bucket((:bucket_length)::text::interval,
                                   coalesce((:start)::timestamptz, now() - (:length)::text::interval)) - interval '1 day'
         order by uuid, time desc
     ),
+    -- aggregated before joining: joining raw samples makes the planner loop over every chunk per card
     per_card as (
         select
             time_bucket((:bucket_length)::text::interval, time) as period_start,
@@ -401,6 +389,7 @@ class GPUUtilization(Query):
             count(*) as samples,
             sum(ce_util) as ce_util_sum,
             count(ce_util) as ce_util_count,
+            -- some cards (e.g. Habana, Intel) report 0 for both power and limit
             sum(power) filter (where power_limit > 0) as power_sum,
             sum(power_limit) filter (where power_limit > 0 and power is not null) as power_limit_sum,
             count(power) filter (where power_limit > 0) as power_count
@@ -417,6 +406,7 @@ class GPUUtilization(Query):
             when 'model' then c.model
             when 'manufacturer' then c.manufacturer
         end as gpu_group,
+        -- for display only, as node/index need not be unique
         min(case (:level)::text
             when 'card' then format('%s / GPU %s', cc.node, cc.index)
             when 'model' then c.model
@@ -425,7 +415,9 @@ class GPUUtilization(Query):
         -- for grouping rows in the frontend; a manufacturer spans several models
         case when (:level)::text <> 'manufacturer' then c.model end as model,
         c.manufacturer,
+        -- distinct cards, as a card that rebooted within a bucket reports under two uuids
         count(distinct cc.card) as gpus_reporting,
+        -- assumes a sample every 30s; the last bucket counts up to the window end or now (least() skips nulls)
         round(100.0 * sum(samples) * 30 / (count(distinct cc.card) * extract(epoch from
             least(period_start + (:bucket_length)::text::interval, (:end)::timestamptz, now()) - period_start
         )), 1) as percent_time_online,
