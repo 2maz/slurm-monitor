@@ -51,7 +51,7 @@ dependencies = [
     "tqdm",
     "typing_inspect",
     "uvicorn",
-    "fastmcp>=4",
+    "fastmcp>=4.1.0",
 ]
 
 [project.optional-dependencies]
