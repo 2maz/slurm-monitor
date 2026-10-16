@@ -325,6 +325,7 @@ class GPUUtilizationLength(str, Enum):
 
 
 class GPUUtilizationParams(QueryParams):
+    cluster: str
     level: GPUUtilizationAggregationLevel
     bucket_length: GPUUtilizationBucketLength
     length: GPUUtilizationLength
@@ -333,50 +334,61 @@ class GPUUtilizationParams(QueryParams):
 class GPUUtilization(Query):
     parameters = GPUUtilizationParams
 
-    # level is a grouping column, not a value, so it can't be a regular bind
-    # parameter (`:level`) - that would just select/group by the literal
-    # string 'card'/'model'/'manufacturer' instead of the column. Since the
-    # enum restricts the value to this fixed, hardcoded set of columns, it's
-    # safe to substitute directly into the statement.
-    _LEVEL_COLUMNS: ClassVar[dict[GPUUtilizationAggregationLevel, str]] = {
-        GPUUtilizationAggregationLevel.CARD: "c.uuid",
-        GPUUtilizationAggregationLevel.MODEL: "c.model",
-        GPUUtilizationAggregationLevel.MANUFACTURER: "c.manufacturer",
-    }
-
-    # The plain `(:x)::interval` cast makes asyncpg infer the bind parameter's
-    # type as `interval` during PREPARE, and then fail trying to encode the
-    # (text) value as a timedelta-like object. Casting through `text` first
-    # keeps the parameter typed as text for both the psycopg2 (sync) and
-    # asyncpg (async) drivers, and only converts to `interval` afterwards.
+    # percent_time_online assumes each GPU reports a sample every 30 seconds
+    # (the `* 30` below).
+    # Configs are reported every ~30 min, so looking back one day before the
+    # window start is enough to find all active cards without scanning the
+    # entire config history. A card's latest config gives its node and index
+    # for gpu_label; groups stay keyed by uuid, as node/index need not be unique.
+    # per_card reduces the raw samples to one row per card and bucket before
+    # joining. Joining the raw samples instead makes the planner loop over every
+    # chunk per card and sort all rows for count(distinct uuid).
     statement = """
+    with cluster_cards as (
+        select distinct on (uuid) uuid, node, index from sysinfo_gpu_card_config
+        where cluster = :cluster
+          and time >= time_bucket((:bucket_length)::text::interval,
+                                  now() - (:length)::text::interval) - interval '1 day'
+        order by uuid, time desc
+    ),
+    per_card as (
+        select
+            time_bucket((:bucket_length)::text::interval, time) as period_start,
+            uuid,
+            count(*) as samples,
+            sum(ce_util) as ce_util_sum,
+            count(ce_util) as ce_util_count
+        from sample_gpu
+        where time >= time_bucket((:bucket_length)::text::interval,
+                                  now() - (:length)::text::interval)
+        group by 1, 2
+    )
     select
-        time_bucket((:bucket_length)::text::interval, s.time) AS bucket,
-        {level_column} AS level,
-        round(avg(s.ce_util), 2) AS avg_ce_util
-    from sample_gpu s
-    inner join sysinfo_gpu_card c
-    using (uuid)
-    where time > now() - (:length)::text::interval
-    group by bucket, {level_column}
-    order by bucket, {level_column};
+        period_start,
+        case (:level)::text
+            when 'card' then c.uuid::text
+            when 'model' then c.model
+            when 'manufacturer' then c.manufacturer
+        end as gpu_group,
+        case (:level)::text
+            when 'card' then format('%s / GPU %s', cc.node, cc.index)
+            when 'model' then c.model
+            when 'manufacturer' then c.manufacturer
+        end as gpu_label,
+        -- for grouping rows in the frontend; a manufacturer spans several models
+        case when (:level)::text <> 'manufacturer' then c.model end as model,
+        c.manufacturer,
+        count(*) as gpus_reporting,
+        round(100.0 * sum(samples) * 30 / (count(*) * extract(epoch from
+            least(period_start + (:bucket_length)::text::interval, now()) - period_start
+        )), 1) as percent_time_online,
+        round(sum(ce_util_sum) / nullif(sum(ce_util_count), 0), 2) as avg_utilization_percent_while_online
+    from per_card
+    inner join sysinfo_gpu_card c using (uuid)
+    inner join cluster_cards cc using (uuid)
+    group by 1, 2, 3, 4, 5
+    order by 1, 2;
     """
-
-    def execute(self, params: dict[str, object]) -> list[dict[str, object]]:
-        parsed = self._parse_params(params)
-        level = parsed.pop("level")
-        statement = self.statement.format(level_column=self._LEVEL_COLUMNS[level])
-        with self.db.make_session() as session:
-            result = session.execute(text(statement), parsed)
-            return [dict(row._mapping) for row in result]
-
-    async def execute_async(self, params: dict[str, object]) -> list[dict[str, object]]:
-        parsed = self._parse_params(params)
-        level = parsed.pop("level")
-        statement = self.statement.format(level_column=self._LEVEL_COLUMNS[level])
-        async with self.db.make_async_session() as session:
-            result = await session.execute(text(statement), parsed)
-            return [dict(row._mapping) for row in result]
 
 
 class QueryMaker:

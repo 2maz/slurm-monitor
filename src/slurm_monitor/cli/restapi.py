@@ -97,7 +97,10 @@ class RestapiParser(BaseParser):
 
             return
 
+        # run uvicorn with this interpreter, so it is found without the venv on PATH
         cmd = [
+            sys.executable,
+            "-m",
             "uvicorn",
             "slurm_monitor.app:app",
             "--port",
