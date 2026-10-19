@@ -97,7 +97,7 @@ test = [
     "pytest-mock",
     "pydot",
     "tox",
-    "basedpyright>=1.40.1",
+    "basedpyright>=1.40.2",
 ]
 
 
