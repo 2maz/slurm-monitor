@@ -1,6 +1,7 @@
 import copy
 import datetime as dt
 import json
+import logging
 import re
 import time
 from pathlib import Path
@@ -600,3 +601,11 @@ async def test_node_sysinfo_interval(
                     assert data == {}
                 else:
                     assert node in data
+
+
+@pytest.mark.asyncio
+async def test_bearer_token_is_not_logged(client, mock_token, caplog):
+    with caplog.at_level(logging.DEBUG):
+        response = client.get("/api/v2/cluster", headers={"Authorization": f"Bearer {mock_token}"})
+    assert response.status_code == 200
+    assert mock_token not in caplog.text
