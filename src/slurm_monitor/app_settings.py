@@ -27,6 +27,12 @@ class OAuthSettings(BaseSettings):
     client_secret: str = Field(default="")
     url: str = Field(default="")
     realm: str = Field(default="")
+    # Where to fetch the signing keys, when the issuer's own certs endpoint is
+    # not reachable from the API server (e.g. the issuer is a public URL and
+    # the identity provider is reached on an internal address). One word on
+    # purpose: env_nested_delimiter="_" splits SLURM_MONITOR_OAUTH_JWKS_URL
+    # into oauth.jwks.url, so the variable is SLURM_MONITOR_OAUTH_JWKS.
+    jwks: str = Field(default="")
 
     @computed_field
     @property
@@ -36,7 +42,7 @@ class OAuthSettings(BaseSettings):
     @computed_field
     @property
     def jwks_url(self) -> str:
-        return f"{self.issuer}/protocol/openid-connect/certs"
+        return self.jwks or f"{self.issuer}/protocol/openid-connect/certs"
 
     @computed_field
     @property
