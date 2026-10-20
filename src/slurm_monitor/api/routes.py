@@ -164,7 +164,7 @@ async def get_token_payload(request: Request) -> TokenPayload:
         oauth2: str = Depends(oauth2_scheme)
         token = await oauth2.dependency(request)
 
-        logger.info(f"Retrieved token: {token}")
+        logger.debug("Retrieved bearer token")
         return await verify_token(token)
 
     logger.info("get_token_payload: authentication disabled")
