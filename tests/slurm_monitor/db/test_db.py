@@ -218,3 +218,20 @@ async def test_suggest_lookback(test_db, db_config):
 #    )
 #    graph.write_png('/tmp/dbschema.png') # write out the file
 #
+
+
+@pytest.mark.asyncio(loop_scope="module")
+@pytest.mark.parametrize("resolution_in_s", [60, 600])
+async def test_get_node_sample_gpu_timeseries_resolution(resolution_in_s, test_db):
+    gpu_timeseries = await test_db.get_node_sample_gpu_timeseries(
+        cluster="cluster-0",
+        node="cluster-0-node-1",
+        start_time_in_s=utcnow().timestamp() - 3600,
+        end_time_in_s=utcnow().timestamp(),
+        resolution_in_s=resolution_in_s,
+    )
+    gpu_data = gpu_timeseries[0].data
+    assert len(gpu_data) > 0
+    # each bucket starts on a multiple of the requested resolution
+    for sample in gpu_data:
+        assert sample.time.timestamp() % resolution_in_s == 0

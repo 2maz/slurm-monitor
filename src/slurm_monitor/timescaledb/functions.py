@@ -18,7 +18,10 @@ class time_bucket(GenericFunction):
     identifier = "time_bucket"
 
     type = TIMESTAMP()
-    inherit_cache = True
+    # The bucket width is written into the SQL text as a literal (see the
+    # compiler below), so a cached compilation would carry the first width
+    # into every later query of the same shape. Not cacheable.
+    inherit_cache = False
 
 
 # For TimeScaledb
@@ -30,4 +33,4 @@ def compile_time_bucket_timescaledb(expr, compiler, **kwargs):
     if type(time_window) is int:
         return f"time_bucket('{time_window} seconds',{time_column})"
     else:
-        return f"time_bucket('{time_window}',{time_column}"
+        return f"time_bucket('{time_window}',{time_column})"
