@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from jwt import PyJWKClient
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from slurm_monitor.db.settings import DatabaseSettings
@@ -33,6 +33,24 @@ class OAuthSettings(BaseSettings):
     # purpose: env_nested_delimiter="_" splits SLURM_MONITOR_OAUTH_JWKS_URL
     # into oauth.jwks.url, so the variable is SLURM_MONITOR_OAUTH_JWKS.
     jwks: str = Field(default="")
+    # Accepted values of the token's "aud" claim, comma-separated
+    # (SLURM_MONITOR_OAUTH_AUDIENCE). Keycloak puts "account" in the tokens of
+    # clients that set no audience, hence the default; it is shared by every
+    # client in the realm, so a deployment that has tokens issued for
+    # slurm-monitor should name its own client here.
+    audience: str = Field(default="account")
+
+    @field_validator("audience")
+    @classmethod
+    def audience_not_empty(cls, value: str) -> str:
+        if not any(part.strip() for part in value.split(",")):
+            raise ValueError("at least one audience is required")
+        return value
+
+    @computed_field
+    @property
+    def audiences(self) -> list[str]:
+        return [part.strip() for part in self.audience.split(",") if part.strip()]
 
     @computed_field
     @property

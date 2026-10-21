@@ -52,7 +52,7 @@ class TokenPayload(BaseSettings):
     iat: int
     jti: str
     iss: str  # issuer
-    aud: str  # audience
+    aud: str | list[str]  # audience: a list when the token names several
     sub: str  # subject
     typ: str  # type: Bearer
     azp: str  # client name
@@ -121,7 +121,7 @@ async def verify_token(token: str) -> TokenPayload:
             token,
             signing_key.key,
             algorithms=["RS256"],
-            audience="account",  # Default Keycloak audience
+            audience=app_settings.oauth.audiences,
             issuer=app_settings.oauth.issuer,
             options={
                 "verify_signature": True,

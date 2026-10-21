@@ -188,6 +188,17 @@ SLURM_MONITOR_OAUTH_URL="http://slurm-monitor.identity-provider.org"
 SLURM_MONITOR_OAUTH_REALM="slurm-monitor-realm"
 ```
 
+Tokens are only accepted when their `aud` claim names one of the audiences in
+`SLURM_MONITOR_OAUTH_AUDIENCE` (comma-separated, default `account`). Keycloak
+puts `account` into the tokens of every client that does not set an audience,
+so with the default a token issued to any client of the realm is accepted.
+If tokens are issued for slurm-monitor (e.g. via an audience mapper or token
+exchange), restrict the audience to its client:
+
+```
+SLURM_MONITOR_OAUTH_AUDIENCE="slurm-monitor"
+```
+
 
 ### Probe
 
