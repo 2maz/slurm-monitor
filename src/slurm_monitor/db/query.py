@@ -337,11 +337,10 @@ _SECONDS = {
 MAX_GPU_UTILIZATION_BUCKETS = 400
 
 
-class GPUUtilizationParams(QueryParams):
+class UtilizationWindowParams(QueryParams):
     """Either a preset `length` up to now, or a custom `start` (and optional `end`)."""
 
     cluster: str
-    level: GPUUtilizationAggregationLevel
     bucket_length: GPUUtilizationBucketLength
     length: GPUUtilizationLength | None = None
     start: AwareDatetime | None = None
@@ -362,6 +361,10 @@ class GPUUtilizationParams(QueryParams):
         if buckets > MAX_GPU_UTILIZATION_BUCKETS:
             raise ValueError(f"{buckets:.0f} buckets exceed the maximum of {MAX_GPU_UTILIZATION_BUCKETS}")
         return self
+
+
+class GPUUtilizationParams(UtilizationWindowParams):
+    level: GPUUtilizationAggregationLevel
 
 
 class GPUUtilization(Query):
@@ -433,6 +436,119 @@ class GPUUtilization(Query):
     """
 
 
+class CPUUtilizationAggregationLevel(str, Enum):
+    NODE = "node"
+    MODEL = "model"
+
+
+class CPUUtilizationParams(UtilizationWindowParams):
+    level: CPUUtilizationAggregationLevel
+
+
+class CPUUtilization(Query):
+    parameters = CPUUtilizationParams
+
+    # Utilization is the share of logical CPUs (hardware threads) busy, including kernel work.
+    # The window runs from the bucket containing `start` (or now - `length`) to `end` (or now).
+    statement = """
+    -- each node's latest attributes; sysinfo comes every ~30 min, so a day before the window finds all nodes
+    with cluster_nodes as (
+        select distinct on (node)
+            node, cpu_model,
+            sockets * cores_per_socket * threads_per_core as logical_cpus,
+            memory
+        from sysinfo_attributes
+        where cluster = :cluster
+          and time >= time_bucket((:bucket_length)::text::interval,
+                                  coalesce((:start)::timestamptz, now() - (:length)::text::interval)) - interval '1 day'
+        order by node, time desc
+    ),
+    -- Times and memory only: the cpus arrays, most of the table, are read just at the buckets' edges
+    -- below, as aggregating them means sorting a whole window of arrays.
+    per_boot as (
+        select
+            time_bucket((:bucket_length)::text::interval, time) as period_start,
+            node,
+            boot,
+            count(*) as samples,
+            sum(used_memory) as used_memory_sum,
+            min(time) as first_time,
+            max(time) as last_time
+        from sample_system
+        where cluster = :cluster
+          and time >= time_bucket((:bucket_length)::text::interval,
+                                  coalesce((:start)::timestamptz, now() - (:length)::text::interval))
+          and time < coalesce((:end)::timestamptz, now())
+        group by 1, 2, 3
+    ),
+    -- cpus holds each logical CPU's busy seconds since boot, which restart at boot. So a bucket's
+    -- busy time runs from the last sample of the previous bucket of the same boot, if any, to its own.
+    edges as (
+        select
+            p.*,
+            l.busy_total,
+            l.cpus,
+            lag(l.busy_total) over w as previous_busy_total,
+            lag(p.last_time) over w as previous_time
+        from per_boot p,
+            lateral (
+                select (select sum(v) from unnest(s.cpus) as v) as busy_total, cardinality(s.cpus) as cpus
+                from sample_system s
+                where s.cluster = :cluster and s.node = p.node and s.time = p.last_time
+                -- keeps it a lookup per row: as a join, it would scan and sort the whole window
+                limit 1
+            ) l
+        window w as (partition by p.node, p.boot order by p.period_start)
+    ),
+    per_segment as (
+        select
+            period_start,
+            node,
+            samples,
+            used_memory_sum,
+            -- else from the bucket's first sample (coalesce only looks it up when needed)
+            busy_total - coalesce(previous_busy_total, (
+                select sum(v)
+                from sample_system s, unnest(s.cpus) as v
+                where s.cluster = :cluster and s.node = edges.node and s.time = edges.first_time
+            )) as busy_seconds,
+            extract(epoch from last_time - coalesce(previous_time, first_time)) * cpus as cpu_seconds
+        from edges
+    ),
+    -- a node that rebooted within a bucket has a segment per boot
+    per_node as (
+        select
+            period_start,
+            node,
+            sum(samples) as samples,
+            sum(used_memory_sum) as used_memory_sum,
+            sum(busy_seconds) as busy_seconds,
+            sum(cpu_seconds) as cpu_seconds
+        from per_segment
+        group by 1, 2
+    )
+    select
+        period_start,
+        case (:level)::text
+            when 'node' then node
+            when 'model' then cn.cpu_model
+        end as cpu_group,
+        cn.cpu_model as model,
+        count(*) as nodes_reporting,
+        sum(cn.logical_cpus) as logical_cpus,
+        -- assumes a sample every 30s; the last bucket counts up to the window end or now (least() skips nulls)
+        round(100.0 * sum(samples) * 30 / (count(*) * extract(epoch from
+            least(period_start + (:bucket_length)::text::interval, (:end)::timestamptz, now()) - period_start
+        )), 1) as percent_time_online,
+        round(100.0 * sum(busy_seconds) / nullif(sum(cpu_seconds), 0), 2) as avg_utilization_percent_while_online,
+        round(100.0 * sum(used_memory_sum) / nullif(sum(samples * cn.memory), 0), 1) as memory_percent_used
+    from per_node
+    inner join cluster_nodes cn using (node)
+    group by 1, 2, 3
+    order by 1, 2;
+    """
+
+
 class QueryMaker:
     _queries: ClassVar[dict[str, type[Query]]] = {
         "user-job-results": UserJobResults,
@@ -441,6 +557,7 @@ class QueryMaker:
         "popular-partitions-by-number-of-jobs": PopularPartitionsByNumberOfJobs,
         "jobs-exceeding-resource-usage": JobsExceedingRequestedResources,
         "gpu-utilization": GPUUtilization,
+        "cpu-utilization": CPUUtilization,
     }
 
     def create(self, db: Database, name: str) -> Query:
