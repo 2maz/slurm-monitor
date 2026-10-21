@@ -3,8 +3,10 @@ import datetime as dt
 import pytest
 from pydantic import ValidationError
 
-from slurm_monitor.db.db_tables import SampleGpu, SysinfoGpuCard, SysinfoGpuCardConfig
+from slurm_monitor.db.db_tables import SampleGpu, SampleSystem, SysinfoGpuCard, SysinfoGpuCardConfig
 from slurm_monitor.db.query import (
+    CPUUtilizationAggregationLevel,
+    CPUUtilizationParams,
     GPUUtilizationAggregationLevel,
     GPUUtilizationBucketLength,
     GPUUtilizationLength,
@@ -169,3 +171,72 @@ def test_gpu_utilization_params_accept_custom_window_within_cap():
     GPUUtilizationParams(
         cluster=CLUSTER, level="card", bucket_length="1 day", start="2025-01-01T00:00:00Z", end="2026-01-01T00:00:00Z"
     )
+
+
+@pytest.mark.asyncio(loop_scope="function")
+@pytest.mark.parametrize("level", list(CPUUtilizationAggregationLevel))
+async def test_cpu_utilization_follows_counters_across_reboot(level, test_db__function_scope):
+    # cpus holds busy seconds since boot per logical CPU. The node is half busy for the bucket
+    # before, and in the checked bucket it is half busy for 450s, reboots, then fully busy for 420s.
+    db = test_db__function_scope
+    node = f"{CLUSTER}-node-0"
+    now = dt.datetime.now(dt.timezone.utc)
+    bucket = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0) - dt.timedelta(minutes=30)
+    old_boot, new_boot = bucket - dt.timedelta(days=3), bucket + dt.timedelta(seconds=440)
+    # test nodes have 2 sockets x 24 cores x 2 threads and 256 GiB, see db_testing
+    cpus, memory = 96, 256 * 1024**2
+
+    def sample(n: int, boot: dt.datetime, busy: int) -> SampleSystem:
+        return SampleSystem(
+            cluster=CLUSTER,
+            node=node,
+            boot=boot,
+            cpus=[busy] * cpus,
+            used_memory=memory // 4,
+            load1=0,
+            load5=0,
+            load15=0,
+            runnable_entities=0,
+            existing_entities=0,
+            time=bucket + dt.timedelta(seconds=30 * n),
+        )
+
+    db.insert(
+        [sample(n, old_boot, 100000 + 15 * n) for n in range(-30, 15)]
+        + [sample(n, new_boot, 30 * (n - 15)) for n in range(15, 30)]
+    )
+
+    query = QueryMaker().create(db=db, name="cpu-utilization")
+    rows = await query.execute_async({**PARAMS, "level": level.value})
+
+    group = node if level == CPUUtilizationAggregationLevel.NODE else "Intel Xeon"
+    assert {row["cpu_group"] for row in rows} == {group}
+    before, during = sorted(rows, key=lambda row: row["period_start"])
+    assert before["period_start"] == bucket - dt.timedelta(minutes=15)
+    assert during["period_start"] == bucket
+    for row in (before, during):
+        assert row.keys() == {
+            "period_start",
+            "cpu_group",
+            "model",
+            "nodes_reporting",
+            "logical_cpus",
+            "percent_time_online",
+            "avg_utilization_percent_while_online",
+            "memory_percent_used",
+        }
+        assert row["model"] == "Intel Xeon"
+        assert row["nodes_reporting"] == 1
+        assert row["logical_cpus"] == cpus
+        assert float(row["percent_time_online"]) == pytest.approx(100.0)
+        assert float(row["memory_percent_used"]) == pytest.approx(25.0)
+    assert float(before["avg_utilization_percent_while_online"]) == pytest.approx(50.0)
+    # continues from the bucket before up to the reboot, then starts over from the first new sample
+    assert float(during["avg_utilization_percent_while_online"]) == pytest.approx(
+        100.0 * (15 * 15 + 30 * 14) / (450 + 420), abs=0.01
+    )
+
+
+def test_cpu_utilization_params_reject_gpu_levels():
+    with pytest.raises(ValidationError):
+        CPUUtilizationParams(cluster=CLUSTER, level="card", bucket_length="15 minutes", length="1 hour")

@@ -337,11 +337,10 @@ _SECONDS = {
 MAX_GPU_UTILIZATION_BUCKETS = 400
 
 
-class GPUUtilizationParams(QueryParams):
+class UtilizationWindowParams(QueryParams):
     """Either a preset `length` up to now, or a custom `start` (and optional `end`)."""
 
     cluster: str
-    level: GPUUtilizationAggregationLevel
     bucket_length: GPUUtilizationBucketLength
     length: GPUUtilizationLength | None = None
     start: AwareDatetime | None = None
@@ -362,6 +361,10 @@ class GPUUtilizationParams(QueryParams):
         if buckets > MAX_GPU_UTILIZATION_BUCKETS:
             raise ValueError(f"{buckets:.0f} buckets exceed the maximum of {MAX_GPU_UTILIZATION_BUCKETS}")
         return self
+
+
+class GPUUtilizationParams(UtilizationWindowParams):
+    level: GPUUtilizationAggregationLevel
 
 
 class GPUUtilization(Query):
@@ -433,6 +436,103 @@ class GPUUtilization(Query):
     """
 
 
+class CPUUtilizationAggregationLevel(str, Enum):
+    NODE = "node"
+    MODEL = "model"
+
+
+class CPUUtilizationParams(UtilizationWindowParams):
+    level: CPUUtilizationAggregationLevel
+
+
+class CPUUtilization(Query):
+    parameters = CPUUtilizationParams
+
+    # Utilization is the share of logical CPUs (hardware threads) busy, including kernel work.
+    # The window runs from the bucket containing `start` (or now - `length`) to `end` (or now).
+    statement = """
+    -- each node's latest attributes; sysinfo comes every ~30 min, so a day before the window finds all nodes
+    with cluster_nodes as (
+        select distinct on (node)
+            node, cpu_model,
+            sockets * cores_per_socket * threads_per_core as logical_cpus,
+            memory
+        from sysinfo_attributes
+        where cluster = :cluster
+          and time >= time_bucket((:bucket_length)::text::interval,
+                                  coalesce((:start)::timestamptz, now() - (:length)::text::interval)) - interval '1 day'
+        order by node, time desc
+    ),
+    -- cpus holds each logical CPU's busy seconds since boot, so only the first and last sample
+    -- of a bucket are needed: summing every sample's array is far more expensive
+    per_boot as (
+        select
+            time_bucket((:bucket_length)::text::interval, time) as period_start,
+            node,
+            boot,
+            count(*) as samples,
+            sum(used_memory) as used_memory_sum,
+            min(time) as first_time,
+            max(time) as last_time,
+            first(cpus, time) as first_cpus,
+            last(cpus, time) as last_cpus
+        from sample_system
+        where cluster = :cluster
+          and time >= time_bucket((:bucket_length)::text::interval,
+                                  coalesce((:start)::timestamptz, now() - (:length)::text::interval))
+          and time < coalesce((:end)::timestamptz, now())
+        group by 1, 2, 3
+    ),
+    -- counters restart at boot, so a bucket continues from the previous bucket of the same boot,
+    -- or from its own first sample if there is none
+    per_segment as (
+        select
+            period_start,
+            node,
+            samples,
+            used_memory_sum,
+            last_sum - coalesce(lag(last_sum) over w, first_sum) as busy_seconds,
+            extract(epoch from last_time - coalesce(lag(last_time) over w, first_time))
+                * cardinality(last_cpus) as cpu_seconds
+        from per_boot,
+            lateral (select sum(v) as first_sum from unnest(first_cpus) as v) f,
+            lateral (select sum(v) as last_sum from unnest(last_cpus) as v) l
+        window w as (partition by node, boot order by period_start)
+    ),
+    -- a node that rebooted within a bucket has a segment per boot
+    per_node as (
+        select
+            period_start,
+            node,
+            sum(samples) as samples,
+            sum(used_memory_sum) as used_memory_sum,
+            sum(busy_seconds) as busy_seconds,
+            sum(cpu_seconds) as cpu_seconds
+        from per_segment
+        group by 1, 2
+    )
+    select
+        period_start,
+        case (:level)::text
+            when 'node' then node
+            when 'model' then cn.cpu_model
+        end as cpu_group,
+        cn.cpu_model as model,
+        count(*) as nodes_reporting,
+        sum(cn.logical_cpus) as logical_cpus,
+        -- assumes a sample every 30s; the last bucket counts up to the window end or now (least() skips nulls)
+        round(100.0 * sum(samples) * 30 / (count(*) * extract(epoch from
+            least(period_start + (:bucket_length)::text::interval, (:end)::timestamptz, now()) - period_start
+        )), 1) as percent_time_online,
+        round(100.0 * sum(busy_seconds) / nullif(sum(cpu_seconds), 0), 2) as avg_utilization_percent_while_online,
+        round(100.0 * sum(used_memory_sum) / nullif(sum(samples * cn.memory), 0), 1) as memory_percent_used
+    from per_node
+    inner join cluster_nodes cn using (node)
+    group by 1, 2, 3
+    order by 1, 2;
+    """
+
+
 class QueryMaker:
     _queries: ClassVar[dict[str, type[Query]]] = {
         "user-job-results": UserJobResults,
@@ -441,6 +541,7 @@ class QueryMaker:
         "popular-partitions-by-number-of-jobs": PopularPartitionsByNumberOfJobs,
         "jobs-exceeding-resource-usage": JobsExceedingRequestedResources,
         "gpu-utilization": GPUUtilization,
+        "cpu-utilization": CPUUtilization,
     }
 
     def create(self, db: Database, name: str) -> Query:
