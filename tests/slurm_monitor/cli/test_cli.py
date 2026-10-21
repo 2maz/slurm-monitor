@@ -1,5 +1,7 @@
+import contextlib
 import os
 import re
+import signal
 import socket
 import subprocess
 import sys
@@ -53,6 +55,27 @@ def _wait_for_restapi(url: str, timeout: float = 30) -> httpx.Response:
             last_error = e
             time.sleep(0.5)
     raise RuntimeError(f"RESTAPI at '{url}' did not become reachable within {timeout}s") from last_error
+
+
+@contextlib.contextmanager
+def _restapi(args: list[str], env: dict[str, str] | None = None):
+    """
+    Run 'slurm-monitor restapi' as a subprocess, in its own process group, and
+    kill the whole group when done - even if the body raises (e.g. the server
+    wasn't up yet).
+
+    The CLI starts uvicorn as a child process. Killing only the CLI process
+    leaves that child running, since its safety net (PR_SET_PDEATHSIG) only
+    exists on Linux: on macOS every run used to leave the servers behind.
+    """
+    p = subprocess.Popen(["slurm-monitor", "restapi", *args], env=env, start_new_session=True)
+    try:
+        yield p
+    finally:
+        # the group is gone if everything in it has exited already
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(p.pid, signal.SIGKILL)
+        p.wait()
 
 
 @pytest.fixture
@@ -166,15 +189,8 @@ async def test_restapi_env_file_via_args(script_runner, tmp_path, test_db, db_co
         f.write(f"SLURM_MONITOR_DATABASE_URI={timescaledb}\n")
         f.write(f"SLURM_MONITOR_PORT={port}\n")
 
-    p = subprocess.Popen(["slurm-monitor", "restapi", "--env-file", str(tmp_path / "existing-envfile")])
-    try:
+    with _restapi(["--env-file", str(tmp_path / "existing-envfile")]):
         response = _wait_for_restapi(f"http://localhost:{port}/api/v2/docs")
-    finally:
-        # guaranteed even if the request above raises (e.g. the server
-        # wasn't up yet) - otherwise the subprocess (and the uvicorn it
-        # spawns) is silently left running
-        p.kill()
-        p.wait()
 
     assert response.status_code == 200
 
@@ -191,12 +207,8 @@ async def test_restapi_env_file_via_env(script_runner, tmp_path, test_db, db_con
 
     env = os.environ.copy()
     env["SLURM_MONITOR_ENVFILE"] = str(tmp_path / "existing-envfile")
-    p = subprocess.Popen(["slurm-monitor", "restapi"], env=env)
-    try:
+    with _restapi([], env=env):
         response = _wait_for_restapi(f"http://localhost:{port}/api/v2/docs")
-    finally:
-        p.kill()
-        p.wait()
 
     assert response.status_code == 200
 
@@ -219,12 +231,8 @@ async def test_restapi_env_file_with_overrides(script_runner, tmp_path, test_db,
 
     env = os.environ.copy()
     env["SLURM_MONITOR_ENVFILE"] = str(tmp_path / ".a.env")
-    p = subprocess.Popen(["slurm-monitor", "restapi", "--env-file", str(tmp_path / ".b.env")], env=env)
-    try:
+    with _restapi(["--env-file", str(tmp_path / ".b.env")], env=env):
         response = _wait_for_restapi(f"http://localhost:{port}/api/v2/docs")
-    finally:
-        p.kill()
-        p.wait()
 
     assert response.status_code == 200
 
@@ -237,11 +245,7 @@ async def test_restapi_settings_from_env(script_runner, tmp_path, test_db, db_co
     env = os.environ.copy()
     env["SLURM_MONITOR_DATABASE_URI"] = timescaledb
 
-    p = subprocess.Popen(["slurm-monitor", "restapi"], env=env)
-    try:
+    with _restapi([], env=env):
         response = _wait_for_restapi(f"http://localhost:{SLURM_MONITOR_RESTAPI_PORT}/api/v2/docs")
-    finally:
-        p.kill()
-        p.wait()
 
     assert response.status_code == 200
