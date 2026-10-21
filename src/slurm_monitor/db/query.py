@@ -463,8 +463,8 @@ class CPUUtilization(Query):
                                   coalesce((:start)::timestamptz, now() - (:length)::text::interval)) - interval '1 day'
         order by node, time desc
     ),
-    -- cpus holds each logical CPU's busy seconds since boot, so only the first and last sample
-    -- of a bucket are needed: summing every sample's array is far more expensive
+    -- Times and memory only: the cpus arrays, most of the table, are read just at the buckets' edges
+    -- below, as aggregating them means sorting a whole window of arrays.
     per_boot as (
         select
             time_bucket((:bucket_length)::text::interval, time) as period_start,
@@ -473,9 +473,7 @@ class CPUUtilization(Query):
             count(*) as samples,
             sum(used_memory) as used_memory_sum,
             min(time) as first_time,
-            max(time) as last_time,
-            first(cpus, time) as first_cpus,
-            last(cpus, time) as last_cpus
+            max(time) as last_time
         from sample_system
         where cluster = :cluster
           and time >= time_bucket((:bucket_length)::text::interval,
@@ -483,21 +481,39 @@ class CPUUtilization(Query):
           and time < coalesce((:end)::timestamptz, now())
         group by 1, 2, 3
     ),
-    -- counters restart at boot, so a bucket continues from the previous bucket of the same boot,
-    -- or from its own first sample if there is none
+    -- cpus holds each logical CPU's busy seconds since boot, which restart at boot. So a bucket's
+    -- busy time runs from the last sample of the previous bucket of the same boot, if any, to its own.
+    edges as (
+        select
+            p.*,
+            l.busy_total,
+            l.cpus,
+            lag(l.busy_total) over w as previous_busy_total,
+            lag(p.last_time) over w as previous_time
+        from per_boot p,
+            lateral (
+                select (select sum(v) from unnest(s.cpus) as v) as busy_total, cardinality(s.cpus) as cpus
+                from sample_system s
+                where s.cluster = :cluster and s.node = p.node and s.time = p.last_time
+                -- keeps it a lookup per row: as a join, it would scan and sort the whole window
+                limit 1
+            ) l
+        window w as (partition by p.node, p.boot order by p.period_start)
+    ),
     per_segment as (
         select
             period_start,
             node,
             samples,
             used_memory_sum,
-            last_sum - coalesce(lag(last_sum) over w, first_sum) as busy_seconds,
-            extract(epoch from last_time - coalesce(lag(last_time) over w, first_time))
-                * cardinality(last_cpus) as cpu_seconds
-        from per_boot,
-            lateral (select sum(v) as first_sum from unnest(first_cpus) as v) f,
-            lateral (select sum(v) as last_sum from unnest(last_cpus) as v) l
-        window w as (partition by node, boot order by period_start)
+            -- else from the bucket's first sample (coalesce only looks it up when needed)
+            busy_total - coalesce(previous_busy_total, (
+                select sum(v)
+                from sample_system s, unnest(s.cpus) as v
+                where s.cluster = :cluster and s.node = edges.node and s.time = edges.first_time
+            )) as busy_seconds,
+            extract(epoch from last_time - coalesce(previous_time, first_time)) * cpus as cpu_seconds
+        from edges
     ),
     -- a node that rebooted within a bucket has a segment per boot
     per_node as (
