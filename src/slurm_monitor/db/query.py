@@ -830,8 +830,13 @@ class GPUAllocation(Query):
           and time < time_bucket((:bucket_length)::text::interval,
                                  coalesce((:start)::timestamptz, now() - (:length)::text::interval))
     ),
+    -- Nodes with cards in the window, or with GPU jobs. Cards known only from the 30 days before, without GPU
+    -- jobs, have nothing to show.
+    present_nodes as (
+        select distinct node from presence where installed_seconds > 0
+    ),
     gpu_nodes as (
-        select node from installed
+        select node from present_nodes
         union
         select node from allocation where gpu_seconds > 0
     )
@@ -850,7 +855,7 @@ class GPUAllocation(Query):
         coalesce(a.gpu_jobs, 0) as gpu_jobs,
         case
             when n.node in (select node from out_of_service) then 'out of service'
-            when i.gpus is null then 'not monitored'
+            when n.node not in (select node from present_nodes) then 'not monitored'
             when n.node not in (select node from slurm_gpu_nodes) then 'not a Slurm GPU node'
         end as not_counted
     from buckets b
@@ -914,8 +919,12 @@ class CPUAllocation(Query):
     ),"""
         + _CPU_BUSY_CTES
         + """,
+    -- nodes reporting in the window, or with jobs (see gpu-allocation)
+    present_nodes as (
+        select distinct node from presence where installed_seconds > 0
+    ),
     cpu_nodes as (
-        select node from cluster_nodes
+        select node from present_nodes
         union
         select node from allocation
     )
@@ -931,7 +940,7 @@ class CPUAllocation(Query):
         coalesce(a.jobs, 0) as jobs,
         case
             when n.node in (select node from out_of_service) then 'out of service'
-            when cn.logical_cpus is null then 'not monitored'
+            when n.node not in (select node from present_nodes) then 'not monitored'
         end as not_counted
     from buckets b
     cross join cpu_nodes n

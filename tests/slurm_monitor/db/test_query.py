@@ -260,12 +260,24 @@ async def test_gpu_allocation_layers(test_db__function_scope):
     # node-d's card is drained throughout and node-e's never allocated, so neither is Slurm's capacity.
     db = test_db__function_scope
     cluster = "cluster-gpu-allocation"
-    node_a, node_b, node_c, node_d, node_e, node_f, node_g = (f"{cluster}-node-{x}" for x in "abcdefg")
+    node_a, node_b, node_c, node_d, node_e, node_f, node_g, node_h, node_i = (
+        f"{cluster}-node-{x}" for x in "abcdefghi"
+    )
     now = dt.datetime.now(dt.timezone.utc)
     bucket = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0) - dt.timedelta(minutes=30)
     at = lambda seconds: bucket + dt.timedelta(seconds=seconds)  # noqa: E731
 
-    db.insert([Node(cluster=cluster, node=node) for node in (node_a, node_b, node_c, node_d, node_e, node_f, node_g)])
+    db.insert(
+        [
+            Node(cluster=cluster, node=node)
+            for node in (node_a, node_b, node_c, node_d, node_e, node_f, node_g, node_h, node_i)
+        ]
+    )
+    # node-h and node-i last reported their cards 10 days ago; node-h still runs a GPU job
+    for node in (node_h, node_i):
+        uuid = f"gpu-uuid-{node}-0"
+        db.insert(SysinfoGpuCard(uuid=uuid, manufacturer="AMD", model="Instinct MI210"))
+        db.insert(SysinfoGpuCardConfig(cluster=cluster, node=node, uuid=uuid, index=0, time=at(-10 * 86400)))
     # node-g's 2 cards, as on ex3's n016, under 4 uuids: AMD ids that changed, and node/<boot epoch>/<address>
     # ones, with the address's PCI domain in 4 or 8 digits
     for uuid, address, seconds in (
@@ -347,6 +359,7 @@ async def test_gpu_allocation_layers(test_db__function_scope):
         + [job(1, "batch", [node_a], "cpu=8,gres/gpu=2,mem=0,node=1", 0, n) for n in range(15)]
         + [job(2, "", [node_b, node_c], "billing=16,cpu=16,gres/gpu=4,node=2", 450, n) for n in range(8)]
         + [job(3, "", [node_a], "billing=8,cpu=8,node=1", 0, n) for n in range(15)]
+        + [job(4, "", [node_h], "billing=8,cpu=8,gres/gpu=1,node=1", 0, n) for n in range(15)]
     )
     db.insert(
         [
@@ -360,7 +373,8 @@ async def test_gpu_allocation_layers(test_db__function_scope):
     query = QueryMaker().create(db=db, name="gpu-allocation")
     rows = await query.execute_async({**PARAMS, "cluster": cluster})
 
-    assert {row["node"] for row in rows} == {node_a, node_b, node_c, node_d, node_e, node_f, node_g}
+    # node-i has no cards in the window and no GPU jobs, so nothing to show
+    assert {row["node"] for row in rows} == {node_a, node_b, node_c, node_d, node_e, node_f, node_g, node_h}
     before = {row["node"]: row for row in rows if row["period_start"] == bucket - dt.timedelta(minutes=15)}
     rows = {row["node"]: row for row in rows if row["period_start"] == bucket}
     for row in rows.values():
@@ -409,6 +423,10 @@ async def test_gpu_allocation_layers(test_db__function_scope):
     # the rebooted card counts once, named after the uuid that has its sysinfo
     assert rows[node_e]["gpus_installed"] == 2
     assert (rows[node_e]["model"], rows[node_e]["manufacturer"]) == ("A100 + Max 1100", "Intel + NVIDIA")
+    # cards reported only before the window don't make node-h monitored
+    assert rows[node_h]["not_counted"] == "not monitored"
+    assert float(rows[node_h]["gpus_installed"]) == 0
+    assert float(rows[node_h]["gpus_allocated"]) == pytest.approx(1.0)
     # cards are told apart by their node and address, whatever their uuids
     assert float(rows[node_g]["gpus_installed"]) == pytest.approx(2.0)
     # cards count only once they are there
@@ -433,16 +451,24 @@ async def test_cpu_allocation_layers(test_db__function_scope):
     # job 11 has 32 CPUs over node-a and node-b, unmonitored, for the second half. node-c is drained throughout.
     db = test_db__function_scope
     cluster = "cluster-cpu-allocation"
-    node_a, node_b, node_c, node_d, node_e = (f"{cluster}-node-{x}" for x in "abcde")
+    node_a, node_b, node_c, node_d, node_e, node_f = (f"{cluster}-node-{x}" for x in "abcdef")
     now = dt.datetime.now(dt.timezone.utc)
     bucket = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0) - dt.timedelta(minutes=30)
     at = lambda seconds: bucket + dt.timedelta(seconds=seconds)  # noqa: E731
     cpus = 96
 
-    db.insert([Node(cluster=cluster, node=node) for node in (node_a, node_b, node_c, node_d, node_e)])
+    db.insert([Node(cluster=cluster, node=node) for node in (node_a, node_b, node_c, node_d, node_e, node_f)])
     # node-d is added halfway through the bucket; node-e reported 10 days ago, then stopped until halfway
     # through it, which is a gap in its reports rather than it being added
-    for node, since in ((node_a, 0), (node_c, 0), (node_d, 450), (node_e, -10 * 86400), (node_e, 450)):
+    # node-f last reported 10 days ago, but still runs a job
+    for node, since in (
+        (node_a, 0),
+        (node_c, 0),
+        (node_d, 450),
+        (node_e, -10 * 86400),
+        (node_e, 450),
+        (node_f, -10 * 86400),
+    ):
         db.insert(
             SysinfoAttributes(
                 cluster=cluster,
@@ -501,16 +527,18 @@ async def test_cpu_allocation_layers(test_db__function_scope):
     db.insert(
         [job(10, [node_a], "billing=48,cpu=48,node=1", 0, n) for n in range(15)]
         + [job(11, [node_a, node_b], "billing=32,cpu=32,node=2", 450, n) for n in range(8)]
+        + [job(12, [node_f], "billing=8,cpu=8,node=1", 0, n) for n in range(15)]
     )
     db.insert(NodeState(cluster=cluster, node=node_c, states=["IDLE", "DRAIN"], time=now - dt.timedelta(minutes=90)))
 
     query = QueryMaker().create(db=db, name="cpu-allocation")
     rows = await query.execute_async({**PARAMS, "cluster": cluster})
 
-    assert {row["node"] for row in rows} == {node_a, node_b, node_c, node_d, node_e}
+    assert {row["node"] for row in rows} == {node_a, node_b, node_c, node_d, node_e, node_f}
     rows = {row["node"]: row for row in rows if row["period_start"] == bucket}
     assert float(rows[node_d]["cpus_installed"]) == pytest.approx(cpus / 2)
     assert float(rows[node_e]["cpus_installed"]) == pytest.approx(cpus)
+    assert rows[node_f]["not_counted"] == "not monitored"
     for row in rows.values():
         assert row.keys() == {
             "period_start",
