@@ -260,12 +260,24 @@ async def test_gpu_allocation_layers(test_db__function_scope):
     # node-d's card is drained throughout and node-e's never allocated, so neither is Slurm's capacity.
     db = test_db__function_scope
     cluster = "cluster-gpu-allocation"
-    node_a, node_b, node_c, node_d, node_e, node_f = (f"{cluster}-node-{x}" for x in "abcdef")
+    node_a, node_b, node_c, node_d, node_e, node_f, node_g = (f"{cluster}-node-{x}" for x in "abcdefg")
     now = dt.datetime.now(dt.timezone.utc)
     bucket = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0) - dt.timedelta(minutes=30)
     at = lambda seconds: bucket + dt.timedelta(seconds=seconds)  # noqa: E731
 
-    db.insert([Node(cluster=cluster, node=node) for node in (node_a, node_b, node_c, node_d, node_e, node_f)])
+    db.insert([Node(cluster=cluster, node=node) for node in (node_a, node_b, node_c, node_d, node_e, node_f, node_g)])
+    # node-g's 2 cards, as on ex3's n016, under 4 uuids: AMD ids that changed, and node/<boot epoch>/<address>
+    # ones, with the address's PCI domain in 4 or 8 digits
+    for uuid, address, seconds in (
+        ("67c63ac3c3c637f9", "0000:03:00.0", 0),
+        ("7b6b270993774982", "00000000:03:00.0", 300),
+        ("95a1ca7691e7c391", "0000:83:00.0", 0),
+        (f"{node_g}/1791632042/00000000:83:00.0", "00000000:83:00.0", 300),
+    ):
+        db.insert(SysinfoGpuCard(uuid=uuid, manufacturer="AMD", model="Instinct MI210"))
+        db.insert(
+            SysinfoGpuCardConfig(cluster=cluster, node=node_g, uuid=uuid, address=address, index=0, time=at(seconds))
+        )
     # node-f is added halfway through the bucket, with 2 cards
     for index in range(2):
         uuid = f"gpu-uuid-{node_f}-{index}"
@@ -348,7 +360,7 @@ async def test_gpu_allocation_layers(test_db__function_scope):
     query = QueryMaker().create(db=db, name="gpu-allocation")
     rows = await query.execute_async({**PARAMS, "cluster": cluster})
 
-    assert {row["node"] for row in rows} == {node_a, node_b, node_c, node_d, node_e, node_f}
+    assert {row["node"] for row in rows} == {node_a, node_b, node_c, node_d, node_e, node_f, node_g}
     before = {row["node"]: row for row in rows if row["period_start"] == bucket - dt.timedelta(minutes=15)}
     rows = {row["node"]: row for row in rows if row["period_start"] == bucket}
     for row in rows.values():
@@ -397,6 +409,8 @@ async def test_gpu_allocation_layers(test_db__function_scope):
     # the rebooted card counts once, named after the uuid that has its sysinfo
     assert rows[node_e]["gpus_installed"] == 2
     assert (rows[node_e]["model"], rows[node_e]["manufacturer"]) == ("A100 + Max 1100", "Intel + NVIDIA")
+    # cards are told apart by their node and address, whatever their uuids
+    assert float(rows[node_g]["gpus_installed"]) == pytest.approx(2.0)
     # cards count only once they are there
     assert float(before[node_f]["gpus_installed"]) == 0
     assert float(rows[node_f]["gpus_installed"]) == pytest.approx(1.0)

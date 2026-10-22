@@ -572,6 +572,17 @@ _OVERLAPPED_BUCKETS = """
         ) overlapped
         inner join buckets b on b.period_start = overlapped.period_start"""
 
+# A card's identity across uuids in gpu-allocation, which counts cards: its node and PCI address. Cards get
+# new uuids, e.g. one every boot (Intel: node/<boot epoch>/<pci address>) or, on ex3's n016, AMD ids that changed
+# and then fell back to that form. The address's PCI domain comes with 4 or 8 digits, so it's written with 4;
+# a card without an address falls back to its uuid without the boot epoch. (gpu-utilization keeps one row per
+# uuid without the epoch, as its card level shows uuids.)
+_CARD_KEY = """coalesce(
+                {node} || '/' || regexp_replace(lower(nullif({address}, '')), '^0*([0-9a-f]{{4}}:)', '\\1'),
+                regexp_replace(uuid::text, '^([^/]+)/\\d{{9,}}/', '\\1/')
+            )"""
+
+
 # Shared by the allocation queries, after `with`: the window's buckets, the jobs running in it, what they had
 # allocated per node and bucket, and when Slurm had nodes unavailable. Jobs are sampled every ~60s, so a job
 # counts until a minute after its last running sample, as end_time may be a projection. job_step '' is the job
@@ -702,8 +713,11 @@ class GPUAllocation(Query):
         select
             uuid,
             (array_agg(node order by time desc))[1] as node,
-            -- some cards (e.g. Intel) get a new uuid every boot, node/<boot epoch>/<pci address>
-            regexp_replace(uuid::text, '^([^/]+)/\\d{9,}/', '\\1/') as card,
+            """
+        + _CARD_KEY.format(
+            node="(array_agg(node order by time desc))[1]", address="(array_agg(address order by time desc))[1]"
+        )
+        + """ as card,
             min(time) as first_seen,
             max(time) as last_seen
         from sysinfo_gpu_card_config
@@ -715,7 +729,7 @@ class GPUAllocation(Query):
         group by uuid
     ),
     -- A card counts from its first config until 3 hours after its last, so that cards and nodes added or
-    -- removed in the window count only while they were there; a card with a new uuid per boot counts once.
+    -- removed in the window count only while they were there; a card with several uuids counts once.
     card_presence as (
         select node, card, min(first_seen) as since, max(last_seen) + interval '3 hours' as until
         from cluster_cards
