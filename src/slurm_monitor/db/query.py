@@ -436,33 +436,9 @@ class GPUUtilization(Query):
     """
 
 
-class CPUUtilizationAggregationLevel(str, Enum):
-    NODE = "node"
-    MODEL = "model"
-
-
-class CPUUtilizationParams(UtilizationWindowParams):
-    level: CPUUtilizationAggregationLevel
-
-
-class CPUUtilization(Query):
-    parameters = CPUUtilizationParams
-
-    # Utilization is the share of logical CPUs (hardware threads) busy, including kernel work.
-    # The window runs from the bucket containing `start` (or now - `length`) to `end` (or now).
-    statement = """
-    -- each node's latest attributes; sysinfo comes every ~30 min, so a day before the window finds all nodes
-    with cluster_nodes as (
-        select distinct on (node)
-            node, cpu_model,
-            sockets * cores_per_socket * threads_per_core as logical_cpus,
-            memory
-        from sysinfo_attributes
-        where cluster = :cluster
-          and time >= time_bucket((:bucket_length)::text::interval,
-                                  coalesce((:start)::timestamptz, now() - (:length)::text::interval)) - interval '1 day'
-        order by node, time desc
-    ),
+# Busy CPU seconds per node and bucket from sample_system's counters, ending in per_node. Comes after
+# other CTEs, needing none of them.
+_CPU_BUSY_CTES = """
     -- Times and memory only: the cpus arrays, most of the table, are read just at the buckets' edges
     -- below, as aggregating them means sorting a whole window of arrays.
     per_boot as (
@@ -527,6 +503,39 @@ class CPUUtilization(Query):
         from per_segment
         group by 1, 2
     )
+"""
+
+
+class CPUUtilizationAggregationLevel(str, Enum):
+    NODE = "node"
+    MODEL = "model"
+
+
+class CPUUtilizationParams(UtilizationWindowParams):
+    level: CPUUtilizationAggregationLevel
+
+
+class CPUUtilization(Query):
+    parameters = CPUUtilizationParams
+
+    # Utilization is the share of logical CPUs (hardware threads) busy, including kernel work.
+    # The window runs from the bucket containing `start` (or now - `length`) to `end` (or now).
+    statement = (
+        """
+    -- each node's latest attributes; sysinfo comes every ~30 min, so a day before the window finds all nodes
+    with cluster_nodes as (
+        select distinct on (node)
+            node, cpu_model,
+            sockets * cores_per_socket * threads_per_core as logical_cpus,
+            memory
+        from sysinfo_attributes
+        where cluster = :cluster
+          and time >= time_bucket((:bucket_length)::text::interval,
+                                  coalesce((:start)::timestamptz, now() - (:length)::text::interval)) - interval '1 day'
+        order by node, time desc
+    ),"""
+        + _CPU_BUSY_CTES
+        + """
     select
         period_start,
         case (:level)::text
@@ -547,6 +556,403 @@ class CPUUtilization(Query):
     group by 1, 2, 3
     order by 1, 2;
     """
+    )
+
+
+# Joins the buckets that the interval from `since` to `until` overlaps, as b, stepping like buckets below.
+_OVERLAPPED_BUCKETS = """
+        cross join lateral (
+            select t at time zone 'UTC' as period_start
+            from generate_series(
+                time_bucket((:bucket_length)::text::interval, greatest({since},
+                            coalesce((:start)::timestamptz, now() - (:length)::text::interval))) at time zone 'UTC',
+                {until} at time zone 'UTC',
+                (:bucket_length)::text::interval
+            ) as t
+        ) overlapped
+        inner join buckets b on b.period_start = overlapped.period_start"""
+
+# A card's identity across uuids in gpu-allocation, which counts cards: its node and PCI address. Cards get
+# new uuids, e.g. one every boot (Intel: node/<boot epoch>/<pci address>) or, on ex3's n016, AMD ids that changed
+# and then fell back to that form. The address's PCI domain comes with 4 or 8 digits, so it's written with 4;
+# a card without an address falls back to its uuid without the boot epoch. (gpu-utilization keeps one row per
+# uuid without the epoch, as its card level shows uuids.)
+_CARD_KEY = """coalesce(
+                {node} || '/' || regexp_replace(lower(nullif({address}, '')), '^0*([0-9a-f]{{4}}:)', '\\1'),
+                regexp_replace(uuid::text, '^([^/]+)/\\d{{9,}}/', '\\1/')
+            )"""
+
+
+# Shared by the allocation queries, after `with`: the window's buckets, the jobs running in it, what they had
+# allocated per node and bucket, and when Slurm had nodes unavailable. Jobs are sampled every ~60s, so a job
+# counts until a minute after its last running sample, as end_time may be a projection. job_step '' is the job
+# itself, its steps repeat its allocation. A multi-node job's resources are split evenly over its nodes.
+_ALLOCATION_CTES = (
+    """
+    -- the buckets as time_bucket() makes them; stepping in UTC, as a day need not be 24 hours in the session time zone
+    buckets as (
+        select
+            period_start,
+            -- the last bucket ends at the window end or now (least() skips nulls)
+            least(period_start + (:bucket_length)::text::interval, (:end)::timestamptz, now()) as period_end
+        from (
+            select t at time zone 'UTC' as period_start
+            from generate_series(
+                time_bucket((:bucket_length)::text::interval,
+                            coalesce((:start)::timestamptz, now() - (:length)::text::interval)) at time zone 'UTC',
+                coalesce((:end)::timestamptz, now()) at time zone 'UTC',
+                (:bucket_length)::text::interval
+            ) as t
+        ) series
+        where period_start < coalesce((:end)::timestamptz, now())
+    ),
+    jobs as (
+        select
+            job_id,
+            started,
+            ended,
+            nodes,
+            coalesce(substring(resources from '(?:^|,)cpu=(\\d+)')::int, 0) as cpus,
+            -- the total over all nodes, also given when there are typed gres/gpu:<model>= entries
+            coalesce(substring(resources from '(?:^|,)gres/gpu=(\\d+)')::int, 0) as gpus
+        from (
+            select
+                job_id,
+                coalesce(min(start_time), min(time)) as started,
+                max(time) + interval '60 seconds' as ended,
+                max(nodes) as nodes,
+                -- a running job's allocation doesn't change, so it is parsed once per job above: parsing
+                -- every sample took most of the time of a year's query
+                max(allocated_resources) as resources
+            from sample_slurm_job
+            where cluster = :cluster
+              and job_step = ''
+              and job_state = 'RUNNING'
+              and cardinality(nodes) > 0
+              and time >= time_bucket((:bucket_length)::text::interval,
+                                      coalesce((:start)::timestamptz, now() - (:length)::text::interval))
+              and time < coalesce((:end)::timestamptz, now())
+            group by job_id
+        ) per_job
+    ),
+    allocation as (
+        select
+            b.period_start,
+            n.node,
+            count(*) as jobs,
+            count(*) filter (where j.gpus > 0) as gpu_jobs,
+            sum(j.cpus::float / cardinality(j.nodes) * o.seconds) as cpu_seconds,
+            sum(j.gpus::float / cardinality(j.nodes) * o.seconds) as gpu_seconds
+        from jobs j
+        cross join lateral unnest(j.nodes) as n(node)
+        -- the buckets the job overlaps, rather than every job against every bucket"""
+    + _OVERLAPPED_BUCKETS.format(since="j.started", until="j.ended")
+    + """
+        cross join lateral (
+            select extract(epoch from least(j.ended, b.period_end) - greatest(j.started, b.period_start)) as seconds
+        ) o
+        where o.seconds > 0
+        group by 1, 2
+    ),
+    -- node states come every ~30 min, each holding until the next; the hour before the window
+    -- finds the state the window starts in
+    node_states as (
+        select
+            node,
+            time as since,
+            coalesce(lead(time) over (partition by node order by time), now()) as until,
+            states::text[] && array['DOWN', 'DRAIN', 'FAIL', 'INVALID_REG', 'MAINTENANCE', 'NOT_RESPONDING']
+                as unavailable
+        from node_state
+        where cluster = :cluster
+          and time >= time_bucket((:bucket_length)::text::interval,
+                                  coalesce((:start)::timestamptz, now() - (:length)::text::interval))
+                      - interval '1 hour'
+          and time < coalesce((:end)::timestamptz, now())
+    ),
+    unavailability as (
+        select
+            b.period_start,
+            s.node,
+            sum(extract(epoch from least(s.until, b.period_end) - greatest(s.since, b.period_start)))
+                as unavailable_seconds
+        from node_states s"""
+    + _OVERLAPPED_BUCKETS.format(since="s.since", until="s.until")
+    + """
+        where s.unavailable
+        group by 1, 2
+    ),
+    -- unavailable throughout and without jobs, e.g. drained service nodes: not capacity at all
+    out_of_service as (
+        select node
+        from unavailability
+        group by node
+        having sum(unavailable_seconds)
+                >= 0.999 * (select sum(extract(epoch from period_end - period_start)) from buckets)
+           and node not in (select node from allocation)
+    )"""
+)
+
+
+class GPUAllocation(Query):
+    parameters = UtilizationWindowParams
+
+    # Per node and bucket, the average number of GPUs in each layer: installed (as the monitor sees them),
+    # online, allocated by Slurm, occupied by a process and busy, plus the share of time Slurm had the node
+    # unavailable. Rows whose GPUs should not count as Slurm's capacity say why in not_counted.
+    # The window runs from the bucket containing `start` (or now - `length`) to `end` (or now).
+    statement = (
+        """
+    with"""
+        + _ALLOCATION_CTES
+        + """,
+    -- Each card's node, and its first and last config in the window or the 30 days before. A card configured
+    -- in those days was there when the window starts: its node may stop reporting for a while (on ex3, some
+    -- did for days), which would otherwise make it look added later.
+    cluster_cards as (
+        select
+            uuid,
+            (array_agg(node order by time desc))[1] as node,
+            """
+        + _CARD_KEY.format(
+            node="(array_agg(node order by time desc))[1]", address="(array_agg(address order by time desc))[1]"
+        )
+        + """ as card,
+            min(time) as first_seen,
+            max(time) as last_seen
+        from sysinfo_gpu_card_config
+        where cluster = :cluster
+          and time >= time_bucket((:bucket_length)::text::interval,
+                                  coalesce((:start)::timestamptz, now() - (:length)::text::interval))
+                      - interval '30 days'
+          and time < coalesce((:end)::timestamptz, now())
+        group by uuid
+    ),
+    -- A card counts from its first config until 3 hours after its last, so that cards and nodes added or
+    -- removed in the window count only while they were there; a card with several uuids counts once.
+    card_presence as (
+        select node, card, min(first_seen) as since, max(last_seen) + interval '3 hours' as until
+        from cluster_cards
+        group by node, card
+    ),
+    presence as (
+        select
+            b.period_start,
+            p.node,
+            sum(extract(epoch from least(p.until, b.period_end) - greatest(p.since, b.period_start)))
+                as installed_seconds
+        from card_presence p"""
+        + _OVERLAPPED_BUCKETS.format(since="p.since", until="p.until")
+        + """
+        group by 1, 2
+    ),
+    -- A node with cards of several models gets them all, e.g. A100 + V100. Cards seen in samples before
+    -- their sysinfo get blank entries, which are skipped: a card takes its model and manufacturer from any
+    -- of its uuids (e.g. Intel cards get one per boot) that has them.
+    installed as (
+        select
+            node,
+            count(*) as gpus,
+            string_agg(distinct model, ' + ') as model,
+            string_agg(distinct manufacturer, ' + ') as manufacturer
+        from (
+            select
+                cc.node,
+                cc.card,
+                max(nullif(c.model, '')) as model,
+                max(nullif(c.manufacturer, '')) as manufacturer
+            from cluster_cards cc
+            left join sysinfo_gpu_card c using (uuid)
+            group by cc.node, cc.card
+        ) cards
+        group by node
+    ),
+    -- aggregated before joining: joining raw samples makes the planner loop over every chunk per card
+    per_card as (
+        select
+            time_bucket((:bucket_length)::text::interval, time) as period_start,
+            uuid,
+            count(*) as samples,
+            sum(ce_util) as ce_util_sum
+        from sample_gpu
+        where time >= time_bucket((:bucket_length)::text::interval,
+                                  coalesce((:start)::timestamptz, now() - (:length)::text::interval))
+          and time < coalesce((:end)::timestamptz, now())
+        group by 1, 2
+    ),
+    -- assumes a sample every 30s, a busy sample counting ce_util percent of a GPU
+    card_use as (
+        select
+            p.period_start,
+            cc.node,
+            sum(p.samples) * 30 as online_seconds,
+            sum(p.ce_util_sum) / 100.0 * 30 as busy_seconds
+        from per_card p
+        inner join cluster_cards cc using (uuid)
+        group by 1, 2
+    ),
+    -- A card is occupied in a sample when a process runs on it, by a Slurm job if that has epoch 0. Counted
+    -- bucket by bucket, each scanning only its own chunks: grouping a year's samples at once spilled to disk
+    -- and took most of the time of a year's query.
+    occupancy as (
+        select b.period_start, o.*
+        from buckets b
+        cross join lateral (
+            select
+                node,
+                count(*) filter (where in_job) * 30 as occupied_seconds,
+                count(*) filter (where not in_job) * 30 as occupied_outside_slurm_seconds
+            from (
+                select node, uuid, time, bool_or(epoch = 0) as in_job
+                from sample_process_gpu
+                where cluster = :cluster
+                  and time >= b.period_start
+                  and time < b.period_end
+                group by node, uuid, time
+            ) samples
+            group by node
+        ) o
+    ),
+    -- nodes Slurm gave GPUs to in the window or the 30 days before; others' cards (e.g. on login
+    -- nodes, or accelerators that are no Slurm GRES) are not Slurm's to allocate
+    slurm_gpu_nodes as (
+        select node from allocation where gpu_seconds > 0
+        union
+        select distinct unnest(nodes)
+        from sample_slurm_job
+        where cluster = :cluster
+          and job_step = ''
+          and job_state = 'RUNNING'
+          and allocated_resources ~ '(^|,)gres/gpu='
+          and time >= time_bucket((:bucket_length)::text::interval,
+                                  coalesce((:start)::timestamptz, now() - (:length)::text::interval))
+                      - interval '30 days'
+          and time < time_bucket((:bucket_length)::text::interval,
+                                 coalesce((:start)::timestamptz, now() - (:length)::text::interval))
+    ),
+    -- Nodes with cards in the window, or with GPU jobs. Cards known only from the 30 days before, without GPU
+    -- jobs, have nothing to show.
+    present_nodes as (
+        select distinct node from presence where installed_seconds > 0
+    ),
+    gpu_nodes as (
+        select node from present_nodes
+        union
+        select node from allocation where gpu_seconds > 0
+    )
+    select
+        b.period_start,
+        n.node,
+        i.model,
+        i.manufacturer,
+        round((coalesce(pr.installed_seconds, 0) / s.seconds)::numeric, 2) as gpus_installed,
+        round((coalesce(u.online_seconds, 0) / s.seconds)::numeric, 2) as gpus_online,
+        round((coalesce(a.gpu_seconds, 0) / s.seconds)::numeric, 2) as gpus_allocated,
+        round((coalesce(o.occupied_seconds, 0) / s.seconds)::numeric, 2) as gpus_occupied,
+        round((coalesce(o.occupied_outside_slurm_seconds, 0) / s.seconds)::numeric, 2) as gpus_occupied_outside_slurm,
+        round((coalesce(u.busy_seconds, 0) / s.seconds)::numeric, 2) as gpus_busy,
+        round((100 * coalesce(un.unavailable_seconds, 0) / s.seconds)::numeric, 1) as percent_time_unavailable,
+        coalesce(a.gpu_jobs, 0) as gpu_jobs,
+        case
+            when n.node in (select node from out_of_service) then 'out of service'
+            when n.node not in (select node from present_nodes) then 'not monitored'
+            when n.node not in (select node from slurm_gpu_nodes) then 'not a Slurm GPU node'
+        end as not_counted
+    from buckets b
+    cross join gpu_nodes n
+    cross join lateral (select extract(epoch from b.period_end - b.period_start) as seconds) s
+    left join installed i on i.node = n.node
+    left join presence pr on pr.period_start = b.period_start and pr.node = n.node
+    left join card_use u on u.period_start = b.period_start and u.node = n.node
+    left join occupancy o on o.period_start = b.period_start and o.node = n.node
+    left join allocation a on a.period_start = b.period_start and a.node = n.node
+    left join unavailability un on un.period_start = b.period_start and un.node = n.node
+    order by 1, 2;
+    """
+    )
+
+
+class CPUAllocation(Query):
+    parameters = UtilizationWindowParams
+
+    # Per node and bucket, the average number of logical CPUs installed, online, allocated by Slurm and busy,
+    # plus the share of time Slurm had the node unavailable. Slurm counts logical CPUs too, and allocates no
+    # memory on ex3. Rows whose CPUs should not count as Slurm's capacity say why in not_counted.
+    # The window runs from the bucket containing `start` (or now - `length`) to `end` (or now).
+    statement = (
+        """
+    with"""
+        + _ALLOCATION_CTES
+        + """,
+    -- Each node's latest attributes, and its first and last sysinfo in the window or the 30 days before: like
+    -- a GPU card, a node that reported in those days was there when the window starts, and counts until 3 hours
+    -- after its last report (sysinfo comes every 30 min), so nodes added or removed count only while there.
+    cluster_nodes as (
+        select distinct on (node) node, logical_cpus, cpu_model, since, until
+        from (
+            select
+                node,
+                time,
+                sockets * cores_per_socket * threads_per_core as logical_cpus,
+                cpu_model,
+                min(time) over (partition by node) as since,
+                max(time) over (partition by node) + interval '3 hours' as until
+            from sysinfo_attributes
+            where cluster = :cluster
+              and time >= time_bucket((:bucket_length)::text::interval,
+                                      coalesce((:start)::timestamptz, now() - (:length)::text::interval))
+                          - interval '30 days'
+              and time < coalesce((:end)::timestamptz, now())
+        ) attributes
+        order by node, time desc
+    ),
+    presence as (
+        select
+            b.period_start,
+            p.node,
+            sum(extract(epoch from least(p.until, b.period_end) - greatest(p.since, b.period_start)))
+                as installed_seconds
+        from cluster_nodes p"""
+        + _OVERLAPPED_BUCKETS.format(since="p.since", until="p.until")
+        + """
+        group by 1, 2
+    ),"""
+        + _CPU_BUSY_CTES
+        + """,
+    -- nodes reporting in the window, or with jobs (see gpu-allocation)
+    present_nodes as (
+        select distinct node from presence where installed_seconds > 0
+    ),
+    cpu_nodes as (
+        select node from present_nodes
+        union
+        select node from allocation
+    )
+    select
+        b.period_start,
+        n.node,
+        cn.cpu_model as model,
+        round((coalesce(cn.logical_cpus * pr.installed_seconds, 0) / s.seconds)::numeric, 2) as cpus_installed,
+        round((coalesce(p.cpu_seconds, 0) / s.seconds)::numeric, 2) as cpus_online,
+        round((coalesce(a.cpu_seconds, 0) / s.seconds)::numeric, 2) as cpus_allocated,
+        round((coalesce(p.busy_seconds, 0) / s.seconds)::numeric, 2) as cpus_busy,
+        round((100 * coalesce(un.unavailable_seconds, 0) / s.seconds)::numeric, 1) as percent_time_unavailable,
+        coalesce(a.jobs, 0) as jobs,
+        case
+            when n.node in (select node from out_of_service) then 'out of service'
+            when n.node not in (select node from present_nodes) then 'not monitored'
+        end as not_counted
+    from buckets b
+    cross join cpu_nodes n
+    cross join lateral (select extract(epoch from b.period_end - b.period_start) as seconds) s
+    left join cluster_nodes cn on cn.node = n.node
+    left join presence pr on pr.period_start = b.period_start and pr.node = n.node
+    left join per_node p on p.period_start = b.period_start and p.node = n.node
+    left join allocation a on a.period_start = b.period_start and a.node = n.node
+    left join unavailability un on un.period_start = b.period_start and un.node = n.node
+    order by 1, 2;
+    """
+    )
 
 
 class QueryMaker:
@@ -558,6 +964,8 @@ class QueryMaker:
         "jobs-exceeding-resource-usage": JobsExceedingRequestedResources,
         "gpu-utilization": GPUUtilization,
         "cpu-utilization": CPUUtilization,
+        "gpu-allocation": GPUAllocation,
+        "cpu-allocation": CPUAllocation,
     }
 
     def create(self, db: Database, name: str) -> Query:
