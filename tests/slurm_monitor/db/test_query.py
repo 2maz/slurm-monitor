@@ -573,3 +573,57 @@ async def test_cpu_allocation_layers(test_db__function_scope):
     assert c["cpus_installed"] == cpus
     assert c["jobs"] == 0
     assert float(c["percent_time_unavailable"]) == pytest.approx(100.0)
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_cpu_allocation_skips_gap_in_reports(test_db__function_scope):
+    # The node is half busy throughout and doesn't reboot, but reports nothing in the bucket before the
+    # checked one. The checked bucket starts at its first sample rather than taking in the gap.
+    db = test_db__function_scope
+    cluster = "cluster-cpu-gap"
+    node = f"{cluster}-node-a"
+    now = dt.datetime.now(dt.timezone.utc)
+    bucket = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0) - dt.timedelta(minutes=30)
+    at = lambda seconds: bucket + dt.timedelta(seconds=seconds)  # noqa: E731
+    cpus = 96
+
+    db.insert(Node(cluster=cluster, node=node))
+    db.insert(
+        SysinfoAttributes(
+            cluster=cluster,
+            node=node,
+            sockets=2,
+            cores_per_socket=24,
+            threads_per_core=2,
+            cpu_model="Intel Xeon",
+            memory=256 * 1024**2,
+            time=at(-1800),
+        )
+    )
+    db.insert(
+        [
+            SampleSystem(
+                cluster=cluster,
+                node=node,
+                boot=bucket - dt.timedelta(days=3),
+                cpus=[100000 + 15 * n] * cpus,
+                used_memory=0,
+                load1=0,
+                load5=0,
+                load15=0,
+                runnable_entities=0,
+                existing_entities=0,
+                time=at(30 * n),
+            )
+            for n in [*range(-60, -30), *range(30)]
+        ]
+    )
+
+    query = QueryMaker().create(db=db, name="cpu-allocation")
+    rows = await query.execute_async({**PARAMS, "cluster": cluster})
+
+    row = next(row for row in rows if row["period_start"] == bucket)
+    assert row["cpus_installed"] == cpus
+    # from the first sample to the last, 29 sample intervals
+    assert float(row["cpus_online"]) == pytest.approx(cpus * 29 * 30 / 900, abs=0.01)
+    assert float(row["cpus_busy"]) == pytest.approx(cpus * 29 * 15 / 900, abs=0.01)

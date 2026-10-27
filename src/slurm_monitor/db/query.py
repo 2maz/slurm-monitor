@@ -458,14 +458,18 @@ _CPU_BUSY_CTES = """
         group by 1, 2, 3
     ),
     -- cpus holds each logical CPU's busy seconds since boot, which restart at boot. So a bucket's
-    -- busy time runs from the last sample of the previous bucket of the same boot, if any, to its own.
+    -- busy time runs from the last sample of the previous bucket of the same boot to its own, if that
+    -- sample is just before this bucket's first. After a gap in the reports the bucket starts at its
+    -- first sample, as it would otherwise take the whole gap's busy time and CPU-seconds.
     edges as (
         select
             p.*,
             l.busy_total,
             l.cpus,
-            lag(l.busy_total) over w as previous_busy_total,
-            lag(p.last_time) over w as previous_time
+            case when lag(p.last_time) over w >= p.first_time - interval '2 minutes'
+                then lag(l.busy_total) over w end as previous_busy_total,
+            case when lag(p.last_time) over w >= p.first_time - interval '2 minutes'
+                then lag(p.last_time) over w end as previous_time
         from per_boot p,
             lateral (
                 select (select sum(v) from unnest(s.cpus) as v) as busy_total, cardinality(s.cpus) as cpus
