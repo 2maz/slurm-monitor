@@ -38,6 +38,8 @@ class TestDBConfig(BaseModel):
     number_of_cpus: int = 2
     number_of_gpus: int = 2
     number_of_jobs: int = 4
+    # jobs are assigned to these users in turn
+    user_names: list[str] = ["any-user"]
     number_of_samples: int = 25
     sampling_interval_in_s: int = 30
 
@@ -218,6 +220,7 @@ def create_test_db(
 
             for j in range(1, config.number_of_jobs + 1):
                 jobId = nIdx * len(nodes) * config.number_of_jobs + j
+                user_name = config.user_names[(jobId - 1) % len(config.user_names)]
                 start_time = time - dt.timedelta(seconds=config.number_of_samples * config.sampling_interval_in_s)
                 sample_time = start_time
                 sample_slurm_jobs = []
@@ -236,7 +239,7 @@ def create_test_db(
                             array_task_id=None,
                             het_job_id=0,
                             het_job_offset=0,
-                            user_name="any-user",
+                            user_name=user_name,
                             account="any-account",
                             start_time=start_time,
                             suspend_time=0,
@@ -279,7 +282,7 @@ def create_test_db(
                             node=n,
                             job=jobId,
                             epoch=0,
-                            user="any-user",
+                            user=user_name,
                             resident_memory=8 * 1024 * 2,
                             virtual_memory=2 * 1024 * 2,
                             cmd="test-command",
@@ -299,7 +302,7 @@ def create_test_db(
                                 node=n,
                                 job=jobId,
                                 epoch=0,
-                                user="any-user",
+                                user=user_name,
                                 pid=jobId,
                                 uuid=card,
                                 gpu_util=100.0 / config.number_of_jobs,

@@ -12,7 +12,14 @@ from fastapi_cache import FastAPICache
 from fastapi_cache.decorator import cache
 from pydantic import ValidationError
 
-from slurm_monitor.api.routes import RequiredPermissions, TokenPayload, api_router, get_token_payload
+from slurm_monitor.api.routes import (
+    NoneForUserWithRealmRoles,
+    RequiredPermissions,
+    Role,
+    TokenPayload,
+    api_router,
+    get_token_payload,
+)
 from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.db.db import ClusterDB
 from slurm_monitor.db.query import QueryMaker
@@ -49,15 +56,18 @@ async def clear_cache(
 )
 @cache(expire=120)
 async def partitions(
-    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    user: Annotated[str | None, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     cluster: str,
     time_in_s: int | None = None,
     dbi=Depends(DBManager.get_database),
 ):
     """
     Get status of partitions of a cluster (for a specific time point)
+
+    Without the admin role, jobs_pending and jobs_running list only the caller's
+    own jobs; the counts and times cover every job.
     """
-    return await dbi.get_partitions(cluster, time_in_s)
+    return await dbi.get_partitions(cluster, time_in_s, user=user)
 
 
 @api_router.get(
@@ -276,6 +286,18 @@ async def list_queries(
     return {"queries": QueryMaker.list_available()}
 
 
+def query_access(
+    query_name: str,
+    user: Annotated[str | None, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
+) -> None:
+    """
+    Named queries that list users or their jobs are for admins. A dependency, so
+    it runs before the route's response cache, which keys on the URL alone.
+    """
+    if user is not None and QueryMaker.is_admin_only(query_name):
+        raise HTTPException(status_code=403, detail=f"Query '{query_name}' requires the admin role")
+
+
 def _url_key_builder(func, namespace: str = "", *, request: Request, **_) -> str:
     # The default key builder hashes the endpoint's arguments, which include
     # the Request object itself, so it would never produce a cache hit here.
@@ -291,7 +313,7 @@ def _url_key_builder(func, namespace: str = "", *, request: Request, **_) -> str
 # Long time ranges take tens of seconds to compute, and change little within 15 minutes.
 @cache(expire=900, key_builder=_url_key_builder)
 async def queries(
-    _: Annotated[TokenPayload, Depends(get_token_payload)],
+    _: Annotated[None, Depends(query_access)],
     cluster: str,
     query_name: str,
     request: Request,
