@@ -19,6 +19,8 @@ from slurm_monitor.api.response_models import (
     SampleProcessAccResponse,
 )
 from slurm_monitor.api.routes import (
+    NoneForUserWithRealmRoles,
+    Role,
     TokenPayload,
     api_router,
     create_custom_page,
@@ -224,7 +226,7 @@ async def nodes_last_probe_timestamp(
     response_model=NodeSampleProcessGpuAccResponse,
 )
 async def nodes_process_gpu_util(
-    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    user: Annotated[str | None, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     cluster: str,
     nodename: str | None = None,
     reference_time_in_s: float | None = None,
@@ -233,6 +235,8 @@ async def nodes_process_gpu_util(
 ):
     """
     Retrieve the latest gpu utilization
+
+    Without the admin role, summed over the caller's own processes only.
     """
     nodes = [nodename] if nodename else (await dbi.get_nodes(cluster))
     tasks = {}
@@ -243,6 +247,7 @@ async def nodes_process_gpu_util(
                 node=node,
                 reference_time_in_s=reference_time_in_s,
                 window_in_s=window_in_s,
+                user=user,
             ),
             name=f"nodes_process_gpu_util-{node}",
         )
@@ -271,7 +276,7 @@ async def nodes_process_gpu_util(
     response_model=NodeGpuJobSampleProcessGpuTimeseriesResponse,
 )
 async def nodes_sample_process_gpu(
-    token_payload: Annotated[TokenPayload, Depends(get_token_payload)],
+    user: Annotated[str | None, Depends(NoneForUserWithRealmRoles([Role.ADMIN]))],
     cluster: str,
     nodename: str | None = None,
     job_id: int | None = None,
@@ -283,6 +288,8 @@ async def nodes_sample_process_gpu(
 ):
     """
     Get node-related timeseries for processes running on gpu
+
+    Without the admin role, only the caller's own jobs.
     """
     start_time_in_s, end_time_in_s, resolution_in_s = validate_interval(
         start_time_in_s=start_time_in_s,
@@ -299,6 +306,7 @@ async def nodes_sample_process_gpu(
         start_time_in_s=start_time_in_s,
         end_time_in_s=end_time_in_s,
         resolution_in_s=resolution_in_s,
+        user=user,
     )
 
 

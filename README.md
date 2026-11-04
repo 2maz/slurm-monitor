@@ -199,6 +199,13 @@ exchange), restrict the audience to its client:
 SLURM_MONITOR_OAUTH_AUDIENCE="slurm-monitor"
 ```
 
+With OAuth enabled, a user sees only their own jobs: in the job routes, in the
+jobs each partition lists, and in the per-process GPU samples of a node. The
+named queries that list users or their jobs answer 403. A user with the realm
+role `admin` sees everyone's. Node and GPU card metrics (utilization, memory,
+power and disk I/O over time, states, system information) carry no user and
+are open to any authenticated user.
+
 
 ### Probe
 
