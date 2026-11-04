@@ -2,7 +2,7 @@ import logging
 from typing import Annotated
 
 import fastapi_pagination
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from fastapi_cache.decorator import cache
 
 from slurm_monitor.api.response_models import (
@@ -257,7 +257,7 @@ async def job_status(
     if states:
         job_states = states.split(",")
 
-    return await dbi.get_job(
+    job = await dbi.get_job(
         cluster=cluster,
         job_id=job_id,
         epoch=epoch,
@@ -266,6 +266,10 @@ async def job_status(
         end_time_in_s=end_time_in_s,
         states=job_states,
     )
+    if job is None:
+        # Also for another user's job, so a user cannot tell whether it exists.
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    return job
 
 
 @api_router.get(
