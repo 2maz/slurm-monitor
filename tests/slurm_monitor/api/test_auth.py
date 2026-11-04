@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from slurm_monitor.api.routes import verify_token
+from slurm_monitor.api.routes import NoneForUserWithRealmRoles, Role, verify_token
 from slurm_monitor.app_settings import AppSettings, OAuthSettings
 
 
@@ -40,7 +40,7 @@ def jwks_server():
     server.shutdown()
 
 
-def make_token(private_key, issuer: str, aud: str | list[str] = "account") -> str:
+def make_token(private_key, issuer: str, aud: str | list[str] = "account", drop: tuple[str, ...] = ()) -> str:
     now = int(time.time())
     payload = {
         "exp": now + 300,
@@ -63,6 +63,8 @@ def make_token(private_key, issuer: str, aud: str | list[str] = "account") -> st
         "family_name": "User",
         "email": "test-user@xyz.com",
     }
+    for claim in drop:
+        payload.pop(claim)
     return jwt.encode(payload, private_key, algorithm="RS256", headers={"kid": "test-key"})
 
 
@@ -143,3 +145,78 @@ def test_oauth_jwks_from_env(monkeypatch):
     settings = AppSettings()
     assert settings.oauth.issuer == "https://public.invalid/realms/test-realm"
     assert settings.oauth.jwks_url == "http://keycloak:8080/certs"
+
+
+# What Keycloak's token exchange (RFC 8693) for the slurm-monitor audience
+# leaves out of the token: the roles of other clients, and here the profile
+# claims of a user without an e-mail address or full name.
+EXCHANGED_OUT = ("resource_access", "email", "email_verified", "name", "given_name", "family_name", "sid", "acr")
+
+
+@pytest.mark.asyncio
+async def test_exchanged_token_is_accepted(monkeypatch, jwks_server):
+    jwks_url, private_key = jwks_server
+    oauth = use_oauth(monkeypatch, jwks_url, audience="slurm-monitor")
+
+    token = make_token(private_key, oauth.issuer, aud="slurm-monitor", drop=EXCHANGED_OUT)
+    token_payload = await verify_token(token)
+
+    assert token_payload.preferred_username == "test-user"
+    assert token_payload.resource_access.account.roles == []
+
+
+@pytest.mark.asyncio
+async def test_admin_role_of_an_exchanged_token_is_kept(monkeypatch, jwks_server):
+    jwks_url, private_key = jwks_server
+    oauth = use_oauth(monkeypatch, jwks_url)
+    now = int(time.time())
+    payload = {
+        "exp": now + 300,
+        "iat": now,
+        "iss": oauth.issuer,
+        "aud": "account",
+        "sub": "admin-sub",
+        "preferred_username": "admin-user",
+        "realm_access": {"roles": ["admin"]},
+    }
+    token = jwt.encode(payload, private_key, algorithm="RS256", headers={"kid": "test-key"})
+
+    token_payload = await verify_token(token)
+
+    # None: an admin is not limited to their own data
+    assert NoneForUserWithRealmRoles([Role.ADMIN])(token_payload) is None
+
+
+@pytest.mark.asyncio
+async def test_token_without_roles_sees_only_its_own(monkeypatch, jwks_server):
+    jwks_url, private_key = jwks_server
+    oauth = use_oauth(monkeypatch, jwks_url)
+
+    token_payload = await verify_token(make_token(private_key, oauth.issuer, drop=("realm_access", "resource_access")))
+
+    assert NoneForUserWithRealmRoles([Role.ADMIN])(token_payload) == "test-user"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("claim", ["preferred_username", "sub"])
+async def test_token_without_identity_is_rejected(monkeypatch, jwks_server, claim):
+    jwks_url, private_key = jwks_server
+    oauth = use_oauth(monkeypatch, jwks_url)
+
+    with pytest.raises(HTTPException) as e:
+        await verify_token(make_token(private_key, oauth.issuer, drop=(claim,)))
+    assert e.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_claims_are_not_taken_from_the_environment(monkeypatch, jwks_server):
+    jwks_url, private_key = jwks_server
+    oauth = use_oauth(monkeypatch, jwks_url)
+    monkeypatch.setenv("PREFERRED_USERNAME", "root")
+    monkeypatch.setenv("ROLES", '["admin"]')
+
+    with pytest.raises(HTTPException):
+        await verify_token(make_token(private_key, oauth.issuer, drop=("preferred_username",)))
+
+    token_payload = await verify_token(make_token(private_key, oauth.issuer, drop=("realm_access",)))
+    assert token_payload.realm_access.roles == []
