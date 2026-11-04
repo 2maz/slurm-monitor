@@ -7,8 +7,7 @@ import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from fastapi_pagination import Page
-from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic import BaseModel, Field
 
 from slurm_monitor.app_settings import AppSettings
 from slurm_monitor.utils import utcnow
@@ -33,43 +32,58 @@ class Role(str, Enum):
     ADMIN = "admin"
 
 
-class Roles(BaseSettings):
+# Token claims come from the verified token only: these are plain models, not
+# settings, so a claim the token leaves out is not filled in from the
+# process environment.
+class Roles(BaseModel):
     roles: list[str] = Field(default=[])
 
     def has_role(self, role: str) -> bool:
         return role in self.roles
 
 
-class Account(BaseSettings):
-    account: Roles
+class Account(BaseModel):
+    # The roles of Keycloak's "account" client. A token exchanged for another
+    # audience (RFC 8693) carries only that client's roles, so none here.
+    account: Roles = Field(default_factory=Roles)
 
     def has_role(self, role: str) -> bool:
         return self.account.has_role(role)
 
 
-class TokenPayload(BaseSettings):
+class TokenPayload(BaseModel):
+    """The claims of a verified access token.
+
+    verify_token checks the signature, exp, iat, aud and iss. Besides those,
+    only sub and preferred_username are required: preferred_username names the
+    user whose data the token may see. Roles default to none, which is the
+    narrowest view. The other claims are optional, since tokens exchanged for
+    slurm-monitor's audience, or issued for users without an e-mail address or
+    full name, leave some of them out.
+    """
+
     exp: int  # time in s
-    iat: int
-    jti: str
+    iat: int | None = None
+    jti: str | None = None
     iss: str  # issuer
     aud: str | list[str]  # audience: a list when the token names several
     sub: str  # subject
-    typ: str  # type: Bearer
-    azp: str  # client name
-    sid: str  #
-    acr: int
+    typ: str | None = None  # type: Bearer
+    azp: str | None = None  # client name
+    sid: str | None = None
+    acr: int | str | None = None
 
     auth_time: int | None = Field(default=None)
     allowed_origins: list[str] = Field(alias="allowed-origins", default=[])
-    realm_access: Roles
-    resource_access: Account
-    scope: str
-    email_verified: bool
-    name: str
+    realm_access: Roles = Field(default_factory=Roles)
+    resource_access: Account = Field(default_factory=Account)
+    scope: str | None = None
+    email_verified: bool | None = None
+    name: str | None = None
     preferred_username: str
-    given_name: str
-    family_name: str
-    email: str
+    given_name: str | None = None
+    family_name: str | None = None
+    email: str | None = None
 
 
 def validate_interval(end_time_in_s: float | None, start_time_in_s: float | None, resolution_in_s: int | None):
