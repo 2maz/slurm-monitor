@@ -155,16 +155,21 @@ def test_process_gpu_timeseries_of_another_users_job_is_empty(client, headers):
     assert process_gpu_jobs(get(client, path, headers["user"])) == set()
 
 
-def test_process_gpu_util_sums_only_the_callers_processes(client, headers):
+def test_process_gpu_util_sums_only_the_callers_processes(client, headers, db_config):
     path = f"/cluster/{CLUSTER}/nodes/{NODE}/process/gpu/util"
     admin = get(client, path, headers["admin"])[NODE]
     user = get(client, path, headers["user"])[NODE]
+
+    # create_test_db gives every process on a card a gpu_util of
+    # 100 / TestDBConfig.number_of_jobs, so a card's jobs add up to 100 %
+    per_process = 100.0 / db_config.number_of_jobs
 
     assert admin and set(user) == set(admin)
     for uuid, card in admin.items():
         assert set(card["pids"]) == NODE_JOBS
         assert set(user[uuid]["pids"]) == own(NODE_JOBS)
-        assert user[uuid]["gpu_util"] < card["gpu_util"]
+        assert card["gpu_util"] == pytest.approx(per_process * len(NODE_JOBS))
+        assert user[uuid]["gpu_util"] == pytest.approx(per_process * len(own(NODE_JOBS)))
 
 
 @pytest.mark.parametrize(
