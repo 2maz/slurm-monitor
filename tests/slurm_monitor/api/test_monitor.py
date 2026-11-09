@@ -17,6 +17,7 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from fastapi_cache import FastAPICache
 
+from slurm_monitor.api.jobs import job_status
 from slurm_monitor.api.router import app as api_app
 from slurm_monitor.app import app, prefetch_data
 from slurm_monitor.app_settings import AppSettings
@@ -609,3 +610,25 @@ async def test_bearer_token_is_not_logged(client, mock_token, caplog):
         response = client.get("/api/v2/cluster", headers={"Authorization": f"Bearer {mock_token}"})
     assert response.status_code == 200
     assert mock_token not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_unknown_job_is_not_found(client, mock_token):
+    response = client.get(
+        "/api/v2/cluster/cluster-0/jobs/999999",
+        headers={"Authorization": f"Bearer {mock_token}"},
+    )
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Job 999999 not found"}
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_job_of_another_user_is_not_found(test_db__function_scope):
+    # The seeded jobs belong to "any-user"; job 1 is one of them.
+    job = await job_status(user="any-user", cluster="cluster-0", job_id=1, dbi=test_db__function_scope)
+    assert job.job_id == 1
+
+    with pytest.raises(fastapi.HTTPException) as raised:
+        await job_status(user="someone-else", cluster="cluster-0", job_id=1, dbi=test_db__function_scope)
+    assert raised.value.status_code == 404
+    assert raised.value.detail == "Job 1 not found"
