@@ -379,7 +379,11 @@ class ClusterDB(Database):
                 result = [x[0] for x in result]
             return result
 
-    async def get_partitions(self, cluster: str, time_in_s: int | None = None):
+    async def get_partitions(self, cluster: str, time_in_s: int | None = None, user: str | None = None):
+        """
+        With a user, jobs_pending and jobs_running list only that user's jobs;
+        the counts and times still cover every job.
+        """
 
         if time_in_s is None:
             time_in_s = utcnow().timestamp()
@@ -481,6 +485,10 @@ class ClusterDB(Database):
                             cards_reserved += tres.gpu
                     else:
                         logger.warning(f"ClusterDB.get_partitions: job: {job['job_id']} has no 'sacct' information")
+
+                if user is not None:
+                    pending_jobs = [job for job in pending_jobs if job["user_name"] == user]
+                    running_jobs = [job for job in running_jobs if job["user_name"] == user]
 
                 partitions.append(
                     {
@@ -1240,9 +1248,11 @@ class ClusterDB(Database):
         start_time_in_s: int,
         end_time_in_s: int,
         resolution_in_s: int,
+        user: str | None = None,
     ):
         """
-        Get the SampleProcessGpu timeseries for a set of nodes in a cluster.
+        Get the SampleProcessGpu timeseries for a set of nodes in a cluster,
+        of the given user's jobs only if a user is given.
 
         return:
             nodename:
@@ -1274,6 +1284,9 @@ class ClusterDB(Database):
             where = SampleProcessGpu.uuid.in_(cards)
             if job_id is not None:
                 where &= (SampleProcessGpu.job == job_id) & (SampleProcessGpu.epoch == epoch)
+
+            if user is not None:
+                where &= SampleProcessGpu.user == user
 
             if start_time_in_s:
                 where &= SampleProcessGpu.time >= fromtimestamp(start_time_in_s)
@@ -1311,7 +1324,7 @@ class ClusterDB(Database):
                     resolution_in_s=resolution_in_s,
                 )
 
-                if uuid not in processes:
+                if uuid not in processes["gpus"]:
                     processes["gpus"][uuid] = []
 
                 processes["gpus"][uuid].append(
@@ -1469,9 +1482,11 @@ class ClusterDB(Database):
         node: str,
         reference_time_in_s: float | None = None,
         window_in_s: int | None = None,
+        user: str | None = None,
     ):
         """
-        Get the latest (default is last 5 min) gpu utilization for the given node
+        Get the latest (default is last 5 min) gpu utilization for the given node,
+        summed over the given user's processes only if a user is given
         """
         if reference_time_in_s is None:
             reference_time_in_s = utcnow().timestamp()
@@ -1499,6 +1514,7 @@ class ClusterDB(Database):
             uuids=cards,
             reference_time_in_s=reference_time_in_s,
             window_in_s=window_in_s,
+            user=user,
         )
 
     async def get_sample_process_gpu_util(
@@ -1506,9 +1522,11 @@ class ClusterDB(Database):
         uuids: str | list[str],
         reference_time_in_s: float | None = None,
         window_in_s: int | None = None,
+        user: str | None = None,
     ) -> dict[str, SampleProcessGpuAccResponse]:
         """
-        Get the latest gpu utilization for the given uuids
+        Get the latest gpu utilization for the given uuids, summed over the given
+        user's processes only if a user is given
         """
         if reference_time_in_s is None:
             reference_time_in_s = utcnow().timestamp()
@@ -1518,6 +1536,7 @@ class ClusterDB(Database):
 
         try:
             start_time_in_s = reference_time_in_s - window_in_s
+            of_user = SampleProcessGpu.user == user if user is not None else sqlalchemy.sql.true()
             query = (
                 select(
                     SampleProcessGpu.uuid,
@@ -1525,7 +1544,8 @@ class ClusterDB(Database):
                 )
                 .where(
                     (SampleProcessGpu.uuid.in_(uuids))
-                    & (SampleProcessGpu.time >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc)),
+                    & (SampleProcessGpu.time >= dt.datetime.fromtimestamp(start_time_in_s, dt.timezone.utc))
+                    & of_user,
                 )
                 .group_by(
                     SampleProcessGpu.uuid,
@@ -1550,7 +1570,7 @@ class ClusterDB(Database):
                         func.array_agg(SampleProcessGpu.pid.distinct()).label("pids"),
                     )
                     .where(
-                        (SampleProcessGpu.uuid == uuid) & (SampleProcessGpu.time == timestamp),
+                        (SampleProcessGpu.uuid == uuid) & (SampleProcessGpu.time == timestamp) & of_user,
                     )
                     .group_by(
                         SampleProcessGpu.uuid,

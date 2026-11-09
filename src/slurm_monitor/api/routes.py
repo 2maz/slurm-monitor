@@ -238,17 +238,23 @@ class NoneForUserWithResourceRoles:
 
 
 class NoneForUserWithRealmRoles:
+    """
+    None for a caller with all of the given realm roles (or with OAuth off),
+    otherwise the caller's username, to which a route restricts its result.
+    """
+
     optional_roles: list[Role]
 
     def __init__(self, roles: list[Role]) -> None:
-        app_settings = AppSettings.initialize()
-
-        if not app_settings.oauth.required:
-            self.optional_roles = []
-        else:
-            self.optional_roles = roles
+        AppSettings.initialize()
+        self.optional_roles = roles
 
     def __call__(self, token_payload: Annotated[TokenPayload, Depends(get_token_payload)]) -> str | None:
+        # Read when called, like get_token_payload: deciding when the route was
+        # defined used whatever the settings were at import time.
+        if not AppSettings.get_instance().oauth.required:
+            return None
+
         if token_payload:
             logger.info(f"Optional roles: {self.optional_roles} - available roles: {token_payload.realm_access.roles}")
 

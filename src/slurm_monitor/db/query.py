@@ -22,6 +22,8 @@ class Query:
     db: Database
     statement: ClassVar[str]
     parameters: ClassVar[type[QueryParams]] = QueryParams
+    # rows of individual users or their jobs: only for the admin role
+    admin_only: ClassVar[bool] = False
 
     def __init__(self, db: Database):
         self.db = db
@@ -54,6 +56,8 @@ class UserJobResults(Query):
         number_of_jobs (total), avg_time (per job),
         min_time, max_time, avg_cpu_count, avg_node_count
     """
+
+    admin_only = True
 
     parameters = CommonUsageStatQueryParams
 
@@ -99,6 +103,8 @@ class UserSuccessJobResults(Query):
         min_time, max_time, avg_cpu_count, avg_node_count
     """
 
+    admin_only = True
+
     statement = """
         SELECT row_number() OVER(ORDER BY  user_name) as anon_user,
             user_name,
@@ -135,6 +141,8 @@ class UserFailedJobResults(Query):
         number_of_jobs (total), avg_time (per job),
         min_time, max_time, avg_cpu_count, avg_node_count
     """
+
+    admin_only = True
 
     statement = """
         SELECT row_number() OVER(ORDER BY  user_name) as anon_user,
@@ -212,6 +220,8 @@ class JobsExceedingRequestedResources(Query):
         max_virtual_memory_exceeded_requested,
         gpus_used_exceeded_requested
     """
+
+    admin_only = True
 
     parameters = CommonUsageStatQueryParams
 
@@ -981,6 +991,11 @@ class QueryMaker:
     @classmethod
     def list_available(cls) -> list[str]:
         return sorted(cls._queries.keys())
+
+    @classmethod
+    def is_admin_only(cls, name: str) -> bool:
+        query = cls._queries.get(name)
+        return query is not None and query.admin_only
 
 
 class CommonQueryParams(QueryParams):

@@ -62,7 +62,9 @@ def mock_token(monkeypatch, mock_appsettings_with_oauth_required) -> str:
         "sid": "0e7aad19-8b15-06c2-1449-616b92625b9b",
         "acr": 1,
         "allowed-origins": ["", "https://naic-monitor.simula.no"],
-        "realm_access": {"roles": ["default-roles-naic-monitor", "offline_access", "uma_authorization"]},
+        # an admin sees every user's jobs, so each route has data to answer with;
+        # test_user_scope.py covers what a user without the role sees
+        "realm_access": {"roles": ["default-roles-naic-monitor", "offline_access", "uma_authorization", "admin"]},
         "resource_access": {"account": {"roles": ["manage-account", "manage-account-links", "view-profile"]}},
         "scope": "email profile",
         "email_verified": False,
